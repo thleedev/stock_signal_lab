@@ -1,0 +1,72 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# testing
+coverage/
+
+# next.js
+.next/
+out/
+
+# production
+build/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# vercel
+.vercel
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Firebase service account (민감 정보)
+*firebase-adminsdk*.json
+
+# Android local properties
+local.properties
+
+# Android build
+android-collector/.gradle/
+android-collector/.kotlin/
+android-collector/app/build/
+android-collector/build/
+
+# Supabase temp
+supabase/.temp/
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# Screenshots
+screenshots/
+
+# System files
+.claude/
+.playwright-mcp/
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions

@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0b0f1a;
+  --foreground: #e2e8f0;
+  --card: #111827;
+  --card-hover: #1a2236;
+  --border: #1e293b;
+  --muted: #94a3b8;
+  --accent: #6366f1;
+  --accent-light: #818cf8;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+
+  /* 소스 컬러 */
+  --lassi: #ef4444;
+  --stockbot: #22c55e;
+  --quant: #3b82f6;
+
+  /* 매수/매도 */
+  --buy: #ef4444;
+  --sell: #3b82f6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* 스크롤바 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* 카드 공통 */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+.card:hover {
+  border-color: #334155;
+}
+
+/* 프리미엄 그라디언트 텍스트 */
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* 게이지 애니메이션 */
+@keyframes gauge-fill {
+  from { stroke-dashoffset: 283; }
+}
+
+/* 가격 변동 색상 */
+.price-up { color: #ef4444; }
+.price-down { color: #3b82f6; }
+.price-flat { color: var(--muted); }

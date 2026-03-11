@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">주식 신호 수집기</string>
+    <string name="accessibility_description">키움증권 앱의 라씨매매신호 화면에서 종목 데이터를 수집합니다.</string>
+</resources>

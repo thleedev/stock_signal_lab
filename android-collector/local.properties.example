@@ -1,0 +1,10 @@
+# API 서버 주소 (Vercel 배포 후 실제 URL로 변경)
+# 에뮬레이터에서 로컬 테스트: http://10.0.2.2:3001
+# 실제 기기에서 로컬 테스트: http://192.168.0.7:3001 (같은 WiFi)
+API_BASE_URL=http://10.0.2.2:3001
+
+# web/.env.local의 COLLECTOR_API_KEY와 동일한 값
+COLLECTOR_API_KEY=your-collector-api-key
+
+# 기기 식별자
+DEVICE_ID=collector-001

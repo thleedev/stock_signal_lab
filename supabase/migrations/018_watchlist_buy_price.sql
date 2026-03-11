@@ -1,0 +1,1 @@
+ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS buy_price INTEGER;

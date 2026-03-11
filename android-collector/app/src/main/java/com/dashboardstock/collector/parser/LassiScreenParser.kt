@@ -1,0 +1,193 @@
+package com.dashboardstock.collector.parser
+
+import android.util.Log
+import android.view.accessibility.AccessibilityNodeInfo
+import com.dashboardstock.collector.api.SignalInput
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+/**
+ * 라씨매매신호 화면 스크래핑 파서
+ *
+ * 키움증권 앱의 라씨매매신호 화면 구조:
+ * - 매수/매도 탭
+ * - 시간 그룹 헤더: "22분전", "09:20" 등
+ * - 종목 카드: "TIGER 미국달…(456610) 63,565원"
+ *
+ * AccessibilityNodeInfo 트리에서 텍스트를 추출하여 SignalInput으로 변환
+ */
+object LassiScreenParser {
+
+    private const val TAG = "LassiScreenParser"
+
+    // 종목 패턴: "종목명(종목코드) 가격원" 또는 "종목명(종목코드)\n가격원"
+    private val STOCK_PATTERN = Regex(
+        """([가-힣A-Za-z0-9\s&.]+?)\s*\(([0-9A-Za-z]{6})\)\s*([0-9,]+)\s*원"""
+    )
+
+    // 시간 그룹 패턴: "09:20", "22분전", "1시간전" 등
+    private val TIME_GROUP_PATTERN = Regex(
+        """(\d{1,2}:\d{2}|\d+분전|\d+시간전)"""
+    )
+
+    // 종목코드 6자리 패턴
+    private val SYMBOL_PATTERN = Regex("""(\d{6})""")
+
+    // 6자리 코드 (숫자 + WebView 렌더링 오류로 영문 포함 가능)
+    private val SYMBOL_ONLY_PATTERN = Regex("""^[0-9A-Za-z]{6}$""")
+
+    // 가격 패턴
+    private val PRICE_PATTERN = Regex("""([0-9,]+)\s*원""")
+
+    /**
+     * 현재 화면에 보이는 노드에서 종목 정보 추출
+     */
+    fun parseVisibleNodes(root: AccessibilityNodeInfo, tabName: String): List<SignalInput> {
+        val now = OffsetDateTime.now(ZoneId.of("Asia/Seoul"))
+        val timestamp = now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        val signalType = if (tabName == "매수") "BUY" else "SELL"
+
+        // 전체 텍스트 수집
+        val allTexts = mutableListOf<String>()
+        collectAllText(root, allTexts)
+
+        val signals = mutableListOf<SignalInput>()
+        var currentTimeGroup: String? = null
+
+        // 텍스트 노드들을 순회하며 파싱
+        for (text in allTexts) {
+            // 시간 그룹 감지
+            val timeMatch = TIME_GROUP_PATTERN.find(text)
+            if (timeMatch != null && text.length < 15) {
+                currentTimeGroup = timeMatch.groupValues[1]
+                continue
+            }
+
+            // 종목 패턴 매칭 (종목명 + 코드 + 가격이 한 텍스트에)
+            val stockMatch = STOCK_PATTERN.find(text)
+            if (stockMatch != null) {
+                val name = stockMatch.groupValues[1].trim()
+                val symbol = stockMatch.groupValues[2]
+                val price = stockMatch.groupValues[3].replace(",", "").toIntOrNull()
+
+                signals.add(
+                    SignalInput(
+                        timestamp = timestamp,
+                        symbol = symbol,
+                        name = name,
+                        signalType = signalType,
+                        signalPrice = price,
+                        source = "lassi",
+                        timeGroup = currentTimeGroup,
+                        isFallback = false
+                    )
+                )
+                continue
+            }
+        }
+
+        // 패턴 매칭 실패 시 분리된 노드에서 조합 시도
+        if (signals.isEmpty()) {
+            val combinedSignals = parseFromSeparateNodes(allTexts, signalType, timestamp, currentTimeGroup)
+            signals.addAll(combinedSignals)
+        }
+
+        Log.d(TAG, "$tabName tab parsed: ${signals.size} signals from ${allTexts.size} text nodes")
+        return signals
+    }
+
+    /**
+     * 종목명, 코드, 가격이 별도 노드에 있는 경우 조합
+     *
+     * 실제 키움앱 UI 구조 (각각 별도 텍스트 노드):
+     *   "RISE 2차전지T…"  ← 종목명
+     *   "465350"           ← 종목코드 (6자리)
+     *   "18,290"           ← 가격
+     *   "원"               ← 단위
+     */
+    private fun parseFromSeparateNodes(
+        texts: List<String>,
+        signalType: String,
+        timestamp: String,
+        defaultTimeGroup: String?
+    ): List<SignalInput> {
+        val signals = mutableListOf<SignalInput>()
+        var currentTimeGroup = defaultTimeGroup
+        var i = 0
+
+        while (i < texts.size) {
+            val text = texts[i]
+
+            // 시간 그룹 업데이트
+            if (TIME_GROUP_PATTERN.matches(text)) {
+                currentTimeGroup = text
+                i++
+                continue
+            }
+
+            // "N종목" 스킵
+            if (text.endsWith("종목")) {
+                i++
+                continue
+            }
+
+            // 6자리 숫자만으로 이루어진 텍스트 = 종목코드
+            if (SYMBOL_ONLY_PATTERN.matches(text)) {
+                val symbol = text
+                // 이전 텍스트가 종목명
+                val name = if (i > 0) texts[i - 1].trim() else ""
+
+                // 다음 텍스트에서 가격 추출
+                var price: Int? = null
+                if (i + 1 < texts.size) {
+                    val priceText = texts[i + 1].replace(",", "")
+                    price = priceText.toIntOrNull()
+                    if (price != null) i++ // 가격 노드 소비
+                }
+                // "원" 스킵
+                if (i + 1 < texts.size && texts[i + 1] == "원") i++
+
+                if (name.isNotEmpty() && !name.matches(Regex("\\d+")) && name != "원" && name != "매수" && name != "매도") {
+                    signals.add(
+                        SignalInput(
+                            timestamp = timestamp,
+                            symbol = symbol,
+                            name = name,
+                            signalType = signalType,
+                            signalPrice = price,
+                            source = "lassi",
+                            timeGroup = currentTimeGroup,
+                            isFallback = false
+                        )
+                    )
+                }
+            }
+            i++
+        }
+
+        return signals
+    }
+
+    /**
+     * AccessibilityNodeInfo 트리에서 모든 텍스트 수집 (DFS)
+     */
+    private fun collectAllText(node: AccessibilityNodeInfo, result: MutableList<String>) {
+        val text = node.text?.toString()?.trim()
+        if (!text.isNullOrEmpty()) {
+            result.add(text)
+        }
+
+        // content-description도 수집
+        val desc = node.contentDescription?.toString()?.trim()
+        if (!desc.isNullOrEmpty() && desc != text) {
+            result.add(desc)
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectAllText(child, result)
+            child.recycle()
+        }
+    }
+}
