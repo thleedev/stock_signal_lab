@@ -2,19 +2,19 @@
   "crons": [
     {
       "path": "/api/v1/cron/daily-prices",
-      "schedule": "0 7 * * 1-5"
+      "schedule": "0 7 * * *"
     },
     {
       "path": "/api/v1/cron/daily-stats",
-      "schedule": "0 9 * * 1-5"
+      "schedule": "0 9 * * *"
     },
     {
       "path": "/api/v1/cron/market-indicators",
-      "schedule": "0 * * * 1-5"
+      "schedule": "0 12 * * *"
     },
     {
       "path": "/api/v1/cron/stock-cache",
-      "schedule": "0 11 * * 1-5"
+      "schedule": "0 11 * * *"
     }
   ]
 }
