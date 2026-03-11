@@ -10,6 +10,8 @@ export type IndicatorType =
   | 'GOLD'
   | 'DXY'
   | 'KR_3Y'
+  | 'KORU'
+  | 'EWY'
   | 'FEAR_GREED';
 
 // Yahoo Finance 티커 매핑
@@ -22,6 +24,8 @@ export const YAHOO_TICKERS: Record<string, string> = {
   KOSDAQ: '^KQ11',
   GOLD: 'GC=F',
   DXY: 'DX-Y.NYB',
+  KORU: 'KORU',
+  EWY: 'EWY',
 };
 
 export interface MarketIndicator {

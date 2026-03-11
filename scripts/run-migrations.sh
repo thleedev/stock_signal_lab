@@ -11,6 +11,7 @@ MIGRATIONS=(
   "016_stock_cache.sql"
   "017_market_score_history.sql"
   "021_market_events.sql"
+  "022_koru_ewy_indicators.sql"
 )
 
 echo "=== Supabase 마이그레이션 실행 ==="
@@ -44,6 +45,7 @@ echo "2. 015_watchlist.sql         - 투자 워치리스트 테이블"
 echo "3. 016_stock_cache.sql       - 종목 캐시 테이블 (인덱스 포함)"
 echo "4. 017_market_score_history.sql - 시황 점수 이력 테이블"
 echo "5. 021_market_events.sql       - 시장 이벤트 테이블 + market_score_history 확장"
+echo "6. 022_koru_ewy_indicators.sql - KORU/EWY 한국 ETF 지표 가중치 추가"
 echo ""
 echo "위 순서대로 실행해주세요."
 echo ""

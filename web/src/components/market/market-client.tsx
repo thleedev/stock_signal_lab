@@ -55,6 +55,8 @@ const INDICATOR_ICONS: Record<string, React.ReactNode> = {
   GOLD: <Flame className="w-5 h-5" />,
   DXY: <Globe className="w-5 h-5" />,
   KR_3Y: <Landmark className="w-5 h-5" />,
+  KORU: <TrendingUp className="w-5 h-5" />,
+  EWY: <TrendingUp className="w-5 h-5" />,
   FEAR_GREED: <Gauge className="w-5 h-5" />,
 };
 
@@ -66,6 +68,7 @@ function formatValue(type: string, value: number): string {
   if (["VIX", "FEAR_GREED", "DXY"].includes(type)) return value.toFixed(2);
   if (["WTI", "GOLD"].includes(type)) return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
   if (["KOSPI", "KOSDAQ"].includes(type)) return value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
+  if (["KORU", "EWY"].includes(type)) return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
   return value.toFixed(2);
 }
 
@@ -171,7 +174,7 @@ export function MarketClient({ indicators, weights, scoreHistory, indicatorRange
 
     const DIRECTION: Record<string, number> = {
       VIX: -1, USD_KRW: -1, US_10Y: -1, DXY: -1,
-      KOSPI: 1, KOSDAQ: 1, GOLD: 1, WTI: 1,
+      KOSPI: 1, KOSDAQ: 1, GOLD: 1, WTI: 1, KORU: 1, EWY: 1,
     };
 
     const synthetic: Record<string, { normalized: number; weight: number }> = {};
