@@ -23,6 +23,7 @@ import {
   type MarketScoreHistory,
 } from "@/types/market";
 import type { MarketEvent } from "@/types/market-event";
+import { EventCalendar } from "./event-calendar";
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -462,6 +463,9 @@ export function MarketClient({ indicators, weights, scoreHistory, indicatorRange
           </div>
         </section>
       )}
+
+      {/* ─── 3.5 이벤트 캘린더 ───────────────────────── */}
+      {events.length > 0 && <EventCalendar events={events} />}
 
       {/* ─── 4. 가중치 조절 패널 ─────────────────────── */}
       <section>

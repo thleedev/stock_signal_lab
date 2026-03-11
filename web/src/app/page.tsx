@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
-import { getScoreInterpretation } from "@/types/market";
+import { EventSummaryCard } from "@/components/market/event-summary-card";
 
 const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",
@@ -50,13 +50,14 @@ export default async function DashboardPage() {
   // 시황 점수
   const { data: latestScore } = await supabase
     .from("market_score_history")
-    .select("total_score")
+    .select("total_score, event_risk_score, combined_score")
     .order("date", { ascending: false })
     .limit(1)
     .single();
 
   const score = latestScore?.total_score ?? null;
-  const scoreInfo = score !== null ? getScoreInterpretation(score) : null;
+  const eventRiskScore = latestScore?.event_risk_score ?? 100;
+  const combinedScore = latestScore?.combined_score ?? score ?? 50;
 
   // 관심종목
   const { data: favorites } = await supabase
@@ -97,6 +98,19 @@ export default async function DashboardPage() {
     ? ((totalCurrent - totalInvested) / totalInvested) * 100
     : null;
 
+  // 이벤트 (향후 7일)
+  const sevenDaysLater = new Date(kst.getTime() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+
+  const { data: events } = await supabase
+    .from("market_events")
+    .select("*")
+    .gte("event_date", today)
+    .lte("event_date", sevenDaysLater)
+    .order("event_date", { ascending: true })
+    .order("impact_level", { ascending: false })
+    .limit(10);
+
   return (
     <div className="space-y-6">
       <div>
@@ -104,8 +118,8 @@ export default async function DashboardPage() {
         <p className="text-sm text-[var(--muted)] mt-1">{today} 기준</p>
       </div>
 
-      {/* 시장 요약 + 시황 점수 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* 시장 요약 */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {(["lassi", "stockbot", "quant"] as const).map((src) => (
           <div key={src} className={`card p-4 ${SOURCE_COLORS[src]} border`}>
             <div className="text-sm font-medium mb-2 opacity-80">{SOURCE_LABELS[src]}</div>
@@ -115,23 +129,15 @@ export default async function DashboardPage() {
             </div>
           </div>
         ))}
-
-        <Link href="/market" className="card p-4 hover:border-[var(--accent)] transition-colors">
-          <div className="text-sm text-[var(--muted)] mb-2">투자 시황</div>
-          {score !== null && scoreInfo ? (
-            <>
-              <div className="text-3xl font-bold" style={{ color: scoreInfo.color }}>
-                {Math.round(score)}점
-              </div>
-              <div className="text-sm mt-1" style={{ color: scoreInfo.color }}>
-                {scoreInfo.label} · {scoreInfo.signal}
-              </div>
-            </>
-          ) : (
-            <div className="text-2xl font-bold text-[var(--muted)]">-</div>
-          )}
-        </Link>
       </div>
+
+      {/* 투자 시황 + 이벤트 */}
+      <EventSummaryCard
+        events={events || []}
+        eventRiskScore={eventRiskScore}
+        combinedScore={combinedScore}
+        marketScore={score ?? 50}
+      />
 
       {/* 관심종목 */}
       {favorites && favorites.length > 0 && (
