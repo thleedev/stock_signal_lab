@@ -1,0 +1,16 @@
+[
+  { "date": "2026-01-28", "type": "fomc", "title": "FOMC 금리결정 (1월)", "country": "US" },
+  { "date": "2026-03-18", "type": "fomc", "title": "FOMC 금리결정 (3월)", "country": "US" },
+  { "date": "2026-05-06", "type": "fomc", "title": "FOMC 금리결정 (5월)", "country": "US" },
+  { "date": "2026-06-17", "type": "fomc", "title": "FOMC 금리결정 (6월)", "country": "US" },
+  { "date": "2026-07-29", "type": "fomc", "title": "FOMC 금리결정 (7월)", "country": "US" },
+  { "date": "2026-09-16", "type": "fomc", "title": "FOMC 금리결정 (9월)", "country": "US" },
+  { "date": "2026-11-04", "type": "fomc", "title": "FOMC 금리결정 (11월)", "country": "US" },
+  { "date": "2026-12-16", "type": "fomc", "title": "FOMC 금리결정 (12월)", "country": "US" },
+  { "date": "2026-01-13", "type": "cpi", "title": "美 CPI 발표 (12월분)", "country": "US" },
+  { "date": "2026-02-11", "type": "cpi", "title": "美 CPI 발표 (1월분)", "country": "US" },
+  { "date": "2026-03-11", "type": "cpi", "title": "美 CPI 발표 (2월분)", "country": "US" },
+  { "date": "2026-01-09", "type": "employment", "title": "美 고용보고서 (12월분)", "country": "US" },
+  { "date": "2026-02-06", "type": "employment", "title": "美 고용보고서 (1월분)", "country": "US" },
+  { "date": "2026-03-06", "type": "employment", "title": "美 고용보고서 (2월분)", "country": "US" }
+]
