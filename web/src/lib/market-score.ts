@@ -5,6 +5,7 @@
  */
 
 import type { IndicatorWeight, MarketIndicator } from '@/types/market';
+import type { MarketEvent } from '@/types/market-event';
 
 interface IndicatorData {
   current: number;
@@ -124,4 +125,40 @@ export function calculateFearGreedIndex(
   const ratioComponent = buyRatio * 100 * 0.3;
 
   return Math.round(vixComponent + deviationComponent + ratioComponent);
+}
+
+/**
+ * 이벤트 리스크 스코어 계산 (0~100, 100=리스크없음)
+ */
+export function calculateEventRiskScore(events: MarketEvent[], baseDate?: Date): number {
+  const today = baseDate ?? new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  let totalPenalty = 0;
+
+  for (const event of events) {
+    const eventDate = new Date(event.event_date + 'T00:00:00');
+    const todayDate = new Date(todayStr + 'T00:00:00');
+    const daysUntil = Math.round((eventDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysUntil < 0) continue;
+
+    const decay = daysUntil === 0 ? 1.0
+                : daysUntil <= 1 ? 0.8
+                : daysUntil <= 3 ? 0.5
+                : daysUntil <= 7 ? 0.2
+                : 0;
+
+    totalPenalty += Math.abs(event.risk_score) * decay;
+  }
+
+  totalPenalty = Math.min(totalPenalty, 80);
+  return Math.max(0, Math.min(100, 100 - totalPenalty));
+}
+
+/**
+ * 통합 스코어 = 마켓 × 0.7 + 이벤트 리스크 × 0.3
+ */
+export function calculateCombinedScore(marketScore: number, eventRiskScore: number): number {
+  const combined = marketScore * 0.7 + eventRiskScore * 0.3;
+  return Math.round(combined * 100) / 100;
 }
