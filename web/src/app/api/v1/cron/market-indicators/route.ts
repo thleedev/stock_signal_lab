@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { getQuote } from '@/lib/yahoo-finance';
-import { calculateMarketScore } from '@/lib/market-score';
+import { calculateMarketScore, calculateEventRiskScore, calculateCombinedScore } from '@/lib/market-score';
 import { YAHOO_TICKERS, type IndicatorType, type IndicatorWeight } from '@/types/market';
 
 export const dynamic = 'force-dynamic';
@@ -83,7 +83,20 @@ export async function POST(request: NextRequest) {
     (weights || []) as IndicatorWeight[]
   );
 
-  // Step 3: 점수 히스토리 저장
+  // Step 3: 이벤트 리스크 스코어 계산
+  const sevenDaysLater = new Date();
+  sevenDaysLater.setDate(sevenDaysLater.getDate() + 7);
+
+  const { data: upcomingEvents } = await supabase
+    .from('market_events')
+    .select('*')
+    .gte('event_date', today)
+    .lte('event_date', sevenDaysLater.toISOString().slice(0, 10));
+
+  const eventRiskScore = calculateEventRiskScore(upcomingEvents || []);
+  const combinedScore = calculateCombinedScore(totalScore, eventRiskScore);
+
+  // Step 4: 점수 히스토리 저장
   const weightsSnapshot: Record<string, number> = {};
   for (const w of (weights || []) as IndicatorWeight[]) {
     weightsSnapshot[w.indicator_type] = w.weight;
@@ -95,11 +108,13 @@ export async function POST(request: NextRequest) {
       total_score: totalScore,
       breakdown,
       weights_snapshot: weightsSnapshot,
+      event_risk_score: eventRiskScore,
+      combined_score: combinedScore,
     },
     { onConflict: 'date' }
   );
 
-  // Step 4: 공포탐욕 지수 저장
+  // Step 5: 공포탐욕 지수 저장
   const vixData = indicatorData['VIX'];
   if (vixData) {
     const vixNormalized = vixData.max90d !== vixData.min90d
@@ -123,5 +138,7 @@ export async function POST(request: NextRequest) {
     date: today,
     indicators: Object.keys(results).length,
     score: totalScore,
+    event_risk_score: eventRiskScore,
+    combined_score: combinedScore,
   });
 }
