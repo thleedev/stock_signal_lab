@@ -22,6 +22,7 @@ import {
   type IndicatorWeight,
   type MarketScoreHistory,
 } from "@/types/market";
+import type { MarketEvent } from "@/types/market-event";
 
 // ─── 타입 ───────────────────────────────────────────────
 
@@ -36,7 +37,9 @@ interface IndicatorRow {
 interface Props {
   indicators: IndicatorRow[];
   weights: IndicatorWeight[];
-  scoreHistory: Pick<MarketScoreHistory, "date" | "total_score" | "breakdown">[];
+  scoreHistory: Pick<MarketScoreHistory, "date" | "total_score" | "breakdown" | "event_risk_score" | "combined_score">[];
+  indicatorRanges: Record<string, { min: number; max: number }>;
+  events: MarketEvent[];
 }
 
 // ─── 아이콘 매핑 ────────────────────────────────────────
@@ -144,7 +147,7 @@ function NormalizedBar({ value, color }: { value: number; color: string }) {
 
 // ─── 메인 컴포넌트 ──────────────────────────────────────
 
-export function MarketClient({ indicators, weights, scoreHistory }: Props) {
+export function MarketClient({ indicators, weights, scoreHistory, indicatorRanges, events }: Props) {
   // 가중치 상태 (슬라이더 조절용)
   const defaultWeights = useMemo(() => {
     const map: Record<string, number> = {};
@@ -155,6 +158,7 @@ export function MarketClient({ indicators, weights, scoreHistory }: Props) {
   const [currentWeights, setCurrentWeights] = useState<Record<string, number>>(defaultWeights);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [chartTab, setChartTab] = useState<"combined" | "market" | "event">("combined");
 
   // breakdown에서 정규화 점수 추출 (최신 히스토리 기준)
   // scoreHistory가 없으면 indicators에서 합성
@@ -162,8 +166,6 @@ export function MarketClient({ indicators, weights, scoreHistory }: Props) {
     if (scoreHistory.length > 0 && scoreHistory[0].breakdown) {
       return scoreHistory[0].breakdown;
     }
-    // scoreHistory가 없으면 indicators로부터 합성 breakdown 생성
-    // 각 지표의 change_pct를 기반으로 0~100 정규화
     if (indicators.length === 0) return null;
 
     const DIRECTION: Record<string, number> = {
@@ -175,13 +177,24 @@ export function MarketClient({ indicators, weights, scoreHistory }: Props) {
     for (const ind of indicators) {
       if (ind.indicator_type === "FEAR_GREED") continue;
       const dir = DIRECTION[ind.indicator_type] ?? 1;
-      const pct = ind.change_pct ?? 0;
-      // change_pct를 0~100 범위로 변환: 0% → 50, +5% → 75, -5% → 25 (방향 반영)
-      const normalized = Math.max(0, Math.min(100, 50 + (pct * dir * 5)));
-      synthetic[ind.indicator_type] = { normalized, weight: currentWeights[ind.indicator_type] ?? 1 };
+      const range = indicatorRanges[ind.indicator_type];
+
+      let normalized: number;
+      if (!range || range.max === range.min) {
+        normalized = 50;
+      } else {
+        const raw = ((ind.value - range.min) / (range.max - range.min)) * 100;
+        const clamped = Math.max(0, Math.min(100, raw));
+        normalized = dir === -1 ? 100 - clamped : clamped;
+      }
+
+      synthetic[ind.indicator_type] = {
+        normalized,
+        weight: currentWeights[ind.indicator_type] ?? 1,
+      };
     }
     return Object.keys(synthetic).length > 0 ? synthetic : null;
-  }, [scoreHistory, indicators, currentWeights]);
+  }, [scoreHistory, indicators, currentWeights, indicatorRanges]);
 
   // 종합 점수 계산 (가중치 변경 시 재계산)
   const totalScore = useMemo(() => {
@@ -203,6 +216,24 @@ export function MarketClient({ indicators, weights, scoreHistory }: Props) {
   }, [latestBreakdown, currentWeights]);
 
   const interpretation = getScoreInterpretation(totalScore);
+
+  // 이벤트 리스크 & 통합 스코어
+  const eventRiskScore = useMemo(() => {
+    if (scoreHistory.length > 0 && scoreHistory[0].event_risk_score != null) {
+      return scoreHistory[0].event_risk_score;
+    }
+    return 100;
+  }, [scoreHistory]);
+
+  const combinedScore = useMemo(() => {
+    if (scoreHistory.length > 0 && scoreHistory[0].combined_score != null) {
+      return scoreHistory[0].combined_score;
+    }
+    return totalScore * 0.7 + eventRiskScore * 0.3;
+  }, [scoreHistory, totalScore, eventRiskScore]);
+
+  const eventInterp = getScoreInterpretation(eventRiskScore);
+  const combinedInterp = getScoreInterpretation(combinedScore);
 
   // 지표별 정규화 점수 가져오기
   const getNormalized = useCallback(
@@ -263,17 +294,40 @@ export function MarketClient({ indicators, weights, scoreHistory }: Props) {
         </p>
       </div>
 
-      {/* ─── 1. 종합 점수 게이지 ─────────────────────── */}
-      <section className="card p-6 flex flex-col items-center gap-4">
-        <ScoreGauge score={totalScore} color={interpretation.color} />
-        <div className="text-center">
+      {/* ─── 1. 3-스코어 게이지 ─────────────────────── */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="card p-6 flex flex-col items-center gap-4">
+          <div className="text-sm text-[var(--muted)]">통합 스코어</div>
+          <ScoreGauge score={combinedScore} color={combinedInterp.color} />
+          <span
+            className="inline-block px-4 py-1.5 rounded-full text-sm font-semibold"
+            style={{ background: combinedInterp.color + "22", color: combinedInterp.color }}
+          >
+            {combinedInterp.label}
+          </span>
+          <p className="text-sm text-[var(--muted)]">{combinedInterp.signal}</p>
+        </div>
+
+        <div className="card p-6 flex flex-col items-center gap-4">
+          <div className="text-sm text-[var(--muted)]">마켓 심리</div>
+          <ScoreGauge score={totalScore} color={interpretation.color} />
           <span
             className="inline-block px-4 py-1.5 rounded-full text-sm font-semibold"
             style={{ background: interpretation.color + "22", color: interpretation.color }}
           >
             {interpretation.label}
           </span>
-          <p className="text-sm text-[var(--muted)] mt-2">{interpretation.signal}</p>
+        </div>
+
+        <div className="card p-6 flex flex-col items-center gap-4">
+          <div className="text-sm text-[var(--muted)]">이벤트 리스크</div>
+          <ScoreGauge score={eventRiskScore} color={eventInterp.color} />
+          <span
+            className="inline-block px-4 py-1.5 rounded-full text-sm font-semibold"
+            style={{ background: eventInterp.color + "22", color: eventInterp.color }}
+          >
+            {eventInterp.label}
+          </span>
         </div>
       </section>
 
@@ -338,24 +392,47 @@ export function MarketClient({ indicators, weights, scoreHistory }: Props) {
       {/* ─── 3. 점수 히스토리 ────────────────────────── */}
       {recentHistory.length > 0 && (
         <section>
-          <h2 className="text-lg font-semibold mb-4">최근 30일 점수 추이</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">최근 30일 점수 추이</h2>
+            <div className="flex gap-1">
+              {[
+                { key: "combined" as const, label: "통합" },
+                { key: "market" as const, label: "마켓" },
+                { key: "event" as const, label: "이벤트" },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setChartTab(t.key)}
+                  className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                    chartTab === t.key
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--muted)] hover:bg-[var(--card-hover)]"
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="card p-4 overflow-x-auto">
-            {/* 간단한 바 차트 */}
             <div className="flex items-end gap-1 h-40 min-w-[600px]">
               {[...recentHistory].reverse().map((entry) => {
-                const interp = getScoreInterpretation(entry.total_score);
-                const height = Math.max(4, (entry.total_score / 100) * 100);
+                const scoreValue =
+                  chartTab === "combined" ? (entry.combined_score ?? entry.total_score)
+                  : chartTab === "event" ? (entry.event_risk_score ?? 100)
+                  : entry.total_score;
+                const interp = getScoreInterpretation(scoreValue);
+                const height = Math.max(4, (scoreValue / 100) * 100);
                 return (
                   <div
                     key={entry.date}
                     className="flex-1 flex flex-col items-center gap-1 group relative"
                   >
-                    {/* 툴팁 */}
                     <div className="absolute bottom-full mb-2 hidden group-hover:block z-10">
                       <div className="bg-[#1e293b] border border-[var(--border)] rounded-lg px-3 py-2 text-xs whitespace-nowrap shadow-lg">
                         <div className="font-medium">{entry.date}</div>
                         <div style={{ color: interp.color }}>
-                          {entry.total_score.toFixed(1)}점 - {interp.label}
+                          {scoreValue.toFixed(1)}점 - {interp.label}
                         </div>
                       </div>
                     </div>
@@ -371,7 +448,6 @@ export function MarketClient({ indicators, weights, scoreHistory }: Props) {
                 );
               })}
             </div>
-            {/* 날짜 라벨 (5일 간격) */}
             <div className="flex gap-1 mt-2 min-w-[600px]">
               {[...recentHistory].reverse().map((entry, i) => (
                 <div key={entry.date} className="flex-1 text-center">
