@@ -12,13 +12,26 @@ interface PriceData {
   volume: number;
 }
 
+interface SignalMarker {
+  date: string;
+  type: "BUY" | "BUY_FORECAST" | "SELL" | "SELL_COMPLETE";
+  source: string;
+}
+
+const SOURCE_SHORT: Record<string, string> = {
+  lassi: "라",
+  stockbot: "봇",
+  quant: "퀀",
+};
+
 interface Props {
   data: PriceData[];
   signalDates?: Set<string>;
+  signalMarkers?: SignalMarker[];
   height?: number;
 }
 
-export default function CandleChart({ data, signalDates, height = 300 }: Props) {
+export default function CandleChart({ data, signalDates, signalMarkers, height = 300 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -69,8 +82,25 @@ export default function CandleChart({ data, signalDates, height = 300 }: Props) 
 
     candleSeries.setData(candleData);
 
-    // 신호 마커 추가
-    if (signalDates && signalDates.size > 0) {
+    // 매수/매도 마커
+    if (signalMarkers && signalMarkers.length > 0) {
+      const dateSet = new Set(data.map((d) => d.date));
+      const markers = signalMarkers
+        .filter((m) => dateSet.has(m.date))
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((m) => {
+          const isBuy = m.type === "BUY" || m.type === "BUY_FORECAST";
+          return {
+            time: m.date as Time,
+            position: isBuy ? ("belowBar" as const) : ("aboveBar" as const),
+            color: isBuy ? "#ef4444" : "#3b82f6",
+            shape: isBuy ? ("arrowUp" as const) : ("arrowDown" as const),
+            text: SOURCE_SHORT[m.source] || m.source.charAt(0),
+          };
+        });
+      candleSeries.setMarkers(markers);
+    } else if (signalDates && signalDates.size > 0) {
+      // fallback: 단순 날짜 마커
       const markers = data
         .filter((d) => signalDates.has(d.date))
         .map((d) => ({
@@ -118,7 +148,7 @@ export default function CandleChart({ data, signalDates, height = 300 }: Props) 
       chart.remove();
       chartRef.current = null;
     };
-  }, [data, signalDates, height]);
+  }, [data, signalDates, signalMarkers, height]);
 
   if (data.length === 0) {
     return (

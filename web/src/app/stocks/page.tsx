@@ -83,6 +83,15 @@ export default async function StocksPage() {
     .select("symbol");
   const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
 
+  // 즐겨찾기 그룹 정보 조회
+  const { data: favGroupRows } = await supabase
+    .from("favorite_stocks")
+    .select("symbol, group_name");
+  const favGroups: Record<string, string> = {};
+  for (const r of favGroupRows ?? []) {
+    if (r.group_name) favGroups[r.symbol] = r.group_name;
+  }
+
   // 가격 업데이트 시간 (가장 최근 updated_at)
   const { data: latestUpdate } = await supabase
     .from("stock_cache")
@@ -106,6 +115,7 @@ export default async function StocksPage() {
         favorites={mergeSignals(favorites)}
         watchlistSymbols={watchlistSymbols}
         lastPriceUpdate={lastPriceUpdate}
+        favGroups={favGroups}
       />
     </div>
   );

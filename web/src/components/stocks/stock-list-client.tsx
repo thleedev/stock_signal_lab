@@ -11,6 +11,7 @@ interface Props {
   favorites: StockCache[];
   watchlistSymbols?: string[];
   lastPriceUpdate?: string | null;
+  favGroups?: Record<string, string>;
 }
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -107,7 +108,7 @@ function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
   );
 }
 
-export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate }: Props) {
+export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, favGroups = {} }: Props) {
   const [stocks, setStocks] = useState<StockCache[]>(initialStocks);
   const [query, setQuery] = useState("");
   const [market, setMarket] = useState("전체");
@@ -123,6 +124,14 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [portSet, setPortSet] = useState<Set<string>>(() => new Set(watchlistSymbols));
   const [gapSource, setGapSource] = useState<SourceKey | "all">("all");
+  const [favGroupFilter, setFavGroupFilter] = useState<string | null>(null);
+
+  // 그룹 목록
+  const favGroupList = useMemo(() => {
+    const set = new Set<string>();
+    for (const v of Object.values(favGroups)) set.add(v);
+    return Array.from(set).sort();
+  }, [favGroups]);
   const [actionMenu, setActionMenu] = useState<{
     stock: StockCache;
     position: { x: number; y: number };
@@ -228,31 +237,36 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       const updated = stocks.find((s) => s.symbol === fav.symbol);
       return updated ?? fav;
     });
+    // 그룹 필터 적용
+    const filteredFavs = favGroupFilter
+      ? updatedFavs.filter((f) => (favGroups[f.symbol] || "기본") === favGroupFilter)
+      : updatedFavs;
+
     // 일반 종목 (즐겨찾기 제외)
-    const nonFavs = stocks.filter((s) => !favSymbols.has(s.symbol));
+    const nonFavs = favGroupFilter
+      ? [] // 그룹 필터 시 즐겨찾기만 표시
+      : stocks.filter((s) => !favSymbols.has(s.symbol));
 
     // gap 정렬이면 클라이언트에서 정렬 (매수가 < 현재가인 것 우선)
     if (sortBy === "gap") {
       const sortByGap = (a: StockCache, b: StockCache) => {
         const gapA = calcGap(a, gapSource);
         const gapB = calcGap(b, gapSource);
-        // gap 없는 종목은 맨 뒤
         if (gapA == null && gapB == null) return 0;
         if (gapA == null) return 1;
         if (gapB == null) return -1;
-        // 매수가 < 현재가 (gap > 0)인 종목이 먼저, gap 작은 순
         const aPos = gapA.gap > 0;
         const bPos = gapB.gap > 0;
         if (aPos && !bPos) return -1;
         if (!aPos && bPos) return 1;
         return gapA.gap - gapB.gap;
       };
-      updatedFavs.sort(sortByGap);
+      filteredFavs.sort(sortByGap);
       nonFavs.sort(sortByGap);
     }
 
-    return { favs: updatedFavs, nonFavs };
-  }, [stocks, favStocks, sortBy, gapSource]);
+    return { favs: filteredFavs, nonFavs };
+  }, [stocks, favStocks, sortBy, gapSource, favGroupFilter, favGroups]);
 
   const handleRowClick = useCallback((e: React.MouseEvent, stock: StockCache) => {
     // 즐겨찾기 버튼 클릭은 무시
@@ -431,6 +445,21 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             <option value="lassi">Gap: 라씨</option>
             <option value="stockbot">Gap: 스톡봇</option>
           </select>
+
+          {/* 즐겨찾기 그룹 필터 */}
+          {favGroupList.length > 0 && (
+            <select
+              value={favGroupFilter ?? ""}
+              onChange={(e) => setFavGroupFilter(e.target.value || null)}
+              className="px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+              title="즐겨찾기 그룹"
+            >
+              <option value="">그룹: 전체</option>
+              {favGroupList.map((g) => (
+                <option key={g} value={g}>그룹: {g}</option>
+              ))}
+            </select>
+          )}
         </div>
       </div>
 

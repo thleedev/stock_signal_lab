@@ -27,13 +27,18 @@ export async function POST(request: NextRequest) {
 
   const supabase = createServiceClient();
 
+  const upsertData: Record<string, unknown> = {
+    symbol: body.symbol,
+    name: body.name,
+    note: body.note || null,
+  };
+  if (body.group_name) {
+    upsertData.group_name = body.group_name;
+  }
+
   const { data, error } = await supabase
     .from('favorite_stocks')
-    .upsert({
-      symbol: body.symbol,
-      name: body.name,
-      note: body.note || null,
-    })
+    .upsert(upsertData)
     .select()
     .single();
 
@@ -48,4 +53,26 @@ export async function POST(request: NextRequest) {
     .eq('symbol', body.symbol);
 
   return Response.json({ favorite: data }, { status: 201 });
+}
+
+// PATCH /api/v1/favorites — 그룹 일괄 변경
+export async function PATCH(request: NextRequest) {
+  const body = await request.json();
+
+  if (!body.symbols || !body.group_name) {
+    return Response.json({ error: 'symbols and group_name are required' }, { status: 400 });
+  }
+
+  const supabase = createServiceClient();
+
+  const { error } = await supabase
+    .from('favorite_stocks')
+    .update({ group_name: body.group_name })
+    .in('symbol', body.symbols);
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  return Response.json({ success: true });
 }

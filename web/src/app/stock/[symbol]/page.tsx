@@ -107,6 +107,13 @@ export default async function StockDetailPage({
   // 신호 날짜 (차트 마커용)
   const signalDates = (signals ?? []).map((s: Record<string, string>) => s.timestamp?.slice(0, 10)).filter(Boolean);
 
+  // 매수/매도 마커 (차트 오버레이용)
+  const signalMarkers = (signals ?? []).map((s: Record<string, string>) => ({
+    date: s.timestamp?.slice(0, 10),
+    type: s.signal_type as "BUY" | "BUY_FORECAST" | "SELL" | "SELL_COMPLETE",
+    source: s.source,
+  })).filter((m) => m.date);
+
   return (
     <div className="space-y-6">
       {/* 헤더 */}
@@ -174,6 +181,7 @@ export default async function StockDetailPage({
           volume: Number(p.volume),
         }))}
         signalDates={signalDates}
+        signalMarkers={signalMarkers}
       />
 
       {/* 투자지표 */}

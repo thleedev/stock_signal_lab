@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
+import FavoritesManager from "./favorites-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -138,33 +138,14 @@ export default async function SettingsPage() {
       <section>
         <h2 className="text-lg font-semibold mb-3">즐겨찾기 관리</h2>
         <div className="card">
-          {(favorites || []).length === 0 ? (
-            <div className="p-8 text-center text-[var(--muted)]">
-              즐겨찾기 종목이 없습니다
-            </div>
-          ) : (
-            <div className="divide-y divide-[var(--border)]">
-              {(favorites || []).map((fav: Record<string, string>, i: number) => (
-                <Link
-                  key={fav.symbol ?? i}
-                  href={`/stock/${fav.symbol}`}
-                  className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors"
-                >
-                  <span className="font-medium text-sm">{fav.symbol}</span>
-                  {fav.name && (
-                    <span className="text-sm text-[var(--muted)]">{fav.name}</span>
-                  )}
-                  <span className="ml-auto text-xs text-[var(--muted)]">
-                    {fav.added_at
-                      ? new Date(fav.added_at).toLocaleDateString("ko-KR", {
-                          timeZone: "Asia/Seoul",
-                        })
-                      : ""}
-                  </span>
-                </Link>
-              ))}
-            </div>
-          )}
+          <FavoritesManager
+            favorites={(favorites || []).map((f: Record<string, string>) => ({
+              symbol: f.symbol,
+              name: f.name,
+              group_name: f.group_name || null,
+              added_at: f.added_at,
+            }))}
+          />
         </div>
       </section>
 
@@ -209,7 +190,23 @@ export default async function SettingsPage() {
         </div>
       </section>
 
-      {/* 5. 시스템 정보 */}
+      {/* 5. 데이터 백업 */}
+      <section>
+        <h2 className="text-lg font-semibold mb-3">데이터 백업</h2>
+        <div className="card p-5">
+          <p className="text-sm text-[var(--muted)] mb-3">
+            관심종목, 포트, 신호, 거래내역 등 핵심 데이터를 JSON 파일로 백업합니다.
+          </p>
+          <p className="text-xs text-[var(--muted)] mb-2">
+            API: <code className="bg-[var(--background)] px-1 rounded">GET /api/v1/backup</code> (Authorization: Bearer CRON_SECRET)
+          </p>
+          <div className="text-xs text-[var(--muted)]">
+            Cron 설정 예시: 매주 일요일 자동 백업
+          </div>
+        </div>
+      </section>
+
+      {/* 6. 시스템 정보 */}
       <section>
         <h2 className="text-lg font-semibold mb-3">시스템 정보</h2>
         <div className="card p-5 space-y-4">

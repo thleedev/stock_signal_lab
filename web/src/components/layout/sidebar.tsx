@@ -11,6 +11,8 @@ import {
   PieChart,
   Target,
   Settings,
+  FileText,
+  GitCompareArrows,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -21,6 +23,8 @@ const NAV_ITEMS = [
   { href: "/investment", label: "포트 종목", icon: Briefcase },
   { href: "/signals", label: "AI 신호", icon: Zap },
   { href: "/portfolio", label: "AI 포트폴리오", icon: PieChart },
+  { href: "/compare", label: "종목 비교", icon: GitCompareArrows },
+  { href: "/reports", label: "일간 리포트", icon: FileText },
   { href: "/settings", label: "설정", icon: Settings },
 ];
 
