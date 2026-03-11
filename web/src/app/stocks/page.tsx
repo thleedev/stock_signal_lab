@@ -1,24 +1,36 @@
 import { createServiceClient } from "@/lib/supabase";
 import StockListClient from "@/components/stocks/stock-list-client";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function StocksPage() {
   const supabase = createServiceClient();
 
-  const { data: favorites } = await supabase
-    .from("stock_cache")
-    .select("*")
-    .eq("is_favorite", true)
-    .order("name");
+  // 1단계: 독립 쿼리 병렬 실행
+  const [
+    { data: favorites },
+    { data: stocks },
+    { data: watchlistItems },
+    { data: favGroupRows },
+    { data: latestUpdate },
+  ] = await Promise.all([
+    supabase.from("stock_cache").select("*").eq("is_favorite", true).order("name"),
+    supabase.from("stock_cache").select("*").order("name").limit(100),
+    supabase.from("watchlist").select("symbol"),
+    supabase.from("favorite_stocks").select("symbol, group_name"),
+    supabase.from("stock_cache").select("updated_at")
+      .not("current_price", "is", null)
+      .order("updated_at", { ascending: false }).limit(1).single(),
+  ]);
 
-  const { data: stocks } = await supabase
-    .from("stock_cache")
-    .select("*")
-    .order("name")
-    .limit(100);
+  const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
+  const favGroups: Record<string, string> = {};
+  for (const r of favGroupRows ?? []) {
+    if (r.group_name) favGroups[r.symbol] = r.group_name;
+  }
+  const lastPriceUpdate = latestUpdate?.updated_at ?? null;
 
-  // 초기 로딩용: 즐겨찾기 + 첫 페이지 종목의 소스별 최신 신호 조회
+  // 2단계: favorites + stocks 결과에 의존하는 신호 쿼리
   const allSymbols = new Set<string>();
   favorites?.forEach((f) => allSymbols.add(f.symbol));
   stocks?.forEach((s) => allSymbols.add(s.symbol));
@@ -76,31 +88,6 @@ export default async function StocksPage() {
         quant: signalMap[s.symbol]?.quant ?? emptySignal,
       },
     }));
-
-  // 포트 종목 심볼 조회 (팝업 메뉴용)
-  const { data: watchlistItems } = await supabase
-    .from("watchlist")
-    .select("symbol");
-  const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
-
-  // 즐겨찾기 그룹 정보 조회
-  const { data: favGroupRows } = await supabase
-    .from("favorite_stocks")
-    .select("symbol, group_name");
-  const favGroups: Record<string, string> = {};
-  for (const r of favGroupRows ?? []) {
-    if (r.group_name) favGroups[r.symbol] = r.group_name;
-  }
-
-  // 가격 업데이트 시간 (가장 최근 updated_at)
-  const { data: latestUpdate } = await supabase
-    .from("stock_cache")
-    .select("updated_at")
-    .not("current_price", "is", null)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .single();
-  const lastPriceUpdate = latestUpdate?.updated_at ?? null;
 
   return (
     <div className="space-y-6">

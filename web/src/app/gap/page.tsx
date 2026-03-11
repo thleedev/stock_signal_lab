@@ -1,7 +1,7 @@
 import { createServiceClient } from "@/lib/supabase";
 import GapClient from "./gap-client";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 120;
 
 export default async function GapPage() {
   const supabase = createServiceClient();
@@ -50,18 +50,26 @@ export default async function GapPage() {
     );
   }
 
-  // 3. 해당 종목들의 stock_cache 조회
-  const { data: stocks } = await supabase
-    .from("stock_cache")
-    .select("symbol, name, market, current_price, price_change_pct, volume, market_cap, per")
-    .in("symbol", signalSymbols)
-    .not("current_price", "is", null);
+  // 3. stock_cache + 즐겨찾기 + 포트 심볼 병렬 조회
+  const [
+    { data: stocks },
+    { data: favorites },
+    { data: watchlistItems },
+  ] = await Promise.all([
+    supabase.from("stock_cache")
+      .select("symbol, name, market, current_price, price_change_pct, volume, market_cap, per")
+      .in("symbol", signalSymbols).not("current_price", "is", null),
+    supabase.from("favorite_stocks").select("symbol"),
+    supabase.from("watchlist").select("symbol"),
+  ]);
+
+  const favSymbols = (favorites ?? []).map((f) => f.symbol);
+  const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
 
   // 4. Gap 계산 및 데이터 병합
   const gapStocks = (stocks ?? [])
     .map((stock) => {
       const signals = signalMap[stock.symbol] ?? {};
-      // 각 소스별 gap 계산
       const gaps: Array<{ source: string; buyPrice: number; gap: number; date: string }> = [];
       for (const [source, sig] of Object.entries(signals)) {
         if (stock.current_price && sig.price > 0) {
@@ -69,7 +77,6 @@ export default async function GapPage() {
           gaps.push({ source, buyPrice: sig.price, gap, date: sig.date });
         }
       }
-      // 최소 gap (가장 가까운)
       gaps.sort((a, b) => a.gap - b.gap);
       const bestGap = gaps[0] ?? null;
 
@@ -80,17 +87,6 @@ export default async function GapPage() {
       };
     })
     .filter((s) => s.bestGap !== null);
-
-  // 즐겨찾기/포트 심볼
-  const { data: favorites } = await supabase
-    .from("favorite_stocks")
-    .select("symbol");
-  const favSymbols = (favorites ?? []).map((f) => f.symbol);
-
-  const { data: watchlistItems } = await supabase
-    .from("watchlist")
-    .select("symbol");
-  const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
 
   return (
     <div className="space-y-6">

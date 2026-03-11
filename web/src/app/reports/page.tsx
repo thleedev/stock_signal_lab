@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -20,7 +21,7 @@ const SIGNAL_TYPE_LABELS: Record<string, string> = {
   HOLD: "보유중",
 };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 function getLastNDays(n: number): string[] {
   const days: string[] = [];
@@ -53,34 +54,23 @@ export default async function ReportsPage({
   const dateStart = `${selectedDate}T00:00:00+09:00`;
   const dateEnd = `${selectedDate}T23:59:59+09:00`;
 
-  // 신호 조회
-  const { data: signals } = await supabase
-    .from("signals")
-    .select("*")
-    .gte("timestamp", dateStart)
-    .lt("timestamp", dateEnd)
-    .order("timestamp", { ascending: false });
-
-  // MMS 원문 조회
-  const { data: mmsMessages } = await supabase
-    .from("mms_raw_messages")
-    .select("*")
-    .gte("created_at", dateStart)
-    .lt("created_at", dateEnd)
-    .order("created_at", { ascending: false });
-
-  // AI 요약 조회
-  const { data: reportSummary } = await supabase
-    .from("daily_report_summary")
-    .select("ai_summary, market_score")
-    .eq("date", selectedDate)
-    .single();
-
-  // 일간 통계 조회
-  const { data: dailyStats } = await supabase
-    .from("daily_signal_stats")
-    .select("*")
-    .eq("date", selectedDate);
+  // 모든 쿼리 병렬 실행
+  const [
+    { data: signals },
+    { data: mmsMessages },
+    { data: reportSummary },
+    { data: dailyStats },
+  ] = await Promise.all([
+    supabase.from("signals").select("*")
+      .gte("timestamp", dateStart).lt("timestamp", dateEnd)
+      .order("timestamp", { ascending: false }),
+    supabase.from("mms_raw_messages").select("*")
+      .gte("created_at", dateStart).lt("created_at", dateEnd)
+      .order("created_at", { ascending: false }),
+    supabase.from("daily_report_summary")
+      .select("ai_summary, market_score").eq("date", selectedDate).single(),
+    supabase.from("daily_signal_stats").select("*").eq("date", selectedDate),
+  ]);
 
   // 소스별 신호 집계
   const sourceCounts: Record<string, { buy: number; sell: number; total: number }> = {
@@ -111,7 +101,7 @@ export default async function ReportsPage({
       {/* 날짜 선택 */}
       <div className="flex gap-2 flex-wrap">
         {last7.map((date) => (
-          <a
+          <Link
             key={date}
             href={`/reports?date=${date}`}
             className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
@@ -121,7 +111,7 @@ export default async function ReportsPage({
             }`}
           >
             {formatDateLabel(date)}
-          </a>
+          </Link>
         ))}
       </div>
 

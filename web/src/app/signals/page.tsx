@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import SignalColumns from "./signal-columns";
 
@@ -7,7 +8,7 @@ const SOURCE_LABELS: Record<string, string> = {
   quant: "퀀트",
 };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 30;
 
 export default async function SignalsPage({
   searchParams,
@@ -35,54 +36,46 @@ export default async function SignalsPage({
     query = query.eq("source", activeSource);
   }
 
-  const { data: rawSignals } = await query;
+  // 1단계: 신호 쿼리 + 독립 쿼리 병렬 실행
+  const [
+    { data: rawSignals },
+    { data: favorites },
+    { data: watchlistItems },
+  ] = await Promise.all([
+    query,
+    supabase.from("favorite_stocks").select("symbol"),
+    supabase.from("watchlist").select("symbol"),
+  ]);
 
-  // "..." 포함된 이름을 stock_cache에서 풀네임으로 대체 + 시장 정보
+  const favoriteSymbols = (favorites || []).map(
+    (f: { symbol: string }) => f.symbol
+  );
+  const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
+
+  // 2단계: rawSignals에 의존하는 쿼리 (stock_cache + stock_info 병렬)
   const signalSymbols = [...new Set((rawSignals || []).map((s: Record<string, string>) => s.symbol))];
   let nameMap: Record<string, string> = {};
   let marketMap: Record<string, string> = {};
   let sectorMap: Record<string, string> = {};
   if (signalSymbols.length > 0) {
-    const { data: stockNames } = await supabase
-      .from("stock_cache")
-      .select("symbol, name, market")
-      .in("symbol", signalSymbols);
+    const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
+      supabase.from("stock_cache").select("symbol, name, market").in("symbol", signalSymbols),
+      supabase.from("stock_info").select("symbol, sector").in("symbol", signalSymbols).not("sector", "is", null),
+    ]);
     if (stockNames) {
       nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
       marketMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.market || "기타"]));
     }
-    // 업종 정보
-    const { data: stockInfos } = await supabase
-      .from("stock_info")
-      .select("symbol, sector")
-      .in("symbol", signalSymbols)
-      .not("sector", "is", null);
     if (stockInfos) {
       sectorMap = Object.fromEntries(stockInfos.map((s) => [s.symbol, s.sector]));
     }
   }
-  // stock_cache에 이름이 있으면 항상 우선 사용
   const signals = (rawSignals || []).map((s: Record<string, string>) => ({
     ...s,
     name: nameMap[s.symbol] || s.name || s.symbol,
     market: marketMap[s.symbol] || "기타",
     sector: sectorMap[s.symbol] || "기타",
   }));
-
-  // 즐겨찾기 목록 조회
-  const { data: favorites } = await supabase
-    .from("favorite_stocks")
-    .select("symbol");
-
-  const favoriteSymbols = (favorites || []).map(
-    (f: { symbol: string }) => f.symbol
-  );
-
-  // 포트 종목 심볼 (팝업 메뉴용)
-  const { data: watchlistItems } = await supabase
-    .from("watchlist")
-    .select("symbol");
-  const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
 
   // 매수/매도 분리
   const buySignals = (signals || []).filter(
@@ -106,7 +99,7 @@ export default async function SignalsPage({
       {/* 소스 탭 */}
       <div className="flex gap-2">
         {sources.map((src) => (
-          <a
+          <Link
             key={src}
             href={src === "all" ? "/signals" : `/signals?source=${src}`}
             className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
@@ -116,7 +109,7 @@ export default async function SignalsPage({
             }`}
           >
             {src === "all" ? "전체" : SOURCE_LABELS[src]}
-          </a>
+          </Link>
         ))}
       </div>
 

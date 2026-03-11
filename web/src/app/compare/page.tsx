@@ -1,6 +1,6 @@
 import CompareClient from "./compare-client";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default function ComparePage() {
   return (

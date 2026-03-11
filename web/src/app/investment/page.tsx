@@ -2,7 +2,7 @@ import { createServiceClient } from "@/lib/supabase";
 import InvestmentClient from "@/components/investment/investment-client";
 import type { StockCache } from "@/types/stock";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function InvestmentPage() {
   const supabase = createServiceClient();

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
 
@@ -7,7 +8,7 @@ const SOURCE_LABELS: Record<string, string> = {
   quant: "🔵 퀀트",
 };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export default async function PerformancePage({
   searchParams,
@@ -21,12 +22,19 @@ export default async function PerformancePage({
   const days = parseInt(period) || 30;
   const dateFrom = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 
-  // 최신 포트폴리오 스냅샷 (소스×전략)
-  const { data: snapshots } = await supabase
-    .from("portfolio_snapshots")
-    .select("*")
-    .gte("date", dateFrom)
-    .order("date", { ascending: false });
+  // 모든 쿼리 병렬 실행
+  const [
+    { data: snapshots },
+    { data: combined },
+    { data: stats },
+  ] = await Promise.all([
+    supabase.from("portfolio_snapshots").select("*")
+      .gte("date", dateFrom).order("date", { ascending: false }),
+    supabase.from("combined_portfolio_snapshots").select("*")
+      .gte("date", dateFrom).order("date", { ascending: false }),
+    supabase.from("daily_signal_stats").select("*")
+      .gte("date", dateFrom).order("date", { ascending: false }),
+  ]);
 
   // 최신 값만 추출 (소스×전략 조합)
   const latest = new Map<string, typeof snapshots extends (infer T)[] | null ? T : never>();
@@ -35,24 +43,10 @@ export default async function PerformancePage({
     if (!latest.has(key)) latest.set(key, s);
   }
 
-  // 통합 스냅샷
-  const { data: combined } = await supabase
-    .from("combined_portfolio_snapshots")
-    .select("*")
-    .gte("date", dateFrom)
-    .order("date", { ascending: false });
-
   const latestCombined = new Map<string, typeof combined extends (infer T)[] | null ? T : never>();
   for (const c of combined ?? []) {
     if (!latestCombined.has(c.execution_type)) latestCombined.set(c.execution_type, c);
   }
-
-  // 일간 통계
-  const { data: stats } = await supabase
-    .from("daily_signal_stats")
-    .select("*")
-    .gte("date", dateFrom)
-    .order("date", { ascending: false });
 
   // 소스별 통계 집계
   const sourceStats = new Map<string, {
@@ -88,7 +82,7 @@ export default async function PerformancePage({
       {/* 기간 선택 */}
       <div className="flex gap-2">
         {["7d", "30d", "90d"].map((p) => (
-          <a
+          <Link
             key={p}
             href={`/performance?period=${p}`}
             className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
@@ -98,7 +92,7 @@ export default async function PerformancePage({
             }`}
           >
             {p === "7d" ? "7일" : p === "30d" ? "30일" : "90일"}
-          </a>
+          </Link>
         ))}
       </div>
 

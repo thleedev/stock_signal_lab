@@ -23,7 +23,7 @@ interface HoldingStock {
   created_at: string;
 }
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export default async function PortfolioPage({
   searchParams,
@@ -34,31 +34,26 @@ export default async function PortfolioPage({
   const execType = params.type === "split" ? "split" : "lump";
   const supabase = createServiceClient();
 
-  // 최신 스냅샷 조회
-  const { data: snapshots } = await supabase
-    .from("portfolio_snapshots")
-    .select("*")
-    .eq("execution_type", execType)
-    .order("date", { ascending: false })
-    .limit(3);
-
-  // 통합 스냅샷
-  const { data: combined } = await supabase
-    .from("combined_portfolio_snapshots")
-    .select("*")
-    .eq("execution_type", execType)
-    .order("date", { ascending: false })
-    .limit(1)
-    .single();
-
-  // 통합 히스토리 (최근 30일)
   const d30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const { data: history } = await supabase
-    .from("combined_portfolio_snapshots")
-    .select("date, total_value, daily_return_pct, cumulative_return_pct")
-    .eq("execution_type", execType)
-    .gte("date", d30)
-    .order("date", { ascending: true });
+
+  // 모든 쿼리 병렬 실행
+  const [
+    { data: snapshots },
+    { data: combined },
+    { data: history },
+    { data: allTrades },
+  ] = await Promise.all([
+    supabase.from("portfolio_snapshots").select("*")
+      .eq("execution_type", execType).order("date", { ascending: false }).limit(3),
+    supabase.from("combined_portfolio_snapshots").select("*")
+      .eq("execution_type", execType).order("date", { ascending: false }).limit(1).single(),
+    supabase.from("combined_portfolio_snapshots")
+      .select("date, total_value, daily_return_pct, cumulative_return_pct")
+      .eq("execution_type", execType).gte("date", d30).order("date", { ascending: true }),
+    supabase.from("virtual_trades")
+      .select("symbol, name, side, source, price, quantity, created_at")
+      .in("source", ["lassi", "stockbot", "quant"]).order("created_at", { ascending: false }),
+  ]);
 
   const totalInitial = PORTFOLIO_CONFIG.CASH_PER_STRATEGY * 3;
   const totalValue = combined?.total_value ?? totalInitial;
@@ -78,13 +73,6 @@ export default async function PortfolioPage({
       bySource[snap.source] = snap;
     }
   }
-
-  // 소스별 현재 보유 종목 조회 (virtual_trades에서 가장 최근 거래가 BUY인 종목)
-  const { data: allTrades } = await supabase
-    .from("virtual_trades")
-    .select("symbol, name, side, source, price, quantity, created_at")
-    .in("source", ["lassi", "stockbot", "quant"])
-    .order("created_at", { ascending: false });
 
   // 소스별로 가장 최근 거래가 BUY인 종목 = 현재 보유 중
   const holdingsBySource: Record<string, HoldingStock[]> = {
@@ -128,7 +116,7 @@ export default async function PortfolioPage({
           { key: "lump", label: "일시매매" },
           { key: "split", label: "분할매매" },
         ].map((t) => (
-          <a
+          <Link
             key={t.key}
             href={`/portfolio?type=${t.key}`}
             className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
@@ -138,7 +126,7 @@ export default async function PortfolioPage({
             }`}
           >
             {t.label}
-          </a>
+          </Link>
         ))}
       </div>
 

@@ -8,7 +8,7 @@ const SOURCE_META: Record<string, { label: string; color: string }> = {
   quant: { label: "🔵 퀀트", color: "text-blue-400" },
 };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export default async function SourcePortfolioPage({
   params,

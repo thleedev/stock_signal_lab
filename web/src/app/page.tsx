@@ -14,7 +14,7 @@ const SOURCE_LABELS: Record<string, string> = {
   quant: "퀀트",
 };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function DashboardPage() {
   const supabase = createServiceClient();
@@ -22,14 +22,33 @@ export default async function DashboardPage() {
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const today = kst.toISOString().slice(0, 10);
+  const sevenDaysLater = new Date(kst.getTime() + 7 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
 
-  // 오늘 신호
-  const { data: signals } = await supabase
-    .from("signals")
-    .select("*")
-    .gte("timestamp", `${today}T00:00:00+09:00`)
-    .lt("timestamp", `${today}T23:59:59+09:00`)
-    .order("timestamp", { ascending: false });
+  // 1단계: 독립 쿼리 병렬 실행
+  const [
+    { data: signals },
+    { data: latestScore },
+    { data: favorites },
+    { data: watchlist },
+    { data: events },
+  ] = await Promise.all([
+    supabase.from("signals").select("*")
+      .gte("timestamp", `${today}T00:00:00+09:00`)
+      .lt("timestamp", `${today}T23:59:59+09:00`)
+      .order("timestamp", { ascending: false }),
+    supabase.from("market_score_history")
+      .select("total_score, event_risk_score, combined_score")
+      .order("date", { ascending: false }).limit(1).single(),
+    supabase.from("stock_cache")
+      .select("symbol, name, current_price, price_change_pct")
+      .eq("is_favorite", true).limit(5),
+    supabase.from("watchlist").select("*").order("sort_order"),
+    supabase.from("market_events").select("*")
+      .gte("event_date", today).lte("event_date", sevenDaysLater)
+      .order("event_date", { ascending: true })
+      .order("impact_level", { ascending: false }).limit(10),
+  ]);
 
   const counts: Record<string, { total: number; buy: number; sell: number }> = {
     lassi: { total: 0, buy: 0, sell: 0 },
@@ -47,31 +66,11 @@ export default async function DashboardPage() {
 
   const totalSignals = (signals || []).length;
 
-  // 시황 점수
-  const { data: latestScore } = await supabase
-    .from("market_score_history")
-    .select("total_score, event_risk_score, combined_score")
-    .order("date", { ascending: false })
-    .limit(1)
-    .single();
-
   const score = latestScore?.total_score ?? null;
   const eventRiskScore = latestScore?.event_risk_score ?? 100;
   const combinedScore = latestScore?.combined_score ?? score ?? 50;
 
-  // 관심종목
-  const { data: favorites } = await supabase
-    .from("stock_cache")
-    .select("symbol, name, current_price, price_change_pct")
-    .eq("is_favorite", true)
-    .limit(5);
-
-  // 포트 종목 (워치리스트)
-  const { data: watchlist } = await supabase
-    .from("watchlist")
-    .select("*")
-    .order("sort_order");
-
+  // 2단계: watchlist 결과에 의존하는 쿼리
   const watchlistSymbols = (watchlist ?? []).map((w) => w.symbol);
   let watchlistStockData: Record<string, { current_price: number | null; price_change_pct: number | null }> = {};
   if (watchlistSymbols.length > 0) {
@@ -97,19 +96,6 @@ export default async function DashboardPage() {
   const portfolioReturn = totalInvested > 0
     ? ((totalCurrent - totalInvested) / totalInvested) * 100
     : null;
-
-  // 이벤트 (향후 7일)
-  const sevenDaysLater = new Date(kst.getTime() + 7 * 24 * 60 * 60 * 1000)
-    .toISOString().slice(0, 10);
-
-  const { data: events } = await supabase
-    .from("market_events")
-    .select("*")
-    .gte("event_date", today)
-    .lte("event_date", sevenDaysLater)
-    .order("event_date", { ascending: true })
-    .order("impact_level", { ascending: false })
-    .limit(10);
 
   return (
     <div className="space-y-6">
