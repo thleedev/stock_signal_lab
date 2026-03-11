@@ -10,6 +10,8 @@
  * - KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO
  */
 
+import { createServiceClient } from './supabase';
+
 const KIS_BASE_URL = 'https://openapi.koreainvestment.com:9443';
 
 interface KisTokenResponse {
@@ -35,14 +37,37 @@ interface KisCurrentPrice {
   acml_vol: string;        // 누적거래량
 }
 
-// 토큰 캐시 (서버리스 환경에서 cold start마다 재발급되지만 warm 상태에서는 재사용)
+// 1차: 인메모리 캐시 (warm 상태에서 즉시 재사용)
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function getAccessToken(): Promise<string> {
+  // 1차: 인메모리 캐시 확인
   if (cachedToken && Date.now() < cachedToken.expiresAt) {
     return cachedToken.token;
   }
 
+  // 2차: Supabase에서 저장된 토큰 확인 (cold start 대응)
+  try {
+    const supabase = createServiceClient();
+    const { data: row } = await supabase
+      .from('app_config')
+      .select('value')
+      .eq('key', 'kis_token')
+      .single();
+
+    if (row?.value) {
+      const { token, expiresAt } = row.value as { token: string; expiresAt: number };
+      if (token && Date.now() < expiresAt) {
+        cachedToken = { token, expiresAt };
+        console.log('[KIS] 토큰 재사용 (Supabase 캐시)');
+        return token;
+      }
+    }
+  } catch {
+    // Supabase 조회 실패 시 새 토큰 발급으로 진행
+  }
+
+  // 3차: 새 토큰 발급
   const res = await fetch(`${KIS_BASE_URL}/oauth2/tokenP`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -58,10 +83,24 @@ async function getAccessToken(): Promise<string> {
   }
 
   const data: KisTokenResponse = await res.json();
-  cachedToken = {
-    token: data.access_token,
-    expiresAt: Date.now() + (data.expires_in - 60) * 1000, // 1분 여유
-  };
+  const expiresAt = Date.now() + (data.expires_in - 60) * 1000; // 1분 여유
+
+  cachedToken = { token: data.access_token, expiresAt };
+  console.log('[KIS] 새 토큰 발급');
+
+  // Supabase에 토큰 저장 (비동기, 실패해도 무시)
+  try {
+    const supabase = createServiceClient();
+    await supabase
+      .from('app_config')
+      .upsert({
+        key: 'kis_token',
+        value: { token: data.access_token, expiresAt },
+        updated_at: new Date().toISOString(),
+      });
+  } catch {
+    // 저장 실패해도 인메모리 캐시로 동작
+  }
 
   return cachedToken.token;
 }

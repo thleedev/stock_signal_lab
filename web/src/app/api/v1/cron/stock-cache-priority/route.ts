@@ -16,13 +16,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // 장 운영시간 체크 (KST 08:00~20:00)
-  const now = new Date();
-  const kstHour = (now.getUTCHours() + 9) % 24;
-  if (kstHour < 8 || kstHour >= 20) {
-    return NextResponse.json({ skipped: true, reason: '장 운영시간 외 (08~20시)' });
-  }
-
   const supabase = createServiceClient();
   const startTime = Date.now();
 

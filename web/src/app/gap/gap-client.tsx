@@ -123,11 +123,9 @@ export default function GapClient({ stocks: initialStocks, favSymbols, watchlist
     abortRef.current = null;
   }, [stocks, priceLoading]);
 
-  // 페이지 로드 시 자동 갱신
+  // 페이지 이탈 시 진행 중인 요청 취소
   useEffect(() => {
-    refreshPrices();
     return () => { abortRef.current?.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredStocks = useMemo(() => {

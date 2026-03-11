@@ -11,49 +11,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // 장 운영시간 체크 (KST 08:00~20:00)
-  const now = new Date();
-  const kstHour = (now.getUTCHours() + 9) % 24;
-  if (kstHour < 8 || kstHour >= 20) {
-    return NextResponse.json({ skipped: true, reason: '장 운영시간 외 (08~20시)' });
-  }
-
   const supabase = createServiceClient();
   const startTime = Date.now();
+  const MAX_RUNTIME = 270_000; // 4분 30초 안전 마진
 
-  // Step 1: 전체 종목 symbol 조회
+  // Step 1: 가격 없는 종목 우선, 그 다음 오래된 순서로 조회
   const { data: stocks, error } = await supabase
     .from('stock_cache')
     .select('symbol')
-    .order('symbol');
+    .order('current_price', { ascending: true, nullsFirst: true })
+    .order('updated_at', { ascending: true, nullsFirst: true });
 
   if (error || !stocks) {
     return NextResponse.json({ error: error?.message || 'No stocks' }, { status: 500 });
   }
 
   let updated = 0;
+  let skipped = 0;
   let failed = 0;
 
-  // Step 2: 배치 처리 (10건/초)
+  // Step 2: 배치 처리 (10건/초, 타임아웃 시 중단)
   const BATCH_SIZE = 10;
   for (let i = 0; i < stocks.length; i += BATCH_SIZE) {
+    // 타임아웃 안전장치
+    if (Date.now() - startTime > MAX_RUNTIME) break;
+
     const batch = stocks.slice(i, i + BATCH_SIZE);
 
     const results = await Promise.allSettled(
       batch.map(async (s) => {
         const data = await getStockIndicators(s.symbol);
         if (!data) throw new Error(`Failed: ${s.symbol}`);
-
-        // 변동 감지: 가격/거래량 변동 없으면 스킵
-        const { data: cached } = await supabase
-          .from('stock_cache')
-          .select('current_price, volume')
-          .eq('symbol', s.symbol)
-          .single();
-
-        if (cached && cached.current_price === data.price && cached.volume === data.volume) {
-          return { symbol: s.symbol, action: 'skipped' as const };
-        }
 
         await supabase.from('stock_cache').update({
           current_price: data.price,
