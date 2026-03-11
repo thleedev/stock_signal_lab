@@ -77,12 +77,12 @@ export async function POST(request: NextRequest) {
   // 4. 1년 이상 오래된 이벤트 정리
   const oneYearAgo = new Date(year - 1, now.getMonth(), now.getDate())
     .toISOString().slice(0, 10);
-  const { count } = await supabase
+  const { data: deleted } = await supabase
     .from('market_events')
     .delete()
     .lt('event_date', oneYearAgo)
-    .select('*', { count: 'exact', head: true });
-  stats.cleaned = count ?? 0;
+    .select('id');
+  stats.cleaned = deleted?.length ?? 0;
 
   return NextResponse.json({ success: true, stats });
 }
