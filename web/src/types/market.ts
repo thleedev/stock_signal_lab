@@ -57,6 +57,8 @@ export interface MarketScoreHistory {
     direction: number;
   }>;
   weights_snapshot: Record<string, number>;
+  event_risk_score: number | null;
+  combined_score: number | null;
 }
 
 // 시황 점수 해석
