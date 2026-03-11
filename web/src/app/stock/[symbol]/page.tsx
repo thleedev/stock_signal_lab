@@ -22,28 +22,18 @@ const SIGNAL_TYPE_LABELS: Record<string, string> = {
   HOLD: "보유중",
 };
 
-const PERIOD_OPTIONS = [
-  { key: "30", label: "30일" },
-  { key: "60", label: "60일" },
-  { key: "90", label: "90일" },
-];
-
 export const dynamic = "force-dynamic";
 
 export default async function StockDetailPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ symbol: string }>;
-  searchParams: Promise<{ period?: string }>;
 }) {
   const { symbol } = await params;
-  const sp = await searchParams;
-  const period = ["30", "60", "90"].includes(sp.period ?? "") ? Number(sp.period) : 30;
   const supabase = createServiceClient();
 
-  // 기간 계산
-  const fromDate = new Date(Date.now() - period * 86400000).toISOString().slice(0, 10);
+  // 90일 전체 데이터를 한번에 가져옴 (차트에서 클라이언트 필터링)
+  const fromDate = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
 
   // 일별 시세 조회
   const { data: prices } = await supabase
@@ -153,24 +143,7 @@ export default async function StockDetailPage({
         </div>
       </div>
 
-      {/* 기간 탭 */}
-      <div className="flex gap-2">
-        {PERIOD_OPTIONS.map((opt) => (
-          <a
-            key={opt.key}
-            href={`/stock/${symbol}?period=${opt.key}`}
-            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              String(period) === opt.key
-                ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]"
-            }`}
-          >
-            {opt.label}
-          </a>
-        ))}
-      </div>
-
-      {/* 가격 차트 (TradingView lightweight-charts) */}
+      {/* 가격 차트 (기간 탭 내장, 클라이언트에서 필터링) */}
       <StockChartSection
         prices={priceList.map((p) => ({
           date: p.date,
