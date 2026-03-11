@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, BarChart3, TrendingUp, Briefcase, Zap } from "lucide-react";
+import { LayoutDashboard, Target, Briefcase, Zap, FileText } from "lucide-react";
 
 const TAB_ITEMS = [
-  { href: "/", label: "홈", icon: Home },
-  { href: "/stocks", label: "종목", icon: BarChart3 },
-  { href: "/market", label: "시황", icon: TrendingUp },
+  { href: "/", label: "대시보드", icon: LayoutDashboard },
+  { href: "/gap", label: "GAP", icon: Target },
   { href: "/investment", label: "포트", icon: Briefcase },
   { href: "/signals", label: "신호", icon: Zap },
+  { href: "/reports", label: "리포트", icon: FileText },
 ];
 
 export function MobileTabBar() {

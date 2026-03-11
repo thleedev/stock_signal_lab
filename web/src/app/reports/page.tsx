@@ -69,6 +69,13 @@ export default async function ReportsPage({
     .lt("created_at", dateEnd)
     .order("created_at", { ascending: false });
 
+  // AI 요약 조회
+  const { data: reportSummary } = await supabase
+    .from("daily_report_summary")
+    .select("ai_summary, market_score")
+    .eq("date", selectedDate)
+    .single();
+
   // 일간 통계 조회
   const { data: dailyStats } = await supabase
     .from("daily_signal_stats")
@@ -148,6 +155,39 @@ export default async function ReportsPage({
           );
         })}
       </div>
+
+      {/* AI 일간 요약 */}
+      {reportSummary?.ai_summary && (
+        <div className="card">
+          <div className="p-4 border-b border-[var(--border)] flex items-center gap-2">
+            <span className="text-lg">🤖</span>
+            <h2 className="font-semibold">AI 일간 분석</h2>
+            {reportSummary.market_score != null && (
+              <span className={`ml-auto text-sm font-medium px-2 py-0.5 rounded ${
+                Number(reportSummary.market_score) >= 60
+                  ? "bg-green-900/30 text-green-400"
+                  : Number(reportSummary.market_score) >= 40
+                    ? "bg-yellow-900/30 text-yellow-400"
+                    : "bg-red-900/30 text-red-400"
+              }`}>
+                시장점수 {Number(reportSummary.market_score).toFixed(0)}점
+              </span>
+            )}
+          </div>
+          <div className="p-5 prose prose-invert prose-sm max-w-none
+            [&>h2]:text-base [&>h2]:font-semibold [&>h2]:text-[var(--foreground)] [&>h2]:mt-4 [&>h2]:mb-2
+            [&>p]:text-[var(--muted)] [&>p]:leading-relaxed [&>p]:mb-3
+            [&>ul]:text-[var(--muted)] [&>ul]:mb-3">
+            {reportSummary.ai_summary.split('\n').map((line: string, i: number) => {
+              if (line.startsWith('## ')) {
+                return <h2 key={i}>{line.replace('## ', '')}</h2>;
+              }
+              if (line.trim() === '') return null;
+              return <p key={i}>{line}</p>;
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 신호 목록 */}
       <div className="card">

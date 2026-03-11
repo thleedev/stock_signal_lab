@@ -15,6 +15,10 @@
     {
       "path": "/api/v1/cron/market-indicators",
       "schedule": "0 23 * * *"
+    },
+    {
+      "path": "/api/v1/cron/daily-report",
+      "schedule": "30 6 * * 1-5"
     }
   ]
 }
