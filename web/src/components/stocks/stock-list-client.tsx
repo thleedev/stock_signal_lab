@@ -333,40 +333,61 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     [favSet, symGroups, groups]
   );
 
-  // GroupSelectPopup 토글 핸들러
+  // GroupSelectPopup 토글 핸들러 (낙관적 업데이트)
   const handleGroupToggle = useCallback(
     async (group: WatchlistGroup, stockOverride?: StockCache) => {
       const stock = stockOverride ?? groupPopup?.stock;
       if (!stock) return;
+
+      // 롤백용 스냅샷
+      const prevSymGroups = symGroups;
+      const prevFavSet = new Set(favSet);
+      const prevFavStocks = [...favStocks];
+
       const currentGroups = symGroups[stock.symbol] ?? [];
       const inGroup = currentGroups.includes(group.id);
 
+      // 낙관적 업데이트 먼저 (API 호출 전에 UI 즉시 반영)
       if (inGroup) {
-        await fetch(`/api/v1/watchlist-groups/${group.id}/stocks/${stock.symbol}`, { method: "DELETE" });
         const newGroups = currentGroups.filter((id) => id !== group.id);
         setSymGroups((prev) => ({ ...prev, [stock.symbol]: newGroups }));
         if (newGroups.length === 0) {
-          const newSet = new Set(favSet);
-          newSet.delete(stock.symbol);
-          setFavSet(newSet);
+          setFavSet((prev) => { const n = new Set(prev); n.delete(stock.symbol); return n; });
           setFavStocks((prev) => prev.filter((s) => s.symbol !== stock.symbol));
         }
       } else {
-        await fetch(`/api/v1/watchlist-groups/${group.id}/stocks`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol: stock.symbol, name: stock.name }),
-        });
         setSymGroups((prev) => ({ ...prev, [stock.symbol]: [...currentGroups, group.id] }));
         if (!favSet.has(stock.symbol)) {
-          const newSet = new Set(favSet);
-          newSet.add(stock.symbol);
-          setFavSet(newSet);
+          setFavSet((prev) => new Set([...prev, stock.symbol]));
           setFavStocks((prev) => [...prev, stock]);
         }
       }
+
+      // API 호출 (실패 시 롤백)
+      try {
+        if (inGroup) {
+          const res = await fetch(
+            `/api/v1/watchlist-groups/${group.id}/stocks/${stock.symbol}`,
+            { method: "DELETE" }
+          );
+          if (!res.ok) throw new Error("DELETE 실패");
+        } else {
+          const res = await fetch(`/api/v1/watchlist-groups/${group.id}/stocks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol: stock.symbol, name: stock.name }),
+          });
+          // 409(이미 존재)는 무시
+          if (!res.ok && res.status !== 409) throw new Error("POST 실패");
+        }
+      } catch (e) {
+        console.error("[handleGroupToggle] API 실패, 롤백:", e);
+        setSymGroups(prevSymGroups);
+        setFavSet(prevFavSet);
+        setFavStocks(prevFavStocks);
+      }
     },
-    [groupPopup, symGroups, favSet]
+    [groupPopup, symGroups, favSet, favStocks]
   );
 
   const handleGroupAdd = useCallback(async (name: string) => {
