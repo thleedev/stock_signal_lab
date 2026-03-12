@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { href: "/stocks", label: "전 종목", icon: BarChart3 },
   { href: "/gap", label: "GAP 추천", icon: Target },
   { href: "/market", label: "투자 시황", icon: TrendingUp },
-  { href: "/investment", label: "포트 종목", icon: Briefcase },
+  { href: "/my-portfolio", label: "포트 종목", icon: Briefcase },
   { href: "/signals", label: "AI 신호", icon: Zap },
   { href: "/portfolio", label: "AI 포트폴리오", icon: PieChart },
   { href: "/compare", label: "종목 비교", icon: GitCompareArrows },
