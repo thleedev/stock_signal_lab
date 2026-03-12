@@ -79,3 +79,12 @@ body {
 .price-up { color: #ef4444; }
 .price-down { color: #3b82f6; }
 .price-flat { color: var(--muted); }
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.2s ease-out;
+}
