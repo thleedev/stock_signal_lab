@@ -37,8 +37,8 @@ export function PerformanceChart({ portfolioId, days = 30 }: Props) {
       const chart = createChart(container, {
         width: container.clientWidth,
         height: 250,
-        layout: { background: { type: ColorType.Solid, color: "white" }, textColor: "#64748b" },
-        grid: { vertLines: { visible: false }, horzLines: { color: "#f1f5f9" } },
+        layout: { background: { type: ColorType.Solid, color: "transparent" }, textColor: "#94a3b8" },
+        grid: { vertLines: { color: "rgba(30, 41, 59, 0.5)" }, horzLines: { color: "rgba(30, 41, 59, 0.5)" } },
         rightPriceScale: { borderVisible: false },
         timeScale: { borderVisible: false },
       });
@@ -92,14 +92,16 @@ export function PerformanceChart({ portfolioId, days = 30 }: Props) {
   return (
     <div id="performance" className="p-4">
       <div className="flex justify-between items-center mb-3">
-        <h3 className="font-bold text-sm">포트 성과 비교</h3>
+        <h3 className="font-semibold text-sm">포트 성과 비교</h3>
         <div className="flex gap-1">
           {[30, 60, 90].map((d) => (
             <button
               key={d}
               onClick={() => setPeriod(d)}
-              className={`px-2 py-1 text-xs rounded ${
-                period === d ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-500"
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                period === d
+                  ? "bg-[var(--accent)] text-white"
+                  : "bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
             >
               {d}일
@@ -109,14 +111,14 @@ export function PerformanceChart({ portfolioId, days = 30 }: Props) {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center h-[250px] text-gray-400 text-sm">
+        <div className="flex items-center justify-center h-[250px] text-[var(--muted)] text-sm">
           로딩 중...
         </div>
       )}
 
       <div ref={chartRef} className={loading ? "hidden" : ""} />
 
-      <div className="flex gap-3 mt-2 text-xs text-gray-400">
+      <div className="flex gap-4 mt-3 text-xs text-[var(--muted)]">
         <span>━━ 포트 수익률</span>
         <span style={{ color: BENCHMARK_COLOR }}>╌╌ 코스피</span>
       </div>

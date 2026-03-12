@@ -26,7 +26,7 @@ export function PortfolioSelector({ portfolios, selectedId, onChange }: Props) {
 
   return (
     <div>
-      <div className="text-xs text-gray-400 mb-1">포트 선택</div>
+      <div className="text-xs text-[var(--muted)] mb-1">포트 선택</div>
       <div className="flex gap-2 flex-wrap">
         {selectablePortfolios.map((p, i) => {
           const isSelected = p.id === selectedId;
@@ -38,7 +38,7 @@ export function PortfolioSelector({ portfolios, selectedId, onChange }: Props) {
               className={`px-3 py-1 rounded-full text-xs transition-colors ${
                 isSelected
                   ? `${colorClass} text-white`
-                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  : "bg-[var(--card-hover)] text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
             >
               {p.name}

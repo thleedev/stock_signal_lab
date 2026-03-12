@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { X } from "lucide-react";
 import { PriceSliderInput } from "./price-slider-input";
 import { PortfolioSelector } from "./portfolio-selector";
 
@@ -141,20 +142,20 @@ export function TradeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 max-h-[90vh] overflow-y-auto p-5">
+      <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] overflow-y-auto p-5">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-bold">
+          <h2 className="text-lg font-bold text-[var(--foreground)]">
             {mode === "buy" ? "종목 매수" : "종목 매도"}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">
-            ✕
+          <button onClick={onClose} className="p-1 rounded hover:bg-[var(--card-hover)]">
+            <X className="w-4 h-4 text-[var(--muted)]" />
           </button>
         </div>
 
         {/* Stock search (buy mode, no initial symbol) */}
         {mode === "buy" && !initialSymbol && (
           <div className="mb-4">
-            <div className="text-xs text-gray-400 mb-1">종목 검색</div>
+            <div className="text-xs text-[var(--muted)] mb-1">종목 검색</div>
             <input
               type="text"
               value={symbol ? `${stockName} (${symbol})` : searchQuery}
@@ -166,17 +167,19 @@ export function TradeModal({
                 handleSearch(e.target.value);
               }}
               placeholder="종목명 또는 종목코드"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              className="w-full border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] rounded-lg px-3 py-2.5 text-sm placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)]"
             />
             {searchResults.length > 0 && (
-              <div className="border border-gray-200 rounded-lg mt-1 max-h-32 overflow-y-auto">
+              <div className="border border-[var(--border)] bg-[var(--card)] rounded-lg mt-1 max-h-32 overflow-y-auto shadow-xl">
                 {searchResults.slice(0, 5).map((stock) => (
                   <button
                     key={stock.symbol}
                     onClick={() => selectStock(stock)}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                    className="w-full text-left px-3 py-2.5 text-sm hover:bg-[var(--card-hover)] border-b border-[var(--border)] last:border-0 transition-colors"
                   >
-                    {stock.name} ({stock.symbol}) — {stock.current_price?.toLocaleString()}원
+                    <span className="font-medium">{stock.name}</span>
+                    <span className="text-[var(--muted)]"> ({stock.symbol})</span>
+                    <span className="text-[var(--muted)]"> — {stock.current_price?.toLocaleString()}원</span>
                   </button>
                 ))}
               </div>
@@ -186,8 +189,9 @@ export function TradeModal({
 
         {/* Stock display (auto-filled or sell mode) */}
         {(initialSymbol || mode === "sell") && symbol && (
-          <div className="mb-4 px-3 py-2 bg-gray-50 rounded-lg text-sm">
-            {stockName} ({symbol})
+          <div className="mb-4 px-3 py-2.5 bg-[var(--background)] rounded-lg text-sm border border-[var(--border)]">
+            <span className="font-medium">{stockName}</span>
+            <span className="text-[var(--muted)]"> ({symbol})</span>
           </div>
         )}
 
@@ -244,12 +248,12 @@ export function TradeModal({
 
         {/* Memo */}
         <div className="mb-4">
-          <div className="text-xs text-gray-400 mb-1">매매 메모 (선택)</div>
+          <div className="text-xs text-[var(--muted)] mb-1">매매 메모 (선택)</div>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="매매 이유, AI 신호 참고 사항 등..."
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm h-16 resize-none"
+            className="w-full border border-[var(--border)] bg-[var(--background)] text-[var(--foreground)] rounded-lg px-3 py-2 text-sm h-16 resize-none placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)]"
           />
         </div>
 
@@ -257,10 +261,10 @@ export function TradeModal({
         <button
           onClick={handleSubmit}
           disabled={isSubmitting || !symbol || !price || (mode === "buy" && !selectedPortfolioId)}
-          className={`w-full py-3 rounded-lg text-white font-semibold text-sm ${
+          className={`w-full py-3 rounded-lg text-white font-semibold text-sm transition-colors ${
             mode === "buy"
-              ? "bg-red-500 hover:bg-red-600 disabled:bg-red-300"
-              : "bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300"
+              ? "bg-red-600 hover:bg-red-700 disabled:bg-red-900/50 disabled:text-red-300"
+              : "bg-blue-600 hover:bg-blue-700 disabled:bg-blue-900/50 disabled:text-blue-300"
           }`}
         >
           {isSubmitting ? "처리 중..." : mode === "buy" ? "매수 확인" : "매도 확인"}

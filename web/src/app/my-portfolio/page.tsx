@@ -61,14 +61,16 @@ export default function MyPortfolioPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="space-y-4">
       {/* 탭 바 */}
-      <PortfolioTabs
-        portfolios={portfolios}
-        activeId={activePortfolioId}
-        onSelect={setActivePortfolioId}
-        onPortfoliosChange={fetchPortfolios}
-      />
+      <div className="card overflow-hidden">
+        <PortfolioTabs
+          portfolios={portfolios}
+          activeId={activePortfolioId}
+          onSelect={setActivePortfolioId}
+          onPortfoliosChange={fetchPortfolios}
+        />
+      </div>
 
       {/* 요약 카드 */}
       <PortfolioSummary
@@ -78,28 +80,28 @@ export default function MyPortfolioPage() {
       />
 
       {/* 보유 종목 테이블 */}
-      <div className="px-4">
-        <HoldingsTable holdings={holdings} onSell={handleSell} />
-      </div>
+      <HoldingsTable holdings={holdings} onSell={handleSell} />
 
       {/* 하단 버튼 */}
-      <div className="flex gap-2 p-4">
+      <div className="flex gap-2">
         <button
           onClick={handleBuy}
-          className="flex-1 bg-red-500 text-white py-2.5 rounded-lg text-sm font-semibold"
+          className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
         >
           + 종목 매수
         </button>
         <a
           href="#performance"
-          className="flex-1 bg-blue-500 text-white py-2.5 rounded-lg text-sm font-semibold text-center"
+          className="flex-1 bg-[var(--accent)] hover:bg-[var(--accent-light)] text-white py-2.5 rounded-lg text-sm font-semibold text-center transition-colors"
         >
-          📊 포트 비교
+          포트 비교
         </a>
       </div>
 
       {/* 포트 성과 비교 차트 */}
-      <PerformanceChart portfolioId={activePortfolioId ?? undefined} />
+      <div className="card">
+        <PerformanceChart portfolioId={activePortfolioId ?? undefined} />
+      </div>
 
       {/* 매수/매도 모달 */}
       <TradeModal

@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Star, Briefcase, ExternalLink, X } from "lucide-react";
+import { Star, Briefcase, ExternalLink, X, TrendingUp } from "lucide-react";
+import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
 
 interface StockActionMenuProps {
   symbol: string;
@@ -30,6 +31,8 @@ export default function StockActionMenu({
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
   const [adding, setAdding] = useState(false);
+  const [showTradeModal, setShowTradeModal] = useState(false);
+  const [portfolios, setPortfolios] = useState<Array<{ id: number; name: string; is_default: boolean }>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -102,7 +105,35 @@ export default function StockActionMenu({
     router.push(`/stock/${symbol}`);
   }, [symbol, onClose, router]);
 
-  if (!isOpen) return null;
+  const handleSimTrade = useCallback(async () => {
+    // 포트 목록 조회 후 모달 열기
+    try {
+      const res = await fetch("/api/v1/user-portfolio");
+      const data = await res.json();
+      setPortfolios(data.portfolios ?? []);
+    } catch {
+      setPortfolios([]);
+    }
+    setShowTradeModal(true);
+  }, []);
+
+  if (!isOpen && !showTradeModal) return null;
+
+  // 모의투자 모달만 표시 (메뉴는 닫힌 상태)
+  if (!isOpen && showTradeModal) {
+    return (
+      <TradeModal
+        mode="buy"
+        isOpen={showTradeModal}
+        onClose={() => { setShowTradeModal(false); onClose(); }}
+        onSubmit={() => { setShowTradeModal(false); onClose(); }}
+        initialSymbol={symbol}
+        initialName={name}
+        initialPrice={currentPrice ?? undefined}
+        portfolios={portfolios}
+      />
+    );
+  }
 
   // 메뉴 위치 계산
   const style: React.CSSProperties = position
@@ -161,6 +192,14 @@ export default function StockActionMenu({
           </button>
 
           <button
+            onClick={handleSimTrade}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
+          >
+            <TrendingUp className="w-4 h-4 text-red-400" />
+            <span>모의투자 매수</span>
+          </button>
+
+          <button
             onClick={handleViewDetail}
             className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
           >
@@ -169,6 +208,20 @@ export default function StockActionMenu({
           </button>
         </div>
       </div>
+
+      {/* 모의투자 매수 모달 */}
+      {showTradeModal && (
+        <TradeModal
+          mode="buy"
+          isOpen={showTradeModal}
+          onClose={() => { setShowTradeModal(false); onClose(); }}
+          onSubmit={() => { setShowTradeModal(false); onClose(); }}
+          initialSymbol={symbol}
+          initialName={name}
+          initialPrice={currentPrice ?? undefined}
+          portfolios={portfolios}
+        />
+      )}
     </>
   );
 }

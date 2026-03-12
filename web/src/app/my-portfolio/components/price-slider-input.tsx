@@ -26,9 +26,9 @@ export function PriceSliderInput({
   const pctFromBase = basePrice > 0 ? ((value - basePrice) / basePrice) * 100 : 0;
 
   const colorMap = {
-    red: { bg: "bg-red-50", border: "border-red-200", text: "text-red-600", slider: "accent-red-500" },
-    blue: { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-600", slider: "accent-blue-500" },
-    green: { bg: "bg-green-50", border: "border-green-200", text: "text-green-600", slider: "accent-green-500" },
+    red: { border: "border-red-700", text: "text-red-400", slider: "accent-red-500", activeBg: "bg-red-900/30", activeBorder: "border-red-700" },
+    blue: { border: "border-blue-700", text: "text-blue-400", slider: "accent-blue-500", activeBg: "bg-blue-900/30", activeBorder: "border-blue-700" },
+    green: { border: "border-green-700", text: "text-green-400", slider: "accent-green-500", activeBg: "bg-green-900/30", activeBorder: "border-green-700" },
   };
   const c = colorMap[color];
 
@@ -64,8 +64,8 @@ export function PriceSliderInput({
   return (
     <div className="mb-3">
       <div className="flex justify-between items-center mb-1">
-        <span className="text-xs text-gray-400">
-          {label} {optional && <span className="text-gray-300">(선택)</span>}
+        <span className="text-xs text-[var(--muted)]">
+          {label} {optional && <span className="text-[var(--border)]">(선택)</span>}
         </span>
         <span className={`text-xs ${c.text}`}>
           {pctFromBase >= 0 ? "+" : ""}{pctFromBase.toFixed(1)}%
@@ -76,7 +76,7 @@ export function PriceSliderInput({
         type="text"
         value={formatPrice(value)}
         onChange={handleDirectInput}
-        className={`w-full text-center text-lg font-bold border ${c.border} rounded-lg p-2 mb-2`}
+        className={`w-full text-center text-lg font-bold border ${c.border} rounded-lg p-2 mb-2 bg-[var(--background)] text-[var(--foreground)] focus:outline-none`}
       />
 
       <input
@@ -97,10 +97,10 @@ export function PriceSliderInput({
             <button
               key={pct}
               onClick={() => handlePreset(pct)}
-              className={`px-2 py-1 rounded text-xs ${
+              className={`px-2 py-1 rounded text-xs transition-colors ${
                 isActive
-                  ? `${c.bg} ${c.text} font-bold border ${c.border}`
-                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+                  ? `${c.activeBg} ${c.text} font-bold border ${c.activeBorder}`
+                  : "bg-[var(--card-hover)] text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
             >
               {btnLabel}

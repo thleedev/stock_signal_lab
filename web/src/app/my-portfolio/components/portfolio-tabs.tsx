@@ -68,17 +68,17 @@ export function PortfolioTabs({ portfolios, activeId, onSelect, onPortfoliosChan
   const userPorts = portfolios.filter((p) => !p.is_default);
 
   return (
-    <div className="flex items-center gap-0 border-b-2 border-gray-200 bg-gray-50 px-3 overflow-x-auto">
+    <div className="flex items-center gap-0 border-b border-[var(--border)] bg-[var(--card)] px-3 overflow-x-auto">
       {/* 전체 탭 (고정) */}
       <button
         onClick={() => onSelect(null)}
-        className={`px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-[2px] transition-colors ${
+        className={`px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-[1px] transition-colors ${
           activeId === null
-            ? "bg-white border-gray-800 font-bold text-gray-900"
-            : "border-transparent text-gray-500 hover:text-gray-700"
+            ? "border-[var(--accent)] font-bold text-[var(--foreground)]"
+            : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"
         }`}
       >
-        전체 📌
+        전체
       </button>
 
       {/* 사용자 포트 탭 */}
@@ -95,7 +95,7 @@ export function PortfolioTabs({ portfolios, activeId, onSelect, onPortfoliosChan
                 if (e.key === "Escape") setEditingId(null);
               }}
               autoFocus
-              className="px-3 py-2 text-sm border border-blue-400 rounded outline-none w-24"
+              className="px-3 py-2 text-sm border border-[var(--accent)] rounded bg-[var(--background)] text-[var(--foreground)] outline-none w-24"
             />
           ) : (
             <button
@@ -104,10 +104,10 @@ export function PortfolioTabs({ portfolios, activeId, onSelect, onPortfoliosChan
                 setEditingId(p.id);
                 setEditName(p.name);
               }}
-              className={`px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-[2px] transition-colors ${
+              className={`px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-[1px] transition-colors ${
                 activeId === p.id
-                  ? "bg-white border-gray-800 font-bold text-gray-900"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
+                  ? "border-[var(--accent)] font-bold text-[var(--foreground)]"
+                  : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
             >
               {p.name}
@@ -117,7 +117,7 @@ export function PortfolioTabs({ portfolios, activeId, onSelect, onPortfoliosChan
           {editingId !== p.id && (
             <button
               onClick={() => handleDelete(p.id, p.name)}
-              className="absolute -top-1 -right-1 hidden group-hover:flex w-4 h-4 items-center justify-center bg-gray-400 text-white rounded-full text-[10px] hover:bg-red-500"
+              className="absolute -top-1 -right-1 hidden group-hover:flex w-4 h-4 items-center justify-center bg-[var(--border)] text-[var(--muted)] rounded-full text-[10px] hover:bg-red-500 hover:text-white"
             >
               ✕
             </button>
@@ -128,7 +128,7 @@ export function PortfolioTabs({ portfolios, activeId, onSelect, onPortfoliosChan
       {/* + 버튼 */}
       <button
         onClick={handleAdd}
-        className="px-3 py-2.5 text-gray-400 hover:text-gray-600 font-bold text-lg"
+        className="px-3 py-2.5 text-[var(--muted)] hover:text-[var(--accent)] font-bold text-lg"
       >
         +
       </button>
