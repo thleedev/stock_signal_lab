@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Star, Briefcase, ExternalLink, X, Check } from "lucide-react";
+import { StarOff, Briefcase, ExternalLink, X, Check } from "lucide-react";
 import type { WatchlistGroup } from "@/types/stock";
 import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
 
@@ -65,24 +65,6 @@ export default function StockActionMenu({
       document.removeEventListener("keydown", handleEsc);
     };
   }, [isOpen, showTradeModal, onClose]);
-
-  const handleToggleFavorite = useCallback(async () => {
-    if (onToggleFavorite) {
-      onToggleFavorite();
-    } else {
-      if (isFavorite) {
-        await fetch(`/api/v1/favorites/${symbol}`, { method: "DELETE" });
-      } else {
-        await fetch("/api/v1/favorites", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol, name }),
-        });
-      }
-    }
-    onClose();
-    router.refresh();
-  }, [symbol, name, isFavorite, onToggleFavorite, onClose, router]);
 
   const handleAddToPortfolio = useCallback(async () => {
     if (isInPortfolio) {
@@ -172,6 +154,16 @@ export default function StockActionMenu({
 
             {/* 메뉴 항목 */}
             <div className="py-1">
+              {/* 1. 상세보기 */}
+              <button
+                onClick={handleViewDetail}
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
+              >
+                <ExternalLink className="w-4 h-4 text-[var(--muted)]" />
+                <span>상세보기</span>
+              </button>
+
+              {/* 2. 포트에 추가/삭제 */}
               <button
                 onClick={handleAddToPortfolio}
                 disabled={adding}
@@ -181,21 +173,16 @@ export default function StockActionMenu({
                 <span>{isInPortfolio ? "포트에서 삭제" : "포트에 추가"}</span>
               </button>
 
-              <button
-                onClick={handleToggleFavorite}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
-              >
-                <Star className={`w-4 h-4 ${isFavorite ? "text-yellow-400 fill-yellow-400" : "text-[var(--muted)]"}`} />
-                <span>{isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}</span>
-              </button>
-
-              <button
-                onClick={handleViewDetail}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
-              >
-                <ExternalLink className="w-4 h-4 text-[var(--muted)]" />
-                <span>상세보기</span>
-              </button>
+              {/* 3. 관심그룹 일괄 해제 (즐겨찾기인 경우만) */}
+              {isFavorite && (
+                <button
+                  onClick={() => { onToggleFavorite?.(); onClose(); }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left text-orange-400 hover:text-orange-300"
+                >
+                  <StarOff className="w-4 h-4" />
+                  <span>관심그룹 일괄 해제</span>
+                </button>
+              )}
             </div>
 
             {/* 관심그룹 서브메뉴 */}
