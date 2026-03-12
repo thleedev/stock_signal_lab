@@ -152,17 +152,16 @@ export async function generateRecommendations(
   const sorted = scored.sort((a, b) => b.total_score - a.total_score).slice(0, limit);
 
   const recommendations: AiRecommendation[] = sorted.map((item, idx) => ({
+    ...item,
     id: '',
     date: todayKst,
     rank: idx + 1,
-    total_score: item.total_score,
     weight_signal: weights.signal,
     weight_technical: weights.technical,
     weight_valuation: weights.valuation,
     weight_supply: weights.supply,
     total_candidates,
     created_at: new Date().toISOString(),
-    ...item,
   }));
 
   return { recommendations, total_candidates };
