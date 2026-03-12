@@ -224,16 +224,38 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return () => observer.disconnect();
   }, [hasMore, loading, page, fetchStocks]);
 
-  // 1단계: 즐겨찾기/일반 종목 병합 (정렬과 무관)
+  // query가 있으면 전체 DB 검색 모드, 없으면 탭 관심종목 모드
+  const showSearchMode = query.trim().length > 0;
+
+  // 1단계: 즐겨찾기/일반 종목 병합 (탭 + 검색어 필터링)
   const mergedStocks = useMemo(() => {
-    const favSymbols = new Set(favStocks.map((f) => f.symbol));
-    const updatedFavs = favStocks.map((fav) => {
-      const updated = stocks.find((s) => s.symbol === fav.symbol);
-      return updated ?? fav;
-    });
+    const q = query.trim().toLowerCase();
+
+    // 현재 탭 기준 즐겨찾기 선택
+    const baseFavs =
+      activeTab === "all"
+        ? favStocks // 전체탭: 모든 즐겨찾기
+        : favStocks.filter((s) => (symGroups[s.symbol] ?? []).includes(activeTab)); // 그룹탭
+
+    // 검색어가 있으면 이름/심볼로 즐겨찾기 필터링
+    const filteredFavs =
+      showSearchMode && q
+        ? baseFavs.filter(
+            (s) =>
+              s.name.toLowerCase().includes(q) ||
+              s.symbol.toLowerCase().includes(q)
+          )
+        : baseFavs;
+
+    // 최신 가격 데이터로 즐겨찾기 업데이트
+    const updatedFavs = filteredFavs.map(
+      (fav) => stocks.find((s) => s.symbol === fav.symbol) ?? fav
+    );
+    const favSymbols = new Set(filteredFavs.map((f) => f.symbol));
     const nonFavs = stocks.filter((s) => !favSymbols.has(s.symbol));
+
     return { favs: updatedFavs, nonFavs };
-  }, [stocks, favStocks]);
+  }, [stocks, favStocks, query, showSearchMode, activeTab, symGroups]);
 
   // 2단계: 정렬 + gap 사전 계산
   const displayStocks = useMemo(() => {
@@ -260,26 +282,8 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return { favs, nonFavs };
   }, [mergedStocks, sortBy, gapSource]);
 
-  // 현재 탭에 표시할 관심종목 (query 없을 때)
-  const tabFavorites = useMemo(() => {
-    if (activeTab === "all") {
-      // [전체] = 모든 관심종목 dedup
-      const seen = new Set<string>();
-      return favStocks.filter((s) => {
-        if (seen.has(s.symbol)) return false;
-        seen.add(s.symbol);
-        return true;
-      });
-    }
-    // 특정 그룹 = 해당 그룹에 속한 관심종목만
-    return favStocks.filter((s) => (symGroups[s.symbol] ?? []).includes(activeTab));
-  }, [activeTab, favStocks, symGroups]);
-
-  // query가 있으면 전체 DB 검색 모드, 없으면 탭 관심종목 모드
-  const showSearchMode = query.trim().length > 0;
-
-  // 관심종목 없고 query 없으면 전체DB 뷰
-  const showAllStocksMode = favSet.size === 0 && !showSearchMode;
+  // 전체탭은 항상 전체DB 뷰, 또는 관심종목 없고 query 없을 때
+  const showAllStocksMode = activeTab === "all" || (favSet.size === 0 && !showSearchMode);
 
   // ★ 버튼 클릭 핸들러
   const handleStarClick = useCallback(
@@ -713,9 +717,11 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         </div>
       ) : (
         /* 탭 관심종목 뷰 */
-        tabFavorites.length === 0 ? (
+        mergedStocks.favs.length === 0 ? (
           <div className="text-center py-16 text-[var(--muted)] text-sm">
-            이 그룹에 관심종목이 없습니다. ★를 클릭해 추가하세요.
+            {showSearchMode
+              ? "검색 결과가 없습니다"
+              : "이 그룹에 관심종목이 없습니다. ★를 클릭해 추가하세요."}
           </div>
         ) : (
           <div className="card overflow-hidden">
@@ -723,7 +729,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
               <table className="w-full text-sm">
                 {tableHeader}
                 <tbody className="divide-y divide-[var(--border)]">
-                  {tabFavorites.map((stock) => (
+                  {mergedStocks.favs.map((stock) => (
                     <StockRow
                       key={stock.symbol}
                       stock={stock}
