@@ -3,12 +3,23 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw, Pin, PinOff } from "lucide-react";
+import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw, Pin, PinOff, GripVertical } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import WatchlistGroupTabs, { type TabId } from "@/components/stocks/watchlist-group-tabs";
 import GroupSelectPopup from "@/components/stocks/group-select-popup";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  useDraggable,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import GroupDropZone from "@/components/stocks/group-drop-zone";
 
 interface Props {
   initialStocks: StockCache[];
@@ -415,6 +426,26 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     [groupPopup, symGroups, favSet, favStocks]
   );
 
+  const [draggingStock, setDraggingStock] = useState<StockCache | null>(null);
+
+  const stockSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const handleStockDragStart = useCallback((event: DragStartEvent) => {
+    const stock = [...favStocks, ...stocks].find((s) => s.symbol === event.active.id);
+    if (stock) setDraggingStock(stock);
+  }, [favStocks, stocks]);
+
+  const handleStockDragEnd = useCallback((event: DragEndEvent) => {
+    const { over } = event;
+    setDraggingStock(null);
+    if (!over || !draggingStock) return;
+    const targetGroup = groups.find((g) => g.id === over.id);
+    if (!targetGroup) return;
+    handleGroupToggle(targetGroup, draggingStock);
+  }, [draggingStock, groups, handleGroupToggle]);
+
   const handleGroupAdd = useCallback(async (name: string) => {
     const res = await fetch("/api/v1/watchlist-groups", {
       method: "POST",
@@ -580,6 +611,12 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   );
 
   return (
+    <DndContext
+      id="stock-dnd"
+      sensors={stockSensors}
+      onDragStart={handleStockDragStart}
+      onDragEnd={handleStockDragEnd}
+    >
     <div className="space-y-4">
       {/* 페이지 헤더 — 제목 왼쪽, 갱신 버튼 오른쪽 */}
       <div className="flex items-start justify-between gap-4">
@@ -799,6 +836,26 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         />
       )}
     </div>
+
+    {/* DragOverlay — must be inside DndContext */}
+    <DragOverlay>
+      {draggingStock && (
+        <div className="bg-[var(--card)] border border-[#6366f1] rounded-lg px-4 py-2.5 shadow-2xl text-sm font-medium">
+          {draggingStock.name}
+          <span className="ml-2 text-xs text-[var(--muted)]">{draggingStock.symbol}</span>
+        </div>
+      )}
+    </DragOverlay>
+
+    {/* GroupDropZone — 드래그 중일 때만 렌더 */}
+    {draggingStock && (
+      <GroupDropZone
+        groups={groups}
+        draggingSymbol={draggingStock.symbol}
+        symGroups={symGroups}
+      />
+    )}
+    </DndContext>
   );
 }
 
@@ -813,6 +870,7 @@ interface StockRowProps {
 }
 
 const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio, onToggleFavorite, onRowClick }: StockRowProps) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: stock.symbol });
   const gapResult = calcGap(stock, gapSource);
   const gap = gapResult?.gap ?? null;
   const gapSrc = gapResult?.source ?? null;
@@ -824,13 +882,24 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
 
   return (
     <tr
+      ref={setNodeRef}
       onClick={(e) => onRowClick(e, stock)}
       className={`hover:bg-[var(--card-hover)] transition-colors cursor-pointer ${
         isFav ? "bg-yellow-900/5" : ""
-      }`}
+      } ${isDragging ? "opacity-30" : ""}`}
     >
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-0.5">
+          {/* Drag handle */}
+          <span
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing p-0.5 text-[var(--border)] hover:text-[var(--muted)] touch-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="w-3.5 h-3.5" />
+          </span>
+          {/* 즐겨찾기 버튼 */}
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(stock); }}
             className="p-0.5 hover:scale-110 transition-transform"
