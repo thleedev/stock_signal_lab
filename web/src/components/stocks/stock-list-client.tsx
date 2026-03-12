@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw } from "lucide-react";
+import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw, Pin, PinOff } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
 import StockActionMenu from "@/components/common/stock-action-menu";
@@ -146,6 +146,21 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     position: { x: number; y: number };
   } | null>(null);
 
+  const [pinFavorites, setPinFavorites] = useState<boolean>(
+    () =>
+      typeof window !== "undefined"
+        ? localStorage.getItem("pinFavorites") !== "false"
+        : true
+  );
+
+  const handlePinToggle = useCallback(() => {
+    setPinFavorites((prev) => {
+      const next = !prev;
+      localStorage.setItem("pinFavorites", String(next));
+      return next;
+    });
+  }, []);
+
   // URL searchParams 동기화
   useEffect(() => {
     const params = new URLSearchParams();
@@ -257,7 +272,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return { favs: updatedFavs, nonFavs };
   }, [stocks, favStocks, query, showSearchMode, activeTab, symGroups]);
 
-  // 2단계: 정렬 + gap 사전 계산
+  // 2단계: 정렬 + pinFavorites 적용
   const displayStocks = useMemo(() => {
     const favs = [...mergedStocks.favs];
     const nonFavs = [...mergedStocks.nonFavs];
@@ -279,8 +294,14 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       nonFavs.sort(sortByGap);
     }
 
+    // pinFavorites=false이고 전체탭(DB 뷰)일 때: favs/nonFavs 혼합
+    if (!pinFavorites && activeTab === "all") {
+      const combined = [...favs, ...nonFavs];
+      return { favs: [], nonFavs: combined };
+    }
+
     return { favs, nonFavs };
-  }, [mergedStocks, sortBy, gapSource]);
+  }, [mergedStocks, sortBy, gapSource, pinFavorites, activeTab]);
 
   // 전체탭은 항상 전체DB 뷰, 또는 관심종목 없고 query 없을 때
   const showAllStocksMode = activeTab === "all" || (favSet.size === 0 && !showSearchMode);
@@ -592,6 +613,8 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         onGroupDelete={handleGroupDelete}
         onGroupsReorder={handleGroupsReorder}
         onGroupRename={handleGroupRename}
+        pinFavorites={pinFavorites}
+        onPinToggle={handlePinToggle}
       />
 
       {/* 필터 바 */}

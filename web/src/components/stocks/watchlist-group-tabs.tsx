@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Pin, PinOff } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -29,6 +29,8 @@ interface Props {
   onGroupDelete: (group: WatchlistGroup) => void;
   onGroupsReorder: (ids: string[]) => void; // 커스텀 그룹 id 배열 (순서)
   onGroupRename: (group: WatchlistGroup, newName: string) => Promise<void>; // 신규
+  pinFavorites: boolean;
+  onPinToggle: () => void;
 }
 
 function SortableTab({
@@ -128,6 +130,8 @@ export default function WatchlistGroupTabs({
   onGroupDelete,
   onGroupsReorder,
   onGroupRename,
+  pinFavorites,
+  onPinToggle,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -172,78 +176,94 @@ export default function WatchlistGroupTabs({
   }
 
   return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {/* [전체] 탭 — 고정 */}
-      <button
-        onClick={() => onTabChange("all")}
-        className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-          activeTab === "all"
-            ? "bg-[#6366f1] text-white"
-            : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
-        }`}
-      >
-        전체
-      </button>
-
-      {/* [기본] 탭 — 고정 */}
-      {defaultGroup && (
+    <div className="flex items-center gap-2 flex-wrap justify-between">
+      {/* 탭 목록 */}
+      <div className="flex items-center gap-1 flex-wrap">
+        {/* [전체] 탭 — 고정 */}
         <button
-          onClick={() => onTabChange(defaultGroup.id)}
+          onClick={() => onTabChange("all")}
           className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-            activeTab === defaultGroup.id
+            activeTab === "all"
               ? "bg-[#6366f1] text-white"
               : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
           }`}
         >
-          {defaultGroup.name}
+          전체
         </button>
-      )}
 
-      {/* 커스텀 탭 — 드래그 가능 */}
-      <DndContext id="tabs-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={customGroups.map((g) => g.id)} strategy={horizontalListSortingStrategy}>
-          {customGroups.map((group) => (
-            <SortableTab
-              key={group.id}
-              group={group}
-              isActive={activeTab === group.id}
-              onSelect={() => onTabChange(group.id)}
-              onDelete={() => onGroupDelete(group)}
-              onRename={(newName) => onGroupRename(group, newName)}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
-
-      {/* [+] 버튼 또는 인라인 입력 */}
-      {canAdd && (
-        adding ? (
-          <div className="flex items-center gap-1">
-            <input
-              ref={inputRef}
-              autoFocus
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAddConfirm();
-                if (e.key === "Escape") { setAdding(false); setNewName(""); setAddError(""); }
-              }}
-              onBlur={handleAddConfirm}
-              placeholder="그룹명"
-              className="w-24 px-2 py-1 text-sm bg-[var(--card)] border border-[var(--border)] rounded-lg outline-none focus:border-[#6366f1]"
-            />
-            {addError && <span className="text-xs text-red-400">{addError}</span>}
-          </div>
-        ) : (
+        {/* [기본] 탭 — 고정 */}
+        {defaultGroup && (
           <button
-            onClick={() => setAdding(true)}
-            className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)] transition-colors"
-            title="그룹 추가"
+            onClick={() => onTabChange(defaultGroup.id)}
+            className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+              activeTab === defaultGroup.id
+                ? "bg-[#6366f1] text-white"
+                : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
+            }`}
           >
-            <Plus className="w-4 h-4" />
+            {defaultGroup.name}
           </button>
-        )
-      )}
+        )}
+
+        {/* 커스텀 탭 — 드래그 가능 */}
+        <DndContext id="tabs-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={customGroups.map((g) => g.id)} strategy={horizontalListSortingStrategy}>
+            {customGroups.map((group) => (
+              <SortableTab
+                key={group.id}
+                group={group}
+                isActive={activeTab === group.id}
+                onSelect={() => onTabChange(group.id)}
+                onDelete={() => onGroupDelete(group)}
+                onRename={(newName) => onGroupRename(group, newName)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+
+        {/* [+] 버튼 또는 인라인 입력 */}
+        {canAdd && (
+          adding ? (
+            <div className="flex items-center gap-1">
+              <input
+                ref={inputRef}
+                autoFocus
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddConfirm();
+                  if (e.key === "Escape") { setAdding(false); setNewName(""); setAddError(""); }
+                }}
+                onBlur={handleAddConfirm}
+                placeholder="그룹명"
+                className="w-24 px-2 py-1 text-sm bg-[var(--card)] border border-[var(--border)] rounded-lg outline-none focus:border-[#6366f1]"
+              />
+              {addError && <span className="text-xs text-red-400">{addError}</span>}
+            </div>
+          ) : (
+            <button
+              onClick={() => setAdding(true)}
+              className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)] transition-colors"
+              title="그룹 추가"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )
+        )}
+      </div>
+
+      {/* 즐겨찾기 상단 고정 토글 */}
+      <button
+        onClick={onPinToggle}
+        title={pinFavorites ? "즐겨찾기 상단 고정 해제" : "즐겨찾기 상단 고정"}
+        className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
+          pinFavorites
+            ? "text-yellow-400 hover:bg-[var(--card-hover)]"
+            : "text-[var(--muted)] hover:bg-[var(--card-hover)]"
+        }`}
+      >
+        {pinFavorites ? <Pin className="w-4 h-4" /> : <PinOff className="w-4 h-4" />}
+      </button>
     </div>
   );
 }
