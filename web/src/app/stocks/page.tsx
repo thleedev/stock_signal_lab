@@ -97,22 +97,14 @@ export default async function StocksPage() {
     }));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">종목</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">
-          관심종목 그룹 관리 및 전체 종목 조회
-        </p>
-      </div>
-      <StockListClient
-        initialStocks={mergeSignals(stocks)}
-        favorites={mergeSignals(favorites)}
-        watchlistSymbols={watchlistSymbols}
-        lastPriceUpdate={lastPriceUpdate}
-        groups={groups}
-        symbolGroups={symbolGroups}
-        hasFavorites={hasFavorites}
-      />
-    </div>
+    <StockListClient
+      initialStocks={mergeSignals(stocks)}
+      favorites={mergeSignals(favorites)}
+      watchlistSymbols={watchlistSymbols}
+      lastPriceUpdate={lastPriceUpdate}
+      groups={groups}
+      symbolGroups={symbolGroups}
+      hasFavorites={hasFavorites}
+    />
   );
 }
