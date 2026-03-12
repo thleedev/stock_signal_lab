@@ -28,6 +28,7 @@ interface Props {
   onGroupAdd: (name: string) => Promise<void>;
   onGroupDelete: (group: WatchlistGroup) => void;
   onGroupsReorder: (ids: string[]) => void; // 커스텀 그룹 id 배열 (순서)
+  onGroupRename: (group: WatchlistGroup, newName: string) => Promise<void>; // 신규
 }
 
 function SortableTab({
@@ -35,14 +36,19 @@ function SortableTab({
   isActive,
   onSelect,
   onDelete,
+  onRename,
 }: {
   group: WatchlistGroup;
   isActive: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onRename: (newName: string) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: group.id });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(group.name);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -50,25 +56,57 @@ function SortableTab({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  async function handleRenameConfirm() {
+    const trimmed = editName.trim();
+    if (!trimmed || trimmed === group.name) {
+      setIsEditing(false);
+      setEditName(group.name);
+      return;
+    }
+    try {
+      await onRename(trimmed);
+      setIsEditing(false);
+    } catch {
+      setEditName(group.name);
+      setIsEditing(false);
+    }
+  }
+
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex items-center gap-1"
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        onClick={onSelect}
-        className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
-          isActive
-            ? "bg-[#6366f1] text-white"
-            : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
-        }`}
-      >
-        {group.name}
-      </button>
-      {/* 커스텀 그룹에만 × 버튼 */}
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1">
+      {isEditing ? (
+        <input
+          ref={inputRef}
+          autoFocus
+          value={editName}
+          onChange={(e) => setEditName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleRenameConfirm();
+            if (e.key === "Escape") { setIsEditing(false); setEditName(group.name); }
+          }}
+          onBlur={handleRenameConfirm}
+          className="w-24 px-2 py-1 text-sm bg-[var(--card)] border border-[#6366f1] rounded-lg outline-none"
+        />
+      ) : (
+        <button
+          {...attributes}
+          {...listeners}
+          onClick={onSelect}
+          onDoubleClick={(e) => {
+            if (group.is_default) return;
+            e.stopPropagation();
+            setIsEditing(true);
+            setEditName(group.name);
+          }}
+          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+            isActive
+              ? "bg-[#6366f1] text-white"
+              : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
+          }`}
+        >
+          {group.name}
+        </button>
+      )}
       {!group.is_default && (
         <button
           onClick={onDelete}
@@ -89,6 +127,7 @@ export default function WatchlistGroupTabs({
   onGroupAdd,
   onGroupDelete,
   onGroupsReorder,
+  onGroupRename,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
@@ -161,7 +200,7 @@ export default function WatchlistGroupTabs({
       )}
 
       {/* 커스텀 탭 — 드래그 가능 */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext id="tabs-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={customGroups.map((g) => g.id)} strategy={horizontalListSortingStrategy}>
           {customGroups.map((group) => (
             <SortableTab
@@ -170,6 +209,7 @@ export default function WatchlistGroupTabs({
               isActive={activeTab === group.id}
               onSelect={() => onTabChange(group.id)}
               onDelete={() => onGroupDelete(group)}
+              onRename={(newName) => onGroupRename(group, newName)}
             />
           ))}
         </SortableContext>

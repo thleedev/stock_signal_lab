@@ -444,6 +444,21 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     }, 500);
   }, []);
 
+  const handleGroupRename = useCallback(async (group: WatchlistGroup, newName: string) => {
+    const res = await fetch(`/api/v1/watchlist-groups/${group.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName }),
+    });
+    if (!res.ok) {
+      const json = await res.json();
+      throw new Error(json.error ?? "그룹명 변경 실패");
+    }
+    setGroups((prev) =>
+      prev.map((g) => (g.id === group.id ? { ...g, name: newName } : g))
+    );
+  }, []);
+
   const handleRowClick = useCallback((e: React.MouseEvent, stock: StockCache) => {
     if ((e.target as HTMLElement).closest("button")) return;
     setActionMenu({
@@ -572,6 +587,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         onGroupAdd={handleGroupAdd}
         onGroupDelete={handleGroupDelete}
         onGroupsReorder={handleGroupsReorder}
+        onGroupRename={handleGroupRename}
       />
 
       {/* 필터 바 */}
