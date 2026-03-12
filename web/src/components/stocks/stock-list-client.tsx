@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { Star, Search, ArrowUpDown, Loader2, Briefcase } from "lucide-react";
+import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import StockActionMenu from "@/components/common/stock-action-menu";
 
@@ -369,25 +369,93 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     );
   };
 
-  // 가격 업데이트 시간 포맷
+  // 가격 업데이트 시간 및 갱신
+  const [updateTime, setUpdateTime] = useState(lastPriceUpdate);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const isStale = useMemo(() => {
+    if (!updateTime) return true;
+    const diffMin = (Date.now() - new Date(updateTime).getTime()) / 60000;
+    return diffMin >= 5;
+  }, [updateTime]);
+
   const priceUpdateLabel = useMemo(() => {
-    if (!lastPriceUpdate) return null;
-    const d = new Date(lastPriceUpdate);
+    if (!updateTime) return null;
+    const d = new Date(updateTime);
     const now = new Date();
     const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
-    if (diffMin < 1) return "가격 업데이트 완료";
+    if (diffMin < 1) return "방금 업데이트";
     if (diffMin < 60) return `${diffMin}분 전 업데이트`;
     return `${d.toLocaleDateString("ko-KR")} ${d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 업데이트`;
-  }, [lastPriceUpdate]);
+  }, [updateTime]);
+
+  const refreshPrices = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      // 1) POST로 네이버 전종목 시세 갱신 (메모리 캐시 + DB fire-and-forget)
+      await fetch("/api/v1/prices", { method: "POST" });
+      // 2) 현재 표시 중인 종목들의 라이브 가격을 즉시 가져오기
+      const symbols = stocks.map((s) => s.symbol);
+      const CHUNK = 200;
+      const allPrices: Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }> = {};
+
+      await Promise.all(
+        Array.from({ length: Math.ceil(symbols.length / CHUNK) }, (_, i) => {
+          const chunk = symbols.slice(i * CHUNK, (i + 1) * CHUNK);
+          return fetch(`/api/v1/prices?symbols=${chunk.join(",")}&live=true`)
+            .then((r) => r.json())
+            .then(({ data }) => { if (data) Object.assign(allPrices, data); });
+        })
+      );
+
+      // 3) 현재 stocks에 라이브 가격 오버레이
+      setStocks((prev) =>
+        prev.map((stock) => {
+          const live = allPrices[stock.symbol];
+          if (!live) return stock;
+          return {
+            ...stock,
+            current_price: live.current_price ?? stock.current_price,
+            price_change: live.price_change ?? stock.price_change,
+            price_change_pct: live.price_change_pct ?? stock.price_change_pct,
+            volume: live.volume ?? stock.volume,
+            market_cap: live.market_cap ?? stock.market_cap,
+          };
+        })
+      );
+      setUpdateTime(new Date().toISOString());
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshing, stocks]);
+
+  // 페이지 진입 시 5분 이상 지났으면 자동 갱신
+  useEffect(() => {
+    if (isStale) {
+      refreshPrices();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-4">
-      {/* 가격 업데이트 상태 */}
-      {priceUpdateLabel && (
-        <div className={`text-xs text-right ${priceUpdateLabel.includes("완료") ? "text-green-400" : "text-[var(--muted)]"}`}>
-          {priceUpdateLabel}
-        </div>
-      )}
+      {/* 가격 업데이트 상태 + 갱신 버튼 */}
+      <div className="flex items-center justify-end gap-2">
+        {priceUpdateLabel && (
+          <span className={`text-xs ${isStale ? "text-yellow-400" : "text-[var(--muted)]"}`}>
+            {priceUpdateLabel}
+          </span>
+        )}
+        <button
+          onClick={refreshPrices}
+          disabled={refreshing}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+        >
+          <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+          갱신
+        </button>
+      </div>
       {/* 필터 바 */}
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">

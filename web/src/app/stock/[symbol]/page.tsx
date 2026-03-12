@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import StockChartSection from "@/components/charts/stock-chart-section";
+import StockPriceHeader from "@/components/stock/stock-price-header";
 
 const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",
@@ -119,27 +120,13 @@ export default async function StockDetailPage({
             <h1 className="text-2xl font-bold">{stockName}</h1>
             <span className="text-sm text-[var(--muted)]">{symbol}</span>
           </div>
-          {currentPrice && (
-            <div className="flex items-baseline gap-3 mt-1">
-              <span className="text-xl font-bold">
-                {Number(currentPrice).toLocaleString()}원
-              </span>
-              <span
-                className={`text-sm font-medium ${
-                  priceChange >= 0 ? "price-up" : "price-down"
-                }`}
-              >
-                {priceChange >= 0 ? "+" : ""}
-                {priceChange.toLocaleString()}원 ({priceChange >= 0 ? "+" : ""}
-                {priceChangePct}%)
-              </span>
-              {priceDate && (
-                <span className="text-xs text-[var(--muted)]">
-                  {priceDate === "stock_cache" ? "최근 시세" : `${priceDate} 기준`}
-                </span>
-              )}
-            </div>
-          )}
+          <StockPriceHeader
+            symbol={symbol}
+            initialPrice={currentPrice}
+            initialChange={priceChange}
+            initialChangePct={priceChangePct}
+            priceDate={priceDate}
+          />
         </div>
       </div>
 

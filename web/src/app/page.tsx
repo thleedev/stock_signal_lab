@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { EventSummaryCard } from "@/components/market/event-summary-card";
+import DashboardPrices from "@/components/dashboard/dashboard-prices";
 
 const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",
@@ -83,20 +84,6 @@ export default async function DashboardPage() {
     }
   }
 
-  // 포트 종목 수익률 계산
-  let totalInvested = 0;
-  let totalCurrent = 0;
-  for (const w of watchlist ?? []) {
-    const stock = watchlistStockData[w.symbol];
-    if (w.buy_price && stock?.current_price) {
-      totalInvested += w.buy_price;
-      totalCurrent += stock.current_price;
-    }
-  }
-  const portfolioReturn = totalInvested > 0
-    ? ((totalCurrent - totalInvested) / totalInvested) * 100
-    : null;
-
   return (
     <div className="space-y-6">
       <div>
@@ -125,104 +112,13 @@ export default async function DashboardPage() {
         marketScore={score ?? 50}
       />
 
-      {/* 관심종목 */}
-      {favorites && favorites.length > 0 && (
-        <div className="card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-sm">관심종목</h2>
-            <Link href="/stocks" className="text-xs text-[var(--accent-light)] hover:underline">전체 →</Link>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            {favorites.map((f) => (
-              <Link
-                key={f.symbol}
-                href={`/stock/${f.symbol}`}
-                className="p-2 rounded-lg bg-[var(--background)] hover:bg-[var(--card-hover)] transition-colors"
-              >
-                <div className="text-sm font-medium truncate">{f.name}</div>
-                <div className="text-lg font-bold mt-0.5">
-                  {f.current_price?.toLocaleString() ?? "-"}
-                </div>
-                <div className={`text-xs font-medium ${
-                  (f.price_change_pct ?? 0) > 0 ? "price-up" : (f.price_change_pct ?? 0) < 0 ? "price-down" : "price-flat"
-                }`}>
-                  {(f.price_change_pct ?? 0) > 0 ? "+" : ""}{f.price_change_pct ?? 0}%
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 오늘 총 신호 + 포트 종목 요약 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/signals" className="card p-4 hover:border-[var(--accent)] transition-colors">
-          <div className="text-sm text-[var(--muted)]">오늘 총 신호</div>
-          <div className="text-4xl font-bold mt-1">{totalSignals}건</div>
-          <div className="text-xs text-[var(--muted)] mt-1">전체 보기 →</div>
-        </Link>
-
-        <Link href="/investment" className="card p-4 hover:border-[var(--accent)] transition-colors">
-          <div className="text-sm text-[var(--muted)]">포트 종목</div>
-          <div className="text-4xl font-bold mt-1">{(watchlist ?? []).length}종목</div>
-          {portfolioReturn !== null && (
-            <div className={`text-sm font-medium mt-1 ${portfolioReturn >= 0 ? "price-up" : "price-down"}`}>
-              평균 수익률 {portfolioReturn >= 0 ? "+" : ""}{portfolioReturn.toFixed(2)}%
-            </div>
-          )}
-          {portfolioReturn === null && (
-            <div className="text-xs text-[var(--muted)] mt-1">관리 →</div>
-          )}
-        </Link>
-      </div>
-
-      {/* 포트 종목 리스트 */}
-      {watchlist && watchlist.length > 0 && (
-        <div className="card">
-          <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
-            <h2 className="font-semibold">포트 종목</h2>
-            <Link href="/investment" className="text-xs text-[var(--accent-light)] hover:underline">관리 →</Link>
-          </div>
-          <div className="divide-y divide-[var(--border)]">
-            {watchlist.map((w) => {
-              const stock = watchlistStockData[w.symbol];
-              const currentPrice = stock?.current_price;
-              const changePct = stock?.price_change_pct;
-              const profitPct = w.buy_price && currentPrice
-                ? ((currentPrice - w.buy_price) / w.buy_price) * 100
-                : null;
-
-              return (
-                <Link
-                  key={w.symbol}
-                  href={`/stock/${w.symbol}`}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-[var(--card-hover)] transition-colors"
-                >
-                  <div>
-                    <div className="text-sm font-medium">{w.name}</div>
-                    <div className="text-xs text-[var(--muted)]">
-                      {w.symbol}
-                      {w.buy_price ? ` · 매수 ${w.buy_price.toLocaleString()}원` : ""}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-bold ${
-                      (changePct ?? 0) > 0 ? "text-red-400" : (changePct ?? 0) < 0 ? "text-blue-400" : ""
-                    }`}>
-                      {currentPrice?.toLocaleString() ?? "-"}원
-                    </div>
-                    {profitPct !== null && (
-                      <div className={`text-xs font-medium ${profitPct >= 0 ? "text-red-400" : "text-blue-400"}`}>
-                        {profitPct >= 0 ? "+" : ""}{profitPct.toFixed(2)}%
-                      </div>
-                    )}
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* 관심종목 + 포트 종목 (실시간 가격 갱신) */}
+      <DashboardPrices
+        favorites={favorites ?? []}
+        watchlist={watchlist ?? []}
+        watchlistStockData={watchlistStockData}
+        totalSignals={totalSignals}
+      />
     </div>
   );
 }

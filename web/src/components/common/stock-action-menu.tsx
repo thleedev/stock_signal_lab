@@ -75,13 +75,16 @@ export default function StockActionMenu({
           method: "DELETE",
         });
       } else {
+        const bp = currentPrice ?? null;
         await fetch("/api/v1/watchlist", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             symbol,
             name,
-            buy_price: currentPrice ?? null,
+            buy_price: bp,
+            stop_loss_price: bp ? Math.round(bp * 0.9) : null,
+            target_price: bp ? Math.round(bp * 1.1) : null,
           }),
         });
       }

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { ArrowUpDown, RefreshCw } from "lucide-react";
 import StockActionMenu from "@/components/common/stock-action-menu";
+import { usePriceRefresh } from "@/hooks/use-price-refresh";
 
 const SOURCE_LABELS: Record<string, string> = {
   quant: "퀀트",
@@ -52,7 +53,7 @@ function formatNumber(n: number | null): string {
 }
 
 export default function GapClient({ stocks: initialStocks, favSymbols, watchlistSymbols }: Props) {
-  const [stocks, setStocks] = useState(initialStocks);
+  const [stocks] = useState(initialStocks);
   const [gapFilter, setGapFilter] = useState<FilterType>("negative");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [marketFilter, setMarketFilter] = useState<MarketFilter>("전체");
@@ -60,76 +61,54 @@ export default function GapClient({ stocks: initialStocks, favSymbols, watchlist
   const [favSet] = useState(() => new Set(favSymbols));
   const [portSet] = useState(() => new Set(watchlistSymbols));
   const [priceLoading, setPriceLoading] = useState(false);
-  const [priceProgress, setPriceProgress] = useState({ done: 0, total: 0 });
-  const abortRef = useRef<AbortController | null>(null);
   const [actionMenu, setActionMenu] = useState<{
     stock: GapStock;
     position: { x: number; y: number };
   } | null>(null);
 
-  // 실시간 가격 일괄 갱신
+  // 자동 가격 폴링 (60초 간격)
+  const allSymbols = useMemo(() => stocks.map((s) => s.symbol), [stocks]);
+  const { prices: livePrices, refresh: refreshLivePrices, loading: liveLoading } = usePriceRefresh(allSymbols);
+
+  // 라이브 가격이 반영된 종목 데이터 (파생 상태)
+  const stocksWithLivePrices = useMemo(() => {
+    if (Object.keys(livePrices).length === 0) return stocks;
+    return stocks.map((stock) => {
+      const live = livePrices[stock.symbol];
+      if (!live?.current_price || live.current_price === stock.current_price) return stock;
+      const newPrice = live.current_price;
+      const newGaps = stock.gaps.map((g) => ({
+        ...g,
+        gap: ((newPrice - g.buyPrice) / g.buyPrice) * 100,
+      }));
+      newGaps.sort((a, b) => a.gap - b.gap);
+      return {
+        ...stock,
+        current_price: newPrice,
+        price_change_pct: live.price_change_pct ?? stock.price_change_pct,
+        volume: live.volume ?? stock.volume,
+        gaps: newGaps,
+        bestGap: newGaps[0] ?? stock.bestGap,
+      };
+    });
+  }, [stocks, livePrices]);
+
+  // 수동 가격 갱신: POST로 서버 캐시 강제 갱신 → 훅의 refresh로 라이브 가격 재조회
   const refreshPrices = useCallback(async () => {
-    if (priceLoading) return;
+    if (priceLoading || liveLoading) return;
     setPriceLoading(true);
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    const symbols = stocks.map((s) => s.symbol);
-    setPriceProgress({ done: 0, total: symbols.length });
-
-    const BATCH = 5;
-    for (let i = 0; i < symbols.length; i += BATCH) {
-      if (controller.signal.aborted) break;
-      const batch = symbols.slice(i, i + BATCH);
-      const results = await Promise.allSettled(
-        batch.map((sym) =>
-          fetch(`/api/v1/stocks/${sym}/realtime`, { signal: controller.signal })
-            .then((r) => r.ok ? r.json() : null)
-            .catch(() => null)
-        )
-      );
-
-      setStocks((prev) =>
-        prev.map((stock) => {
-          const idx = batch.indexOf(stock.symbol);
-          if (idx === -1) return stock;
-          const result = results[idx];
-          if (result.status !== "fulfilled" || !result.value?.current_price) return stock;
-          const newPrice = result.value.current_price;
-          // gap 재계산
-          const newGaps = stock.gaps.map((g) => ({
-            ...g,
-            gap: ((newPrice - g.buyPrice) / g.buyPrice) * 100,
-          }));
-          newGaps.sort((a, b) => a.gap - b.gap);
-          return {
-            ...stock,
-            current_price: newPrice,
-            price_change_pct: result.value.price_change_pct ?? stock.price_change_pct,
-            volume: result.value.volume ?? stock.volume,
-            gaps: newGaps,
-            bestGap: newGaps[0] ?? stock.bestGap,
-          };
-        })
-      );
-      setPriceProgress({ done: Math.min(i + BATCH, symbols.length), total: symbols.length });
-
-      if (i + BATCH < symbols.length) {
-        await new Promise((r) => setTimeout(r, 1200));
-      }
+    try {
+      await fetch("/api/v1/prices", { method: "POST" });
+      await refreshLivePrices();
+    } catch {
+      // ignore
+    } finally {
+      setPriceLoading(false);
     }
-
-    setPriceLoading(false);
-    abortRef.current = null;
-  }, [stocks, priceLoading]);
-
-  // 페이지 이탈 시 진행 중인 요청 취소
-  useEffect(() => {
-    return () => { abortRef.current?.abort(); };
-  }, []);
+  }, [priceLoading, liveLoading, refreshLivePrices]);
 
   const filteredStocks = useMemo(() => {
-    return stocks
+    return stocksWithLivePrices
       .map((stock) => {
         // 소스 필터에 맞는 gap 선택
         let activeGap: GapInfo | null = null;
@@ -156,7 +135,7 @@ export default function GapClient({ stocks: initialStocks, favSymbols, watchlist
         }
         return (b.market_cap ?? 0) - (a.market_cap ?? 0);
       });
-  }, [stocks, gapFilter, sourceFilter, marketFilter, sortField]);
+  }, [stocksWithLivePrices, gapFilter, sourceFilter, marketFilter, sortField]);
 
   const handleRowClick = useCallback((e: React.MouseEvent, stock: GapStock) => {
     if ((e.target as HTMLElement).closest("button")) return;
@@ -175,7 +154,7 @@ export default function GapClient({ stocks: initialStocks, favSymbols, watchlist
       <div className="flex items-center justify-end gap-2">
         {priceLoading && (
           <span className="text-xs text-yellow-400">
-            현재가 갱신 중... ({priceProgress.done}/{priceProgress.total})
+            현재가 갱신 중...
           </span>
         )}
         <button
