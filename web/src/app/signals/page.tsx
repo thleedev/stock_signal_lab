@@ -3,6 +3,9 @@ import { createServiceClient } from "@/lib/supabase";
 import { DateSelector } from "@/components/common/date-selector";
 import { getLastNDays } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
+import { AiRecommendationSection } from "@/components/signals/AiRecommendationSection";
+import { AiRecommendationResponse } from "@/types/ai-recommendation";
+import { getTodayKst } from "@/lib/ai-recommendation";
 
 const SOURCE_LABELS: Record<string, string> = {
   lassi: "라씨매매",
@@ -20,6 +23,24 @@ export default async function SignalsPage({
   const params = await searchParams;
   const activeSource = params.source || "all";
   const supabase = createServiceClient();
+
+  // AI 추천 초기 데이터 서버사이드 조회 (lib 직접 호출, fetch() 자가 호출 금지)
+  const todayKst = getTodayKst();
+  const { data: aiRecs } = await supabase
+    .from("ai_recommendations")
+    .select("*")
+    .eq("date", todayKst)
+    .order("rank", { ascending: true })
+    .limit(5);
+  const aiRecommendationsRes: AiRecommendationResponse | null =
+    aiRecs && aiRecs.length > 0
+      ? {
+          recommendations: aiRecs,
+          generated_at: aiRecs[0].created_at,
+          total_candidates: aiRecs[0].total_candidates ?? 0,
+          needs_refresh: false,
+        }
+      : null;
 
   // 날짜: searchParams에서 가져오거나 KST 오늘
   const last7 = getLastNDays(7);
@@ -97,6 +118,9 @@ export default async function SignalsPage({
         <h1 className="text-2xl font-bold">AI 신호</h1>
         <p className="text-sm text-[var(--muted)] mt-1">{selectedDate} 기준</p>
       </div>
+
+      {/* AI 추천 섹션 */}
+      <AiRecommendationSection initialData={aiRecommendationsRes} />
 
       {/* 날짜 선택 */}
       <DateSelector basePath="/signals" selectedDate={selectedDate} />
