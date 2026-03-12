@@ -375,7 +375,8 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     const d = new Date(lastPriceUpdate);
     const now = new Date();
     const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
-    if (diffMin < 10) return "가격 업데이트 중...";
+    if (diffMin < 1) return "가격 업데이트 완료";
+    if (diffMin < 60) return `${diffMin}분 전 업데이트`;
     return `${d.toLocaleDateString("ko-KR")} ${d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 업데이트`;
   }, [lastPriceUpdate]);
 
@@ -383,8 +384,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     <div className="space-y-4">
       {/* 가격 업데이트 상태 */}
       {priceUpdateLabel && (
-        <div className={`text-xs text-right ${priceUpdateLabel.includes("중") ? "text-yellow-400" : "text-[var(--muted)]"}`}>
-          {priceUpdateLabel.includes("중") && <Loader2 className="w-3 h-3 inline-block mr-1 animate-spin" />}
+        <div className={`text-xs text-right ${priceUpdateLabel.includes("완료") ? "text-green-400" : "text-[var(--muted)]"}`}>
           {priceUpdateLabel}
         </div>
       )}
