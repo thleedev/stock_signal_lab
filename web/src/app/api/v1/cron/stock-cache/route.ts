@@ -20,14 +20,26 @@ export async function POST(request: NextRequest) {
     const priceMap = await fetchAllStockPrices();
     lap(`시세 조회 완료: ${priceMap.size}종목`);
 
-    // Step 2: stock_cache 종목 조회
-    const { data: stocks, error } = await supabase
-      .from('stock_cache')
-      .select('symbol');
-
-    if (error || !stocks) {
-      return NextResponse.json({ error: error?.message || 'No stocks' }, { status: 500 });
+    // Step 2: stock_cache 전체 종목 조회 (Supabase 기본 1000행 제한 우회)
+    const stocks: { symbol: string }[] = [];
+    const PAGE_LIMIT = 1000;
+    let from = 0;
+    while (true) {
+      const { data: page, error: pageError } = await supabase
+        .from('stock_cache')
+        .select('symbol')
+        .range(from, from + PAGE_LIMIT - 1);
+      if (pageError || !page) {
+        if (stocks.length === 0) {
+          return NextResponse.json({ error: pageError?.message || 'No stocks' }, { status: 500 });
+        }
+        break;
+      }
+      stocks.push(...page);
+      if (page.length < PAGE_LIMIT) break;
+      from += PAGE_LIMIT;
     }
+    lap(`DB 종목 조회: ${stocks.length}종목`);
 
     let updated = 0;
     let failed = 0;
