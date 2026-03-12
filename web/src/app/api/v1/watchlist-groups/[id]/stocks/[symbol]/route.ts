@@ -2,17 +2,18 @@
 import { NextRequest } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 
-type Params = { params: { id: string; symbol: string } };
+type Params = { params: Promise<{ id: string; symbol: string }> };
 
 // DELETE — 그룹에서 종목 제거
 export async function DELETE(_: NextRequest, { params }: Params) {
+  const { id, symbol } = await params;
   const supabase = createServiceClient();
 
   const { error } = await supabase
     .from('watchlist_group_stocks')
     .delete()
-    .eq('group_id', params.id)
-    .eq('symbol', params.symbol);
+    .eq('group_id', id)
+    .eq('symbol', symbol);
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
@@ -20,13 +21,13 @@ export async function DELETE(_: NextRequest, { params }: Params) {
   const { data: remaining } = await supabase
     .from('watchlist_group_stocks')
     .select('symbol')
-    .eq('symbol', params.symbol)
+    .eq('symbol', symbol)
     .limit(1);
 
   if (!remaining?.length) {
     await Promise.all([
-      supabase.from('favorite_stocks').delete().eq('symbol', params.symbol),
-      supabase.from('stock_cache').update({ is_favorite: false }).eq('symbol', params.symbol),
+      supabase.from('favorite_stocks').delete().eq('symbol', symbol),
+      supabase.from('stock_cache').update({ is_favorite: false }).eq('symbol', symbol),
     ]);
   }
 

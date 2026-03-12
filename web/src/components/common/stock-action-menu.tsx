@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Star, Briefcase, ExternalLink, X } from "lucide-react";
+import { Star, Briefcase, ExternalLink, X, Check } from "lucide-react";
+import type { WatchlistGroup } from "@/types/stock";
 import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
 
 interface Portfolio {
@@ -21,6 +22,9 @@ interface StockActionMenuProps {
   isFavorite?: boolean;
   isInPortfolio?: boolean;
   onToggleFavorite?: () => void;
+  groups?: WatchlistGroup[];
+  symbolGroupIds?: string[];
+  onGroupToggle?: (group: WatchlistGroup) => void;
 }
 
 export default function StockActionMenu({
@@ -33,6 +37,9 @@ export default function StockActionMenu({
   isFavorite = false,
   isInPortfolio = false,
   onToggleFavorite,
+  groups,
+  symbolGroupIds,
+  onGroupToggle,
 }: StockActionMenuProps) {
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -190,6 +197,32 @@ export default function StockActionMenu({
                 <span>상세보기</span>
               </button>
             </div>
+
+            {/* 관심그룹 서브메뉴 */}
+            {groups && groups.length > 0 && (
+              <div>
+                <div className="px-4 py-1.5 text-xs text-[var(--muted)] border-t border-[var(--border)]">
+                  관심그룹
+                </div>
+                {groups.map((group) => {
+                  const inGroup = (symbolGroupIds ?? []).includes(group.id);
+                  return (
+                    <button
+                      key={group.id}
+                      onClick={() => { onGroupToggle?.(group); }}
+                      className="w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
+                    >
+                      <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
+                        inGroup ? "bg-[#6366f1] border-[#6366f1]" : "border-[var(--border)]"
+                      }`}>
+                        {inGroup && <Check className="w-2.5 h-2.5 text-white" />}
+                      </span>
+                      <span className="text-[var(--foreground)]">{group.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </>
       )}

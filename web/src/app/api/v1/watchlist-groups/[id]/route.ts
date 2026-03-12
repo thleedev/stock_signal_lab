@@ -2,10 +2,11 @@
 import { NextRequest } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 // PATCH — 그룹명 변경
 export async function PATCH(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const body = await request.json();
   const name = (body.name ?? '').trim();
   if (!name) return Response.json({ error: 'name is required' }, { status: 400 });
@@ -15,7 +16,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data, error } = await supabase
     .from('watchlist_groups')
     .update({ name })
-    .eq('id', params.id)
+    .eq('id', id)
     .eq('is_default', false)  // 기본 그룹 이름 변경 불가
     .select()
     .single();
@@ -33,13 +34,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
 // DELETE — 그룹 삭제 (종목 정리 포함)
 export async function DELETE(_: NextRequest, { params }: Params) {
+  const { id } = await params;
   const supabase = createServiceClient();
 
   // 기본 그룹 삭제 불가
   const { data: group } = await supabase
     .from('watchlist_groups')
     .select('is_default')
-    .eq('id', params.id)
+    .eq('id', id)
     .single();
 
   if (!group) return Response.json({ error: 'not found' }, { status: 404 });
@@ -49,7 +51,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
   const { data: groupStocks } = await supabase
     .from('watchlist_group_stocks')
     .select('symbol')
-    .eq('group_id', params.id);
+    .eq('group_id', id);
 
   const symbols = (groupStocks ?? []).map((s) => s.symbol);
 
@@ -57,7 +59,7 @@ export async function DELETE(_: NextRequest, { params }: Params) {
   const { error: delError } = await supabase
     .from('watchlist_groups')
     .delete()
-    .eq('id', params.id);
+    .eq('id', id);
 
   if (delError) return Response.json({ error: delError.message }, { status: 500 });
 

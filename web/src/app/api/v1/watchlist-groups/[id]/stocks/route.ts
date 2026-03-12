@@ -2,16 +2,17 @@
 import { NextRequest } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 
-type Params = { params: { id: string } };
+type Params = { params: Promise<{ id: string }> };
 
 // GET — 그룹 내 종목 목록
 export async function GET(_: NextRequest, { params }: Params) {
+  const { id } = await params;
   const supabase = createServiceClient();
 
   const { data, error } = await supabase
     .from('watchlist_group_stocks')
     .select('symbol, added_at')
-    .eq('group_id', params.id)
+    .eq('group_id', id)
     .order('added_at', { ascending: true });
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -20,6 +21,7 @@ export async function GET(_: NextRequest, { params }: Params) {
 
 // POST — 그룹에 종목 추가 { symbol, name }
 export async function POST(request: NextRequest, { params }: Params) {
+  const { id } = await params;
   const body = await request.json();
   if (!body.symbol || !body.name) {
     return Response.json({ error: 'symbol and name are required' }, { status: 400 });
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   // 그룹에 추가
   const { error } = await supabase
     .from('watchlist_group_stocks')
-    .insert({ group_id: params.id, symbol: body.symbol });
+    .insert({ group_id: id, symbol: body.symbol });
 
   if (error) {
     if (error.code === '23505') {
