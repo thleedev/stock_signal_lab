@@ -168,8 +168,14 @@ export function MarketClient({ indicators, weights, scoreHistory, indicatorRange
   // breakdown에서 정규화 점수 추출 (최신 히스토리 기준)
   // scoreHistory가 없으면 indicators에서 합성
   const latestBreakdown = useMemo(() => {
+    // DB에 저장된 breakdown이 있고, 모든 값이 50이 아닌 경우에만 사용
     if (scoreHistory.length > 0 && scoreHistory[0].breakdown) {
-      return scoreHistory[0].breakdown;
+      const bd = scoreHistory[0].breakdown;
+      const values = Object.values(bd);
+      const allFifty = values.length > 0 && values.every(
+        (v: { normalized: number }) => v.normalized === 50
+      );
+      if (!allFifty) return bd;
     }
     if (indicators.length === 0) return null;
 
