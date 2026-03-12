@@ -1,36 +1,44 @@
 import { createServiceClient } from "@/lib/supabase";
 import StockListClient from "@/components/stocks/stock-list-client";
+import type { WatchlistGroup } from "@/types/stock";
 
 export const revalidate = 60;
 
 export default async function StocksPage() {
   const supabase = createServiceClient();
 
-  // 1단계: 독립 쿼리 병렬 실행
   const [
     { data: favorites },
     { data: stocks },
     { data: watchlistItems },
-    { data: favGroupRows },
+    { data: groupRows },
+    { data: groupStockRows },
     { data: latestUpdate },
   ] = await Promise.all([
     supabase.from("stock_cache").select("*").eq("is_favorite", true).order("name"),
     supabase.from("stock_cache").select("*").order("name").limit(100),
     supabase.from("watchlist").select("symbol"),
-    supabase.from("favorite_stocks").select("symbol, group_name"),
+    supabase.from("watchlist_groups").select("*").order("sort_order"),
+    supabase.from("watchlist_group_stocks").select("group_id, symbol"),
     supabase.from("stock_cache").select("updated_at")
       .not("current_price", "is", null)
       .order("updated_at", { ascending: false }).limit(1).single(),
   ]);
 
   const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
-  const favGroups: Record<string, string> = {};
-  for (const r of favGroupRows ?? []) {
-    if (r.group_name) favGroups[r.symbol] = r.group_name;
-  }
-  const lastPriceUpdate = latestUpdate?.updated_at ?? null;
+  const groups: WatchlistGroup[] = groupRows ?? [];
 
-  // 2단계: favorites + stocks 결과에 의존하는 신호 쿼리
+  // symbol → group_id[] 매핑 (다중 그룹 지원)
+  const symbolGroups: Record<string, string[]> = {};
+  for (const r of groupStockRows ?? []) {
+    if (!symbolGroups[r.symbol]) symbolGroups[r.symbol] = [];
+    symbolGroups[r.symbol].push(r.group_id);
+  }
+
+  const lastPriceUpdate = latestUpdate?.updated_at ?? null;
+  const hasFavorites = (favorites?.length ?? 0) > 0;
+
+  // 신호 병합 (기존 로직 유지)
   const allSymbols = new Set<string>();
   favorites?.forEach((f) => allSymbols.add(f.symbol));
   stocks?.forEach((s) => allSymbols.add(s.symbol));
@@ -78,7 +86,6 @@ export default async function StocksPage() {
   }
 
   const emptySignal = { type: null, price: null };
-
   const mergeSignals = (list: typeof stocks) =>
     (list ?? []).map((s) => ({
       ...s,
@@ -92,9 +99,9 @@ export default async function StocksPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">전 종목</h1>
+        <h1 className="text-2xl font-bold">종목</h1>
         <p className="text-sm text-[var(--muted)] mt-1">
-          전체 종목 리스트 및 관심종목 관리
+          관심종목 그룹 관리 및 전체 종목 조회
         </p>
       </div>
       <StockListClient
@@ -102,7 +109,9 @@ export default async function StocksPage() {
         favorites={mergeSignals(favorites)}
         watchlistSymbols={watchlistSymbols}
         lastPriceUpdate={lastPriceUpdate}
-        favGroups={favGroups}
+        groups={groups}
+        symbolGroups={symbolGroups}
+        hasFavorites={hasFavorites}
       />
     </div>
   );

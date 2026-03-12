@@ -5,14 +5,19 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
+import type { WatchlistGroup } from "@/types/stock";
 import StockActionMenu from "@/components/common/stock-action-menu";
+import WatchlistGroupTabs, { type TabId } from "@/components/stocks/watchlist-group-tabs";
+import GroupSelectPopup from "@/components/stocks/group-select-popup";
 
 interface Props {
   initialStocks: StockCache[];
   favorites: StockCache[];
   watchlistSymbols?: string[];
   lastPriceUpdate?: string | null;
-  favGroups?: Record<string, string>;
+  groups: WatchlistGroup[];               // watchlist_groups 목록
+  symbolGroups: Record<string, string[]>; // symbol → group_id[]
+  hasFavorites: boolean;                  // 즐겨찾기 존재 여부 (진입 탭 결정용)
 }
 
 const SIGNAL_COLORS: Record<string, string> = {
@@ -52,8 +57,6 @@ function priceColor(change: number | null): string {
 
 type SourceKey = "quant" | "lassi" | "stockbot";
 
-/** Gap 계산: (현재가 - 매수가) / 매수가 * 100
- * prioritySource: 특정 AI 우선 또는 "all"이면 모든 소스 중 최소 Gap */
 function calcGap(stock: StockCache, prioritySource: SourceKey | "all" = "all"): { gap: number; source: string } | null {
   if (!stock.current_price || !stock.signals) return null;
 
@@ -73,7 +76,6 @@ function calcGap(stock: StockCache, prioritySource: SourceKey | "all" = "all"): 
   }
 
   if (candidates.length === 0) return null;
-  // 가장 작은 gap (매수가에 가까운) 반환
   candidates.sort((a, b) => a.gap - b.gap);
   return candidates[0];
 }
@@ -83,7 +85,7 @@ const SORT_MAP: Record<string, string> = {
   change: "price_change_pct",
   volume: "volume",
   per: "per",
-  gap: "name", // gap은 클라이언트 정렬이지만 서버 fallback용
+  gap: "name",
 };
 
 function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
@@ -109,7 +111,7 @@ function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
   );
 }
 
-export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, favGroups = {} }: Props) {
+export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, groups: initialGroups, symbolGroups: initialSymbolGroups }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [stocks, setStocks] = useState<StockCache[]>(initialStocks);
@@ -125,9 +127,24 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const [loading, setLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [portSet, setPortSet] = useState<Set<string>>(() => new Set(watchlistSymbols));
+  const [portSet] = useState<Set<string>>(() => new Set(watchlistSymbols));
   const [gapSource, setGapSource] = useState<SourceKey | "all">("all");
-  const [favGroupFilter, setFavGroupFilter] = useState<string | null>(null);
+
+  // 그룹 관련 상태
+  const [groups, setGroups] = useState<WatchlistGroup[]>(initialGroups);
+  const [symGroups, setSymGroups] = useState<Record<string, string[]>>(initialSymbolGroups);
+  const [activeTab, setActiveTab] = useState<TabId>("all");
+
+  // GroupSelectPopup 상태
+  const [groupPopup, setGroupPopup] = useState<{
+    stock: StockCache;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  const [actionMenu, setActionMenu] = useState<{
+    stock: StockCache;
+    position: { x: number; y: number };
+  } | null>(null);
 
   // URL searchParams 동기화
   useEffect(() => {
@@ -140,17 +157,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     router.replace(newUrl, { scroll: false });
   }, [query, market, sortBy, router]);
 
-  // 그룹 목록
-  const favGroupList = useMemo(() => {
-    const set = new Set<string>();
-    for (const v of Object.values(favGroups)) set.add(v);
-    return Array.from(set).sort();
-  }, [favGroups]);
-  const [actionMenu, setActionMenu] = useState<{
-    stock: StockCache;
-    position: { x: number; y: number };
-  } | null>(null);
-
   const fetchStocks = useCallback(
     async (pageNum: number, reset: boolean = false) => {
       setLoading(true);
@@ -160,7 +166,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         params.set("limit", "50");
         params.set("withSignals", "true");
 
-        // gap 정렬은 서버에서 지원하지 않으므로 name 기준으로 가져옴
         const serverSort = sortBy === "gap" ? "name" : (SORT_MAP[sortBy] || "name");
         params.set("sortBy", serverSort);
         if (sortBy === "change" || sortBy === "volume") params.set("sortDir", "desc");
@@ -219,30 +224,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return () => observer.disconnect();
   }, [hasMore, loading, page, fetchStocks]);
 
-  const toggleFavorite = useCallback(
-    async (stock: StockCache) => {
-      const isFav = favSet.has(stock.symbol);
-      const newSet = new Set(favSet);
-
-      if (isFav) {
-        newSet.delete(stock.symbol);
-        setFavStocks((prev) => prev.filter((s) => s.symbol !== stock.symbol));
-        fetch(`/api/v1/favorites/${stock.symbol}`, { method: "DELETE" });
-      } else {
-        newSet.add(stock.symbol);
-        setFavStocks((prev) => [...prev, stock]);
-        fetch("/api/v1/favorites", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ symbol: stock.symbol, name: stock.name }),
-        });
-      }
-
-      setFavSet(newSet);
-    },
-    [favSet]
-  );
-
   // 1단계: 즐겨찾기/일반 종목 병합 (정렬과 무관)
   const mergedStocks = useMemo(() => {
     const favSymbols = new Set(favStocks.map((f) => f.symbol));
@@ -250,14 +231,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       const updated = stocks.find((s) => s.symbol === fav.symbol);
       return updated ?? fav;
     });
-    const filteredFavs = favGroupFilter
-      ? updatedFavs.filter((f) => (favGroups[f.symbol] || "기본") === favGroupFilter)
-      : updatedFavs;
-    const nonFavs = favGroupFilter
-      ? []
-      : stocks.filter((s) => !favSymbols.has(s.symbol));
-    return { favs: filteredFavs, nonFavs };
-  }, [stocks, favStocks, favGroupFilter, favGroups]);
+    const nonFavs = stocks.filter((s) => !favSymbols.has(s.symbol));
+    return { favs: updatedFavs, nonFavs };
+  }, [stocks, favStocks]);
 
   // 2단계: 정렬 + gap 사전 계산
   const displayStocks = useMemo(() => {
@@ -284,8 +260,170 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return { favs, nonFavs };
   }, [mergedStocks, sortBy, gapSource]);
 
+  // 현재 탭에 표시할 관심종목 (query 없을 때)
+  const tabFavorites = useMemo(() => {
+    if (activeTab === "all") {
+      // [전체] = 모든 관심종목 dedup
+      const seen = new Set<string>();
+      return favStocks.filter((s) => {
+        if (seen.has(s.symbol)) return false;
+        seen.add(s.symbol);
+        return true;
+      });
+    }
+    // 특정 그룹 = 해당 그룹에 속한 관심종목만
+    return favStocks.filter((s) => (symGroups[s.symbol] ?? []).includes(activeTab));
+  }, [activeTab, favStocks, symGroups]);
+
+  // query가 있으면 전체 DB 검색 모드, 없으면 탭 관심종목 모드
+  const showSearchMode = query.trim().length > 0;
+
+  // 관심종목 없고 query 없으면 전체DB 뷰
+  const showAllStocksMode = favSet.size === 0 && !showSearchMode;
+
+  // ★ 버튼 클릭 핸들러
+  const handleStarClick = useCallback(
+    (stock: StockCache, e?: React.MouseEvent) => {
+      const position = e?.currentTarget
+        ? (() => {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            return { x: rect.left, y: rect.bottom + 4 };
+          })()
+        : { x: Math.round(window.innerWidth / 2) - 80, y: Math.round(window.innerHeight / 2) };
+
+      if (favSet.has(stock.symbol)) {
+        // 즐겨찾기 해제 — 모든 그룹에서 제거
+        const groupIds = symGroups[stock.symbol] ?? [];
+        groupIds.forEach((gid) => {
+          fetch(`/api/v1/watchlist-groups/${gid}/stocks/${stock.symbol}`, { method: "DELETE" });
+        });
+        const newSet = new Set(favSet);
+        newSet.delete(stock.symbol);
+        setFavSet(newSet);
+        setFavStocks((prev) => prev.filter((s) => s.symbol !== stock.symbol));
+        setSymGroups((prev) => { const next = { ...prev }; delete next[stock.symbol]; return next; });
+        return;
+      }
+
+      // 그룹이 기본 1개만 → 기본 그룹 자동 추가
+      const customGroups = groups.filter((g) => !g.is_default);
+      if (customGroups.length === 0) {
+        const defaultGroup = groups.find((g) => g.is_default);
+        if (defaultGroup) {
+          fetch(`/api/v1/watchlist-groups/${defaultGroup.id}/stocks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ symbol: stock.symbol, name: stock.name }),
+          });
+          const newSet = new Set(favSet);
+          newSet.add(stock.symbol);
+          setFavSet(newSet);
+          setFavStocks((prev) => [...prev, stock]);
+          setSymGroups((prev) => ({
+            ...prev,
+            [stock.symbol]: [defaultGroup.id],
+          }));
+        }
+        return;
+      }
+
+      // 다중 그룹 → 팝업 표시
+      setGroupPopup({ stock, position });
+    },
+    [favSet, symGroups, groups]
+  );
+
+  // GroupSelectPopup 토글 핸들러
+  const handleGroupToggle = useCallback(
+    async (group: WatchlistGroup, stockOverride?: StockCache) => {
+      const stock = stockOverride ?? groupPopup?.stock;
+      if (!stock) return;
+      const currentGroups = symGroups[stock.symbol] ?? [];
+      const inGroup = currentGroups.includes(group.id);
+
+      if (inGroup) {
+        await fetch(`/api/v1/watchlist-groups/${group.id}/stocks/${stock.symbol}`, { method: "DELETE" });
+        const newGroups = currentGroups.filter((id) => id !== group.id);
+        setSymGroups((prev) => ({ ...prev, [stock.symbol]: newGroups }));
+        if (newGroups.length === 0) {
+          const newSet = new Set(favSet);
+          newSet.delete(stock.symbol);
+          setFavSet(newSet);
+          setFavStocks((prev) => prev.filter((s) => s.symbol !== stock.symbol));
+        }
+      } else {
+        await fetch(`/api/v1/watchlist-groups/${group.id}/stocks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: stock.symbol, name: stock.name }),
+        });
+        setSymGroups((prev) => ({ ...prev, [stock.symbol]: [...currentGroups, group.id] }));
+        if (!favSet.has(stock.symbol)) {
+          const newSet = new Set(favSet);
+          newSet.add(stock.symbol);
+          setFavSet(newSet);
+          setFavStocks((prev) => [...prev, stock]);
+        }
+      }
+    },
+    [groupPopup, symGroups, favSet]
+  );
+
+  const handleGroupAdd = useCallback(async (name: string) => {
+    const res = await fetch("/api/v1/watchlist-groups", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+      const json = await res.json();
+      throw new Error(json.error ?? "그룹 생성 실패");
+    }
+    const { group } = await res.json();
+    setGroups((prev) => [...prev, group]);
+  }, []);
+
+  const handleGroupDelete = useCallback(async (group: WatchlistGroup) => {
+    if (!confirm(`"${group.name}" 그룹을 삭제할까요?\n그룹 내 종목이 다른 그룹에 없으면 즐겨찾기에서도 해제됩니다.`)) return;
+    const res = await fetch(`/api/v1/watchlist-groups/${group.id}`, { method: "DELETE" });
+    if (!res.ok) return;
+    setGroups((prev) => prev.filter((g) => g.id !== group.id));
+    const removedSymbols: string[] = [];
+    const nextSymGroups = { ...symGroups };
+    for (const sym of Object.keys(nextSymGroups)) {
+      nextSymGroups[sym] = nextSymGroups[sym].filter((id) => id !== group.id);
+      if (nextSymGroups[sym].length === 0) {
+        delete nextSymGroups[sym];
+        removedSymbols.push(sym);
+      }
+    }
+    setSymGroups(nextSymGroups);
+    if (removedSymbols.length > 0) {
+      setFavSet((fSet) => { const n = new Set(fSet); removedSymbols.forEach((s) => n.delete(s)); return n; });
+      setFavStocks((fs) => fs.filter((s) => !removedSymbols.includes(s.symbol)));
+    }
+    if (activeTab === group.id) setActiveTab("all");
+  }, [activeTab, symGroups]);
+
+  const reorderDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleGroupsReorder = useCallback((ids: string[]) => {
+    setGroups((prev) => {
+      const defaultGrp = prev.find((g) => g.is_default);
+      const custom = ids.map((id) => prev.find((g) => g.id === id)!).filter(Boolean);
+      return defaultGrp ? [defaultGrp, ...custom] : custom;
+    });
+    if (reorderDebounceRef.current) clearTimeout(reorderDebounceRef.current);
+    reorderDebounceRef.current = setTimeout(() => {
+      fetch("/api/v1/watchlist-groups/reorder", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+    }, 500);
+  }, []);
+
   const handleRowClick = useCallback((e: React.MouseEvent, stock: StockCache) => {
-    // 즐겨찾기 버튼 클릭은 무시
     if ((e.target as HTMLElement).closest("button")) return;
     setActionMenu({
       stock,
@@ -293,9 +431,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     });
   }, []);
 
-  // renderRow는 StockRow memo 컴포넌트로 대체됨 (아래 정의)
-
-  // 가격 업데이트 시간 및 갱신
+  // 가격 업데이트 상태 + 갱신
   const [updateTime, setUpdateTime] = useState(lastPriceUpdate);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -315,7 +451,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return `${d.toLocaleDateString("ko-KR")} ${d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 업데이트`;
   }, [updateTime]);
 
-  // stocks를 ref로 참조하여 useCallback 의존성에서 제거
   const stocksRef = useRef(stocks);
   stocksRef.current = stocks;
 
@@ -323,9 +458,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     if (refreshing) return;
     setRefreshing(true);
     try {
-      // 1) POST로 네이버 전종목 시세 갱신 (메모리 캐시 + DB fire-and-forget)
       await fetch("/api/v1/prices", { method: "POST" });
-      // 2) 현재 표시 중인 종목들의 라이브 가격을 즉시 가져오기
       const symbols = stocksRef.current.map((s) => s.symbol);
       const CHUNK = 200;
       const allPrices: Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }> = {};
@@ -339,7 +472,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         })
       );
 
-      // 3) 현재 stocks에 라이브 가격 오버레이
       setStocks((prev) =>
         prev.map((stock) => {
           const live = allPrices[stock.symbol];
@@ -360,13 +492,31 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     }
   }, [refreshing]);
 
-  // 페이지 진입 시 5분 이상 지났으면 자동 갱신
   useEffect(() => {
     if (isStale) {
       refreshPrices();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 테이블 헤더 JSX (재사용)
+  const tableHeader = (
+    <thead>
+      <tr className="border-b border-[var(--border)] text-[var(--muted)] text-xs">
+        <th className="px-3 py-3 text-left w-10"></th>
+        <th className="px-3 py-3 text-left">종목명</th>
+        <th className="px-3 py-3 text-left">코드</th>
+        <th className="px-3 py-3 text-right">현재가</th>
+        <th className="px-3 py-3 text-right">등락률</th>
+        <th className="px-3 py-3 text-right">거래량</th>
+        <th className="px-3 py-3 text-right">PER</th>
+        <th className="px-2 py-3 text-center">퀀트</th>
+        <th className="px-2 py-3 text-center">라씨</th>
+        <th className="px-2 py-3 text-center">스톡봇</th>
+        <th className="px-3 py-3 text-right">Gap</th>
+      </tr>
+    </thead>
+  );
 
   return (
     <div className="space-y-4">
@@ -386,6 +536,17 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           갱신
         </button>
       </div>
+
+      {/* 그룹 탭 바 */}
+      <WatchlistGroupTabs
+        groups={groups}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        onGroupAdd={handleGroupAdd}
+        onGroupDelete={handleGroupDelete}
+        onGroupsReorder={handleGroupsReorder}
+      />
+
       {/* 필터 바 */}
       <div className="card p-4">
         <div className="flex flex-col sm:flex-row gap-3">
@@ -431,7 +592,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             </select>
           </div>
 
-          {/* Gap AI소스 우선순위 */}
           <select
             value={gapSource}
             onChange={(e) => setGapSource(e.target.value as SourceKey | "all")}
@@ -443,120 +603,111 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             <option value="lassi">Gap: 라씨</option>
             <option value="stockbot">Gap: 스톡봇</option>
           </select>
-
-          {/* 즐겨찾기 그룹 필터 */}
-          {favGroupList.length > 0 && (
-            <select
-              value={favGroupFilter ?? ""}
-              onChange={(e) => setFavGroupFilter(e.target.value || null)}
-              className="px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
-              title="즐겨찾기 그룹"
-            >
-              <option value="">그룹: 전체</option>
-              {favGroupList.map((g) => (
-                <option key={g} value={g}>그룹: {g}</option>
-              ))}
-            </select>
-          )}
         </div>
       </div>
 
-      {/* 종목 테이블 */}
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--border)] text-[var(--muted)] text-xs">
-                <th className="px-3 py-3 text-left w-10"></th>
-                <th className="px-3 py-3 text-left">종목명</th>
-                <th className="px-3 py-3 text-left">코드</th>
-                <th className="px-3 py-3 text-right">현재가</th>
-                <th className="px-3 py-3 text-right">등락률</th>
-                <th className="px-3 py-3 text-right">거래량</th>
-                <th className="px-3 py-3 text-right">PER</th>
-                <th className="px-2 py-3 text-center" title="퀀트 신호">
-                  <span className="inline-flex items-center gap-0.5">
-                    퀀트
-                  </span>
-                </th>
-                <th className="px-2 py-3 text-center" title="라씨 신호">
-                  <span className="inline-flex items-center gap-0.5">
-                    라씨
-                  </span>
-                </th>
-                <th className="px-2 py-3 text-center" title="스톡봇 신호">
-                  <span className="inline-flex items-center gap-0.5">
-                    스톡봇
-                  </span>
-                </th>
-                <th className="px-3 py-3 text-right">Gap</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--border)]">
-              {/* 즐겨찾기 종목 상단 고정 */}
-              {displayStocks.favs.length > 0 && (
-                <>
-                  {displayStocks.favs.map((stock) => (
+      {/* 종목 리스트 */}
+      {showSearchMode || showAllStocksMode ? (
+        /* 검색/전체DB 뷰: 기존 무한스크롤 테이블 */
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              {tableHeader}
+              <tbody className="divide-y divide-[var(--border)]">
+                {displayStocks.favs.length > 0 && (
+                  <>
+                    {displayStocks.favs.map((stock) => (
+                      <StockRow
+                        key={stock.symbol}
+                        stock={stock}
+                        isFav={true}
+                        gapSource={gapSource}
+                        isInPortfolio={portSet.has(stock.symbol)}
+                        onToggleFavorite={(s) => handleStarClick(s)}
+                        onRowClick={handleRowClick}
+                      />
+                    ))}
+                    <tr>
+                      <td colSpan={11} className="px-0 py-0">
+                        <div className="border-b-2 border-yellow-600/30" />
+                      </td>
+                    </tr>
+                  </>
+                )}
+                {displayStocks.nonFavs.length === 0 && displayStocks.favs.length === 0 && !loading ? (
+                  <tr>
+                    <td colSpan={11} className="px-4 py-12 text-center text-[var(--muted)]">
+                      검색 결과가 없습니다
+                    </td>
+                  </tr>
+                ) : (
+                  displayStocks.nonFavs.map((stock) => (
+                    <StockRow
+                      key={stock.symbol}
+                      stock={stock}
+                      isFav={false}
+                      gapSource={gapSource}
+                      isInPortfolio={portSet.has(stock.symbol)}
+                      onToggleFavorite={(s) => handleStarClick(s)}
+                      onRowClick={handleRowClick}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div ref={sentinelRef} className="h-4" />
+          {loading && (
+            <div className="flex justify-center py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-[var(--muted)]" />
+            </div>
+          )}
+          {!hasMore && stocks.length > 0 && (
+            <div className="text-center py-3 text-xs text-[var(--muted)]">
+              총 {stocks.length}개 종목
+            </div>
+          )}
+        </div>
+      ) : (
+        /* 탭 관심종목 뷰 */
+        tabFavorites.length === 0 ? (
+          <div className="text-center py-16 text-[var(--muted)] text-sm">
+            이 그룹에 관심종목이 없습니다. ★를 클릭해 추가하세요.
+          </div>
+        ) : (
+          <div className="card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                {tableHeader}
+                <tbody className="divide-y divide-[var(--border)]">
+                  {tabFavorites.map((stock) => (
                     <StockRow
                       key={stock.symbol}
                       stock={stock}
                       isFav={true}
                       gapSource={gapSource}
                       isInPortfolio={portSet.has(stock.symbol)}
-                      onToggleFavorite={toggleFavorite}
+                      onToggleFavorite={(s) => handleStarClick(s)}
                       onRowClick={handleRowClick}
                     />
                   ))}
-                  {/* 구분선 */}
-                  <tr>
-                    <td colSpan={11} className="px-0 py-0">
-                      <div className="border-b-2 border-yellow-600/30" />
-                    </td>
-                  </tr>
-                </>
-              )}
-              {/* 일반 종목 */}
-              {displayStocks.nonFavs.length === 0 &&
-              displayStocks.favs.length === 0 &&
-              !loading ? (
-                <tr>
-                  <td
-                    colSpan={11}
-                    className="px-4 py-12 text-center text-[var(--muted)]"
-                  >
-                    검색 결과가 없습니다
-                  </td>
-                </tr>
-              ) : (
-                displayStocks.nonFavs.map((stock) => (
-                  <StockRow
-                    key={stock.symbol}
-                    stock={stock}
-                    isFav={false}
-                    gapSource={gapSource}
-                    isInPortfolio={portSet.has(stock.symbol)}
-                    onToggleFavorite={toggleFavorite}
-                    onRowClick={handleRowClick}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
 
-        {/* 무한 스크롤 센티널 */}
-        <div ref={sentinelRef} className="h-4" />
-        {loading && (
-          <div className="flex justify-center py-4">
-            <Loader2 className="w-5 h-5 animate-spin text-[var(--muted)]" />
-          </div>
-        )}
-        {!hasMore && stocks.length > 0 && (
-          <div className="text-center py-3 text-xs text-[var(--muted)]">
-            총 {stocks.length}개 종목
-          </div>
-        )}
-      </div>
+      {/* GroupSelectPopup */}
+      {groupPopup && (
+        <GroupSelectPopup
+          groups={groups}
+          selectedGroupIds={new Set(symGroups[groupPopup.stock.symbol] ?? [])}
+          onToggle={handleGroupToggle}
+          onClose={() => setGroupPopup(null)}
+          position={groupPopup.position}
+        />
+      )}
 
       {/* 종목 액션 메뉴 */}
       {actionMenu && (
@@ -569,10 +720,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           position={actionMenu.position}
           isFavorite={favSet.has(actionMenu.stock.symbol)}
           isInPortfolio={portSet.has(actionMenu.stock.symbol)}
-          onToggleFavorite={() => {
-            toggleFavorite(actionMenu.stock);
-            setActionMenu(null);
-          }}
+          onToggleFavorite={() => actionMenu && handleStarClick(actionMenu.stock)}
         />
       )}
     </div>
@@ -609,7 +757,7 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-0.5">
           <button
-            onClick={() => onToggleFavorite(stock)}
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(stock); }}
             className="p-0.5 hover:scale-110 transition-transform"
           >
             <Star
@@ -631,14 +779,10 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
       <td className="px-3 py-2.5 text-[var(--muted)] text-xs">
         {stock.symbol}
       </td>
-      <td
-        className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change)}`}
-      >
+      <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change)}`}>
         {formatNumber(stock.current_price)}
       </td>
-      <td
-        className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change_pct)}`}
-      >
+      <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change_pct)}`}>
         {formatPercent(stock.price_change_pct)}
       </td>
       <td className="px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
