@@ -721,6 +721,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           isFavorite={favSet.has(actionMenu.stock.symbol)}
           isInPortfolio={portSet.has(actionMenu.stock.symbol)}
           onToggleFavorite={() => actionMenu && handleStarClick(actionMenu.stock)}
+          groups={groups}
+          symbolGroupIds={symGroups[actionMenu.stock.symbol] ?? []}
+          onGroupToggle={(group) => { if (actionMenu) handleGroupToggle(group, actionMenu.stock); }}
         />
       )}
     </div>
