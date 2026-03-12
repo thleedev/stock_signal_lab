@@ -100,8 +100,8 @@ export default function GapClient({ stocks: initialStocks, favSymbols, watchlist
     try {
       await fetch("/api/v1/prices", { method: "POST" });
       await refreshLivePrices();
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("[GapClient] 가격 갱신 실패:", e);
     } finally {
       setPriceLoading(false);
     }

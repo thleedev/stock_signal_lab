@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { LayoutList, Grid3X3, Layers, Briefcase } from "lucide-react";
 import StockActionMenu from "@/components/common/stock-action-menu";
 
@@ -363,6 +364,7 @@ export default function SignalColumns({
   favoriteSymbols: string[];
   watchlistSymbols?: string[];
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [viewMode, setViewMode] = useState<"list" | "summary" | "industry">("list");
   const [favSet, setFavSet] = useState(() => new Set(favoriteSymbols));
@@ -371,6 +373,19 @@ export default function SignalColumns({
     signal: Signal;
     position: { x: number; y: number };
   } | null>(null);
+
+  // 장중 60초마다 서버 데이터 자동 새로고침
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const kstHour = (now.getUTCHours() + 9) % 24;
+      const day = now.getDay();
+      if (day >= 1 && day <= 5 && kstHour >= 9 && kstHour < 16) {
+        router.refresh();
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [router]);
 
   const handleSignalClick = useCallback((e: React.MouseEvent, signal: Signal) => {
     setActionMenu({

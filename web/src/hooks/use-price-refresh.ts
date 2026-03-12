@@ -55,8 +55,8 @@ export function usePriceRefresh(symbols: string[]) {
         setPrices(merged);
         setLastUpdated(new Date());
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("[usePriceRefresh]", e);
     } finally {
       setLoading(false);
     }
@@ -65,6 +65,23 @@ export function usePriceRefresh(symbols: string[]) {
   useEffect(() => {
     if (symbols.length === 0) return;
     fetchPrices();
+  }, [symbols.length, fetchPrices]);
+
+  // 5분 자동 폴링 (장중에만)
+  useEffect(() => {
+    if (symbols.length === 0) return;
+
+    const interval = setInterval(() => {
+      const now = new Date();
+      const kstHour = (now.getUTCHours() + 9) % 24;
+      const day = now.getDay(); // 0=Sun, 6=Sat
+      // 평일 9시~16시 사이만 자동 갱신
+      if (day >= 1 && day <= 5 && kstHour >= 9 && kstHour < 16) {
+        fetchPrices();
+      }
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, [symbols.length, fetchPrices]);
 
   return { prices, lastUpdated, loading, refresh: fetchPrices };

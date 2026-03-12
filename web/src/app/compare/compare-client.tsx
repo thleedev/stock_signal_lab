@@ -61,6 +61,7 @@ export default function CompareClient() {
   const [searchResults, setSearchResults] = useState<Array<{ symbol: string; name: string }>>([]);
   const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const searchStocks = useCallback(async (q: string) => {
     if (q.length < 1) {
@@ -77,8 +78,8 @@ export default function CompareClient() {
           name: s.name,
         })));
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("[Compare] 검색 실패:", e);
     }
     setSearching(false);
   }, []);
@@ -88,14 +89,18 @@ export default function CompareClient() {
     setLoading(true);
     setSearchQuery("");
     setSearchResults([]);
+    setErrorMsg(null);
     try {
       const res = await fetch(`/api/v1/stocks/${symbol}/realtime`);
       if (res.ok) {
         const data = await res.json();
         setStocks((prev) => [...prev, data]);
+      } else {
+        setErrorMsg("종목 데이터를 불러올 수 없습니다");
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("[Compare] 종목 추가 실패:", e);
+      setErrorMsg("종목 데이터를 불러올 수 없습니다");
     }
     setLoading(false);
   }, [stocks]);
@@ -106,6 +111,12 @@ export default function CompareClient() {
 
   return (
     <div className="space-y-6">
+      {errorMsg && (
+        <div className="bg-red-900/20 border border-red-800/50 text-red-400 text-sm px-4 py-2 rounded-lg">
+          {errorMsg}
+        </div>
+      )}
+
       {/* 종목 추가 */}
       {stocks.length < 3 && (
         <div className="card p-4">

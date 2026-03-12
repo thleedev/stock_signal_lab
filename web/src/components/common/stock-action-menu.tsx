@@ -88,8 +88,8 @@ export default function StockActionMenu({
           }),
         });
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("[StockActionMenu] 포트 변경 실패:", e);
     } finally {
       setAdding(false);
       onClose();

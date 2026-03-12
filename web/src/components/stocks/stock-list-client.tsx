@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import StockActionMenu from "@/components/common/stock-action-menu";
@@ -109,10 +110,12 @@ function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
 }
 
 export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, favGroups = {} }: Props) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [stocks, setStocks] = useState<StockCache[]>(initialStocks);
-  const [query, setQuery] = useState("");
-  const [market, setMarket] = useState("전체");
-  const [sortBy, setSortBy] = useState("name");
+  const [query, setQuery] = useState(searchParams.get("q") || "");
+  const [market, setMarket] = useState(searchParams.get("market") || "전체");
+  const [sortBy, setSortBy] = useState(searchParams.get("sort") || "name");
   const [favSet, setFavSet] = useState<Set<string>>(
     () => new Set(favorites.map((f) => f.symbol))
   );
@@ -125,6 +128,17 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const [portSet, setPortSet] = useState<Set<string>>(() => new Set(watchlistSymbols));
   const [gapSource, setGapSource] = useState<SourceKey | "all">("all");
   const [favGroupFilter, setFavGroupFilter] = useState<string | null>(null);
+
+  // URL searchParams 동기화
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (market !== "전체") params.set("market", market);
+    if (sortBy !== "name") params.set("sort", sortBy);
+    const qs = params.toString();
+    const newUrl = qs ? `/stocks?${qs}` : "/stocks";
+    router.replace(newUrl, { scroll: false });
+  }, [query, market, sortBy, router]);
 
   // 그룹 목록
   const favGroupList = useMemo(() => {
@@ -164,8 +178,8 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           setStocks((prev) => [...prev, ...newData]);
         }
         setHasMore(pageNum < (json.totalPages ?? 1));
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error("[StockList] 종목 로딩 실패:", e);
       } finally {
         setLoading(false);
       }

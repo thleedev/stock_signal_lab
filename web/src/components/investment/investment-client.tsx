@@ -84,8 +84,8 @@ export default function InvestmentClient({
           setSearchResults(data.data ?? data ?? []);
           setShowDropdown(true);
         }
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error("[Investment]", e);
       } finally {
         setIsSearching(false);
       }
@@ -134,8 +134,8 @@ export default function InvestmentClient({
         setSearchQuery("");
         setShowDropdown(false);
         router.refresh();
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error("[Investment]", e);
       }
     },
     [watchlist, router]
@@ -149,8 +149,8 @@ export default function InvestmentClient({
         });
         setWatchlist((prev) => prev.filter((w) => w.symbol !== symbol));
         router.refresh();
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error("[Investment]", e);
       }
     },
     [router]
@@ -177,8 +177,8 @@ export default function InvestmentClient({
           w.symbol === editing.symbol ? { ...w, [editing.field]: parsedPrice } : w
         )
       );
-    } catch {
-      // ignore
+    } catch (e) {
+      console.error("[Investment] 저장 실패:", e);
     } finally {
       setEditing(null);
       setEditValue("");
