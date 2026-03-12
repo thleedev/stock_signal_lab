@@ -108,23 +108,27 @@ CREATE TABLE user_portfolios (
   name        TEXT NOT NULL,
   sort_order  INT NOT NULL DEFAULT 0,
   is_default  BOOLEAN DEFAULT FALSE,
+  deleted_at  TIMESTAMPTZ,             -- 소프트 삭제 (NULL = 활성)
   created_at  TIMESTAMPTZ DEFAULT now(),
   UNIQUE(name)
 );
 ```
+
+**삭제 정책:** 포트 삭제 시 `deleted_at`을 설정하는 소프트 삭제. 거래 이력은 보존되며, 삭제된 포트는 목록에서 숨김. 동일 이름으로 재생성 시 기존 포트를 복원.
 
 ### 2.2 `user_trades` — 매수/매도 거래 기록
 
 ```sql
 CREATE TABLE user_trades (
   id            BIGSERIAL PRIMARY KEY,
-  portfolio_id  BIGINT REFERENCES user_portfolios(id) ON DELETE CASCADE,
+  portfolio_id  BIGINT REFERENCES user_portfolios(id),
   symbol        TEXT NOT NULL,
   name          TEXT,
   side          TEXT NOT NULL CHECK (side IN ('BUY', 'SELL')),
   price         NUMERIC NOT NULL,
   target_price  NUMERIC,
   stop_price    NUMERIC,
+  buy_trade_id  BIGINT REFERENCES user_trades(id),  -- SELL일 때 어떤 BUY를 청산하는지 (1:1)
   note          TEXT,
   created_at    TIMESTAMPTZ DEFAULT now()
 );
@@ -133,26 +137,81 @@ CREATE INDEX idx_user_trades_portfolio_symbol ON user_trades(portfolio_id, symbo
 CREATE INDEX idx_user_trades_symbol ON user_trades(symbol);
 ```
 
+**매수/매도 연결:** 수량 개념이 없으므로 BUY와 SELL은 1:1 매칭. SELL 레코드의 `buy_trade_id`가 해당 BUY를 가리킴. `buy_trade_id`가 NULL인 BUY가 "보유 중" 상태.
+
+**에러 방어:**
+- SELL 요청 시 해당 `portfolio_id + symbol`에 미청산 BUY가 없으면 400 에러 반환
+- 동일 BUY에 대한 중복 SELL 방지 (UNIQUE 제약 또는 API 레벨 체크)
+
 ### 2.3 `user_portfolio_snapshots` — 일별 포트 수익률 스냅샷
 
 ```sql
 CREATE TABLE user_portfolio_snapshots (
-  id                BIGSERIAL PRIMARY KEY,
-  portfolio_id      BIGINT REFERENCES user_portfolios(id) ON DELETE CASCADE,
-  date              DATE NOT NULL,
-  total_return_pct  NUMERIC,
-  trade_count       INT,
-  created_at        TIMESTAMPTZ DEFAULT now(),
+  id                    BIGSERIAL PRIMARY KEY,
+  portfolio_id          BIGINT REFERENCES user_portfolios(id),
+  date                  DATE NOT NULL,
+  daily_return_pct      NUMERIC,           -- 당일 수익률 변동
+  cumulative_return_pct NUMERIC,           -- 포트 생성일 대비 누적 수익률
+  holding_count         INT,               -- 보유 종목 수
+  trade_count           INT,               -- 누적 거래 수
+  created_at            TIMESTAMPTZ DEFAULT now(),
   UNIQUE(portfolio_id, date)
 );
 ```
+
+**스냅샷 정책:**
+
+- 보유 종목이 1개 이상인 포트만 스냅샷 생성
+- `cumulative_return_pct`는 포트 생성일 기준 누적 수익률
+- 성과 비교 차트에서 포트 생성일이 다르면, 각 포트의 첫 스냅샷을 0% 기준점으로 정규화하여 비교
+- 스냅샷 데이터가 부족한 포트(< 7일)는 차트에 "데이터 수집 중" 안내 표시
 
 ### 2.4 수익률 계산 방식
 
 - **개별 거래 수익률:** `(현재가 - 매수가) / 매수가 × 100`
 - **매도 완료 시:** `(매도가 - 매수가) / 매수가 × 100`으로 확정
-- **포트 전체 수익률:** 보유 중 종목들의 수익률 단순 평균
+- **포트 전체 수익률:** 보유 중인 각 BUY 레코드의 수익률 단순 평균
 - **종목별 누적 수익률:** 해당 종목의 모든 완료 거래 수익률 평균
+
+### 2.5 holdings API 응답 구조
+
+보유 현황은 **BUY 레코드 단위**로 반환 (동일 종목 복수 매수 시 각각 별도 행):
+
+```json
+{
+  "holdings": [
+    {
+      "trade_id": 1,
+      "symbol": "005930",
+      "name": "삼성전자",
+      "buy_price": 72000,
+      "current_price": 78500,
+      "return_pct": 9.03,
+      "target_price": 79200,
+      "stop_price": 68400,
+      "status": "holding",
+      "note": "AI 매수신호 확인",
+      "bought_at": "2026-03-10T09:30:00Z",
+      "price_as_of": "2026-03-12T15:30:00Z",
+      "latest_signal": { "type": "HOLD", "source": "lassi", "date": "2026-03-11" }
+    }
+  ],
+  "summary": {
+    "total_return_pct": 8.5,
+    "holding_count": 5,
+    "completed_trade_count": 12
+  }
+}
+```
+
+**`price_as_of`:** `stock_cache.updated_at` 값. 클라이언트에서 "XX분 전 기준" 표시에 활용.
+
+**`status` 결정 로직:**
+
+- `holding` — 보유 중 (기본)
+- `near_target` — 현재가 >= 목표가 × 0.97 (익절 근접)
+- `near_stop` — 현재가 <= 손절가 × 1.03 (손절 근접)
+- `sold` — 매도 완료 (buy_trade_id로 연결된 SELL 존재)
 
 ## 3. API 라우트
 
@@ -265,6 +324,22 @@ supabase/migrations/
 ## 7. 스냅샷 생성
 
 `user_portfolio_snapshots`는 기존 cron 패턴을 따라 일별로 생성:
+
 - 매일 장 마감 후 (기존 `daily-prices` cron과 연계)
-- 각 포트의 보유 종목 수익률 평균을 계산하여 기록
+- 보유 종목이 1개 이상인 포트만 대상
+- 각 포트의 보유 중인 BUY 레코드별 수익률 평균을 계산
+- `daily_return_pct`: 전일 대비 수익률 변동
+- `cumulative_return_pct`: 포트 생성일 대비 누적 수익률
 - 벤치마크 비교를 위한 시계열 데이터 축적
+
+## 8. 차트 오버레이 확장 전략
+
+기존 `candle-chart.tsx`의 Props를 선택적(optional) props로 확장:
+
+- `portfolioOverlays?: PortfolioOverlay[]` — 포트별 마커 + 프라이스라인 데이터
+- 기존 `signalMarkers?` props는 변경 없이 유지
+- 기존 사용처(AI 포트폴리오 페이지)는 영향 없음
+
+## 9. 현재가 시점 제한
+
+장 시간 외(야간, 주말)에는 `stock_cache`에 마지막 거래 시점의 가격이 그대로 남아 있어 수익률이 해당 시점 기준으로 표시됨. 이는 기존 AI 포트폴리오와 동일한 한계이며, `price_as_of` 필드를 통해 클라이언트에서 "XX분 전 기준" 안내를 표시함.
