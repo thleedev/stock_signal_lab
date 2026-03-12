@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { PortfolioTabs } from "./components/portfolio-tabs";
 import { PortfolioSummary } from "./components/portfolio-summary";
-import { HoldingsTable } from "./components/holdings-table";
+import { HoldingsTable, type Holding } from "./components/holdings-table";
 import { TradeModal } from "./components/trade-modal";
 import { PerformanceChart } from "./components/performance-chart";
 
@@ -12,22 +12,6 @@ interface Portfolio {
   name: string;
   is_default: boolean;
   sort_order: number;
-}
-
-interface Holding {
-  trade_id: number;
-  portfolio_id: number;
-  symbol: string;
-  name: string;
-  buy_price: number;
-  current_price: number;
-  return_pct: number;
-  target_price: number | null;
-  stop_price: number | null;
-  status: string;
-  note: string | null;
-  bought_at: string;
-  latest_signal: { type: string; source: string; date: string } | null;
 }
 
 interface Summary {

@@ -1,7 +1,8 @@
 "use client";
 
-interface Holding {
+export interface Holding {
   trade_id: number;
+  portfolio_id?: number;
   symbol: string;
   name: string;
   buy_price: number;
