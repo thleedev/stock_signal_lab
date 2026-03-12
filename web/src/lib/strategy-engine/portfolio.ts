@@ -141,23 +141,51 @@ export async function getPortfolioValue(
   holdings: PortfolioHolding[];
   total_value: number;
 }> {
-  const cash = await getPortfolioCash(supabase, source, execType);
-  const holdings = await getHoldings(supabase, source, execType);
+  const [cash, holdings] = await Promise.all([
+    getPortfolioCash(supabase, source, execType),
+    getHoldings(supabase, source, execType),
+  ]);
 
-  // 보유 종목의 현재 가격 조회 (daily_prices 최신 종가)
+  // 보유 종목의 현재 가격 일괄 조회 (stock_cache 현재가 우선, fallback: daily_prices 최신 종가)
   let holdingsValue = 0;
-  for (const h of holdings) {
-    const { data: price } = await supabase
-      .from('daily_prices')
-      .select('close')
-      .eq('symbol', h.symbol)
-      .order('date', { ascending: false })
-      .limit(1)
-      .single();
+  if (holdings.length > 0) {
+    const symbols = holdings.map((h) => h.symbol);
 
-    const currentPrice = price?.close ?? h.avg_price;
-    h.current_price = currentPrice;
-    holdingsValue += currentPrice * h.quantity;
+    // stock_cache에서 현재가 일괄 조회
+    const { data: cacheRows } = await supabase
+      .from('stock_cache')
+      .select('symbol, current_price')
+      .in('symbol', symbols);
+
+    const priceMap = new Map<string, number>();
+    for (const row of cacheRows ?? []) {
+      if (row.current_price != null) {
+        priceMap.set(row.symbol, row.current_price);
+      }
+    }
+
+    // stock_cache에 없는 종목만 daily_prices에서 조회
+    const missing = symbols.filter((s) => !priceMap.has(s));
+    if (missing.length > 0) {
+      const { data: priceRows } = await supabase
+        .from('daily_prices')
+        .select('symbol, close, date')
+        .in('symbol', missing)
+        .order('date', { ascending: false });
+
+      // 종목별 최신 종가만 사용
+      for (const row of priceRows ?? []) {
+        if (!priceMap.has(row.symbol) && row.close != null) {
+          priceMap.set(row.symbol, row.close);
+        }
+      }
+    }
+
+    for (const h of holdings) {
+      const currentPrice = priceMap.get(h.symbol) ?? h.avg_price;
+      h.current_price = currentPrice;
+      holdingsValue += currentPrice * h.quantity;
+    }
   }
 
   return {

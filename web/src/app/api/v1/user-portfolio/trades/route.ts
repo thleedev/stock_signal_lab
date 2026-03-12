@@ -95,3 +95,74 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ trade: data }, { status: 201 });
 }
+
+export async function PATCH(request: Request) {
+  const supabase = createServiceClient();
+  const body = await request.json();
+  const { trade_id, target_price, stop_price, portfolio_id } = body;
+
+  if (!trade_id) {
+    return NextResponse.json({ error: "trade_id는 필수입니다" }, { status: 400 });
+  }
+
+  const update: Record<string, unknown> = {};
+  if (target_price !== undefined) update.target_price = target_price;
+  if (stop_price !== undefined) update.stop_price = stop_price;
+  if (portfolio_id !== undefined) update.portfolio_id = portfolio_id;
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "변경할 필드가 없습니다" }, { status: 400 });
+  }
+
+  const { data, error } = await supabase
+    .from("user_trades")
+    .update(update)
+    .eq("id", trade_id)
+    .eq("side", "BUY")
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ trade: data });
+}
+
+export async function DELETE(request: Request) {
+  const supabase = createServiceClient();
+  const { searchParams } = new URL(request.url);
+  const tradeId = searchParams.get("trade_id");
+
+  if (!tradeId) {
+    return NextResponse.json({ error: "trade_id는 필수입니다" }, { status: 400 });
+  }
+
+  // BUY 거래만 삭제 가능 (매도 기록이 없는 경우만)
+  const { data: buyTrade } = await supabase
+    .from("user_trades")
+    .select("id")
+    .eq("id", tradeId)
+    .eq("side", "BUY")
+    .single();
+
+  if (!buyTrade) {
+    return NextResponse.json({ error: "유효하지 않은 매수 거래입니다" }, { status: 400 });
+  }
+
+  const { data: existingSell } = await supabase
+    .from("user_trades")
+    .select("id")
+    .eq("buy_trade_id", tradeId)
+    .eq("side", "SELL")
+    .single();
+
+  if (existingSell) {
+    return NextResponse.json({ error: "이미 매도 완료된 거래는 삭제할 수 없습니다" }, { status: 409 });
+  }
+
+  const { error } = await supabase
+    .from("user_trades")
+    .delete()
+    .eq("id", tradeId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ success: true });
+}

@@ -22,6 +22,7 @@ const COLORS = [
 ];
 
 export function PortfolioSelector({ portfolios, selectedId, onChange }: Props) {
+  // "전체" (기본 포트)는 뷰 전용이므로 선택 대상에서 제외
   const selectablePortfolios = portfolios.filter((p) => !p.is_default);
 
   return (

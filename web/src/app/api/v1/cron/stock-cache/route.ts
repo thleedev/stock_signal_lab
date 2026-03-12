@@ -71,16 +71,15 @@ export async function POST(request: NextRequest) {
         return row;
       });
 
-      const { error: e, count } = await supabase
+      const { error: e } = await supabase
         .from('stock_cache')
-        .upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false })
-        .select('symbol');
+        .upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
 
       if (e) {
         console.error(`[stock-cache] Batch upsert error:`, e.message);
         failed += batch.length;
       } else {
-        updated += count ?? batch.length;
+        updated += batch.length;
       }
     }
     lap(`가격 업데이트 완료: ${updated}성공 ${failed}실패 ${skipped}스킵`);
@@ -121,16 +120,17 @@ export async function POST(request: NextRequest) {
       lap(`신호 집계 완료: ${signalEntries.length}종목`);
     }
 
-    // Step 4: 보유/관심 상태 동기화
+    // Step 4: 보유/관심 상태 동기화 (즐겨찾기 종목만 업데이트)
     const { data: favorites } = await supabase
       .from('favorite_stocks')
       .select('symbol');
 
-    if (favorites) {
+    if (favorites && favorites.length > 0) {
       const favSymbols = favorites.map((f) => f.symbol);
-      await supabase.from('stock_cache').update({ is_favorite: false }).not('symbol', 'in', `(${favSymbols.join(',')})`);
-      if (favSymbols.length > 0) {
-        await supabase.from('stock_cache').update({ is_favorite: true }).in('symbol', favSymbols);
+      const FAV_BATCH = 500;
+      for (let i = 0; i < favSymbols.length; i += FAV_BATCH) {
+        const batch = favSymbols.slice(i, i + FAV_BATCH);
+        await supabase.from('stock_cache').update({ is_favorite: true }).in('symbol', batch);
       }
     }
     lap('완료');

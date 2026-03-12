@@ -52,7 +52,9 @@ export function TradeModal({
     setNote("");
     setSearchQuery("");
     setSearchResults([]);
-    setSelectedPortfolioId(null);
+    // "전체" (기본 포트)는 뷰 전용 → 비기본 포트 중 첫 번째 자동 선택
+    const userPorts = portfolios.filter((p) => !p.is_default);
+    setSelectedPortfolioId(userPorts[0]?.id ?? null);
 
     if (initialPrice) {
       setPrice(initialPrice);
@@ -66,11 +68,25 @@ export function TradeModal({
     if (initialSymbol) {
       setSymbol(initialSymbol);
       setStockName(initialName ?? "");
+      // initialPrice 없으면 현재가 조회
+      if (!initialPrice) {
+        fetch(`/api/v1/user-portfolio/search?q=${encodeURIComponent(initialSymbol)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            const match = (data.stocks ?? []).find((s: { symbol: string }) => s.symbol === initialSymbol);
+            if (match?.current_price) {
+              setPrice(match.current_price);
+              setTargetPrice(Math.round(match.current_price * 1.10));
+              setStopPrice(Math.round(match.current_price * 0.95));
+            }
+          })
+          .catch(() => {});
+      }
     } else {
       setSymbol("");
       setStockName("");
     }
-  }, [isOpen, initialPrice, initialSymbol, initialName]);
+  }, [isOpen, initialPrice, initialSymbol, initialName, portfolios]);
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
@@ -145,7 +161,7 @@ export function TradeModal({
       <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] overflow-y-auto p-5">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold text-[var(--foreground)]">
-            {mode === "buy" ? "종목 매수" : "종목 매도"}
+            {mode === "buy" ? "포트에 추가" : "종목 매도"}
           </h2>
           <button onClick={onClose} className="p-1 rounded hover:bg-[var(--card-hover)]">
             <X className="w-4 h-4 text-[var(--muted)]" />
@@ -204,7 +220,7 @@ export function TradeModal({
               onChange={setPrice}
               presets={[-10, -5, 0, 5, 10]}
               sliderRange={[-15, 15]}
-              label={mode === "buy" ? "매수가" : "매도가"}
+              label={mode === "buy" ? "현재가" : "매도가"}
               color="green"
             />
 
@@ -238,11 +254,17 @@ export function TradeModal({
         {/* Portfolio selector (buy mode) */}
         {mode === "buy" && (
           <div className="mb-3">
-            <PortfolioSelector
-              portfolios={portfolios}
-              selectedId={selectedPortfolioId}
-              onChange={setSelectedPortfolioId}
-            />
+            {portfolios.filter((p) => !p.is_default).length > 0 ? (
+              <PortfolioSelector
+                portfolios={portfolios}
+                selectedId={selectedPortfolioId}
+                onChange={setSelectedPortfolioId}
+              />
+            ) : (
+              <div className="text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded-lg px-3 py-2">
+                포트를 먼저 생성해주세요. (포트 종목 탭에서 + 버튼)
+              </div>
+            )}
           </div>
         )}
 
@@ -267,7 +289,7 @@ export function TradeModal({
               : "bg-blue-600 hover:bg-blue-700 disabled:bg-blue-900/50 disabled:text-blue-300"
           }`}
         >
-          {isSubmitting ? "처리 중..." : mode === "buy" ? "매수 확인" : "매도 확인"}
+          {isSubmitting ? "처리 중..." : mode === "buy" ? "추가 확인" : "매도 확인"}
         </button>
       </div>
     </div>

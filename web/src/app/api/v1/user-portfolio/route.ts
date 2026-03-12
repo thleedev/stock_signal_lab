@@ -73,6 +73,24 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const supabase = createServiceClient();
   const body = await request.json();
+
+  // 일괄 순서 변경: { orders: [{id, sort_order}] }
+  if (body.orders && Array.isArray(body.orders)) {
+    const results = await Promise.all(
+      body.orders.map((o: { id: number; sort_order: number }) =>
+        supabase
+          .from("user_portfolios")
+          .update({ sort_order: o.sort_order })
+          .eq("id", o.id)
+          .is("deleted_at", null)
+      )
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) return NextResponse.json({ error: failed.error.message }, { status: 500 });
+    return NextResponse.json({ success: true });
+  }
+
+  // 개별 수정: { id, name?, sort_order? }
   const { id, name, sort_order } = body;
 
   if (!id) {

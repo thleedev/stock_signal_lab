@@ -8,36 +8,12 @@ export const dynamic = 'force-dynamic';
 let naverCache: { data: Map<string, StockPriceData>; ts: number } | null = null;
 const CACHE_TTL = 60_000;
 
-/** DB에 최근 60초 이내 업데이트가 있는지 확인 (다른 인스턴스가 갱신했을 수 있음) */
-async function isDbCacheFresh(): Promise<boolean> {
-  const supabase = createServiceClient();
-  const { data } = await supabase
-    .from('stock_cache')
-    .select('updated_at')
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .single();
-  if (!data?.updated_at) return false;
-  return Date.now() - new Date(data.updated_at).getTime() < CACHE_TTL;
-}
-
-/**
- * 실시간 가격 조회. 반환값:
- * - { source: 'memory' | 'naver', data: Map } → priceMap에서 읽기
- * - { source: 'db' } → DB가 이미 최신이므로 stock_cache에서 읽기
- */
-async function getLivePrices(): Promise<{ source: 'memory' | 'naver' | 'db'; data?: Map<string, StockPriceData> }> {
-  // 1) 같은 인스턴스 메모리 캐시 확인
+/** 실시간 가격 조회 (메모리 캐시 → 네이버 API) */
+async function getLivePrices(): Promise<{ source: 'memory' | 'naver'; data: Map<string, StockPriceData> }> {
   if (naverCache && Date.now() - naverCache.ts < CACHE_TTL) {
     return { source: 'memory', data: naverCache.data };
   }
 
-  // 2) 다른 인스턴스가 이미 DB를 갱신했으면 네이버 API 호출 스킵
-  if (await isDbCacheFresh()) {
-    return { source: 'db' };
-  }
-
-  // 3) 네이버 API 호출
   const data = await fetchAllStockPrices();
   naverCache = { data, ts: Date.now() };
 
@@ -104,36 +80,7 @@ export async function GET(request: NextRequest) {
 
   if (live) {
     const liveResult = await getLivePrices();
-
-    // DB가 이미 최신이면 stock_cache에서 읽기 (네이버 API 호출 스킵)
-    if (liveResult.source === 'db') {
-      const supabase = createServiceClient();
-      const { data: dbData } = await supabase
-        .from('stock_cache')
-        .select('symbol, current_price, price_change, price_change_pct, volume, market_cap')
-        .in('symbol', symbols);
-
-      const dbResult: Record<string, {
-        current_price: number | null;
-        price_change: number | null;
-        price_change_pct: number | null;
-        volume: number | null;
-        market_cap: number | null;
-      }> = {};
-      for (const row of dbData ?? []) {
-        dbResult[row.symbol] = {
-          current_price: row.current_price,
-          price_change: row.price_change,
-          price_change_pct: row.price_change_pct,
-          volume: row.volume,
-          market_cap: row.market_cap,
-        };
-      }
-      return NextResponse.json({ data: dbResult, source: 'db_cache' });
-    }
-
-    // 메모리 캐시 또는 네이버 API에서 읽기
-    const priceMap = liveResult.data!;
+    const priceMap = liveResult.data;
     const result: Record<string, {
       current_price: number | null;
       price_change: number | null;

@@ -172,9 +172,9 @@ export default function GapClient({ stocks: initialStocks, favSymbols, watchlist
           {/* Gap 방향 */}
           <div className="flex gap-1">
             {([
-              { key: "negative", label: "매수가↓ 하락 (매수기회)" },
+              { key: "negative", label: "매수가↓" },
               { key: "all", label: "전체" },
-              { key: "positive", label: "매수가↑ 상승" },
+              { key: "positive", label: "매수가↑" },
             ] as const).map((f) => (
               <button
                 key={f.key}
