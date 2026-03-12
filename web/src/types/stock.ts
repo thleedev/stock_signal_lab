@@ -47,6 +47,8 @@ export interface WatchlistItem {
   memo: string | null;
   sort_order: number;
   buy_price: number | null;
+  stop_loss_price: number | null;
+  target_price: number | null;
 }
 
 // 전종목 필터

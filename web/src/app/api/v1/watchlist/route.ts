@@ -20,7 +20,10 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const supabase = createServiceClient();
   const body = await request.json();
-  const { symbol, name, memo, buy_price } = body as { symbol: string; name: string; memo?: string; buy_price?: number };
+  const { symbol, name, memo, buy_price, stop_loss_price, target_price } = body as {
+    symbol: string; name: string; memo?: string; buy_price?: number;
+    stop_loss_price?: number; target_price?: number;
+  };
 
   if (!symbol || !name) {
     return NextResponse.json({ error: 'symbol and name required' }, { status: 400 });
@@ -52,6 +55,8 @@ export async function POST(request: NextRequest) {
       name,
       memo: memo || null,
       buy_price: buy_price ?? null,
+      stop_loss_price: stop_loss_price ?? null,
+      target_price: target_price ?? null,
       sort_order: (maxSort?.sort_order ?? 0) + 1,
     })
     .select()
@@ -66,15 +71,23 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   const supabase = createServiceClient();
   const body = await request.json();
-  const { symbol, buy_price } = body as { symbol: string; buy_price: number | null };
+  const { symbol, buy_price, stop_loss_price, target_price } = body as {
+    symbol: string; buy_price?: number | null;
+    stop_loss_price?: number | null; target_price?: number | null;
+  };
 
   if (!symbol) {
     return NextResponse.json({ error: 'symbol required' }, { status: 400 });
   }
 
+  const updates: Record<string, unknown> = {};
+  if (buy_price !== undefined) updates.buy_price = buy_price;
+  if (stop_loss_price !== undefined) updates.stop_loss_price = stop_loss_price;
+  if (target_price !== undefined) updates.target_price = target_price;
+
   const { data, error } = await supabase
     .from('watchlist')
-    .update({ buy_price })
+    .update(updates)
     .eq('symbol', symbol)
     .select()
     .single();
