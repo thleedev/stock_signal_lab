@@ -13,11 +13,18 @@ export default async function SettingsPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  // 즐겨찾기 종목 조회
-  const { data: favorites } = await supabase
-    .from("favorite_stocks")
-    .select("*")
-    .order("added_at", { ascending: false });
+  // 즐겨찾기 종목 조회 + 그룹 데이터 로드
+  const [{ data: favorites }, { data: groupRows }, { data: gsRows }] = await Promise.all([
+    supabase.from("favorite_stocks").select("*").order("added_at", { ascending: false }),
+    supabase.from("watchlist_groups").select("*").order("sort_order"),
+    supabase.from("watchlist_group_stocks").select("group_id, symbol"),
+  ]);
+
+  const symbolGroupIds: Record<string, string[]> = {};
+  for (const r of gsRows ?? []) {
+    if (!symbolGroupIds[r.symbol]) symbolGroupIds[r.symbol] = [];
+    symbolGroupIds[r.symbol].push(r.group_id);
+  }
 
   // 수집기 heartbeat 조회
   const { data: heartbeats } = await supabase
@@ -142,9 +149,10 @@ export default async function SettingsPage() {
             favorites={(favorites || []).map((f: Record<string, string>) => ({
               symbol: f.symbol,
               name: f.name,
-              group_name: f.group_name || null,
               added_at: f.added_at,
             }))}
+            groups={groupRows ?? []}
+            symbolGroupIds={symbolGroupIds}
           />
         </div>
       </section>
