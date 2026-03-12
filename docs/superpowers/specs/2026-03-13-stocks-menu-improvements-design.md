@@ -1,126 +1,175 @@
 # 종목 메뉴 개선 설계
 
 **날짜**: 2026-03-13
-**범위**: `StockListClient`, `WatchlistGroupTabs`, `StockActionMenu`, `stock-action-menu.tsx`, `page.tsx`
+**범위**: `StockListClient`, `WatchlistGroupTabs`, `StockActionMenu`, `page.tsx`, `group-drop-zone.tsx`(신규)
 
 ---
 
 ## 1. 제목 + 갱신 버튼 양쪽 정렬
 
-### 현재 구조
-- `page.tsx` (서버 컴포넌트): `<h1>종목</h1>` + 설명 텍스트
-- `stock-list-client.tsx` (클라이언트): 별도 `div`에 갱신 버튼 + 업데이트 시각
+**현재**: `page.tsx`에 제목, `StockListClient` 별도 div에 갱신 버튼
+**변경**: `page.tsx`의 `<h1>종목</h1>` 섹션 제거 → `StockListClient` 최상단에 통합 헤더 추가
 
-### 변경
-- `page.tsx`의 제목 섹션 제거
-- `StockListClient` 최상단에 `flex items-center justify-between` 헤더 행 추가:
-  - 왼쪽: `<h1>종목</h1>` + 설명
-  - 오른쪽: 업데이트 시각 + 갱신 버튼
+```tsx
+<div className="flex items-start justify-between gap-4">
+  <div>
+    <h1 className="text-2xl font-bold">종목</h1>
+    <p className="text-sm text-[var(--muted)] mt-1">관심종목 그룹 관리 및 전체 종목 조회</p>
+  </div>
+  <div className="flex items-center gap-2 flex-shrink-0">
+    {priceUpdateLabel && <span className="text-xs ...">{priceUpdateLabel}</span>}
+    <button onClick={refreshPrices}>갱신</button>
+  </div>
+</div>
+```
 
 ---
 
 ## 2. 탭 기능 확장
 
 ### 2-A. 탭 이름 인라인 변경
-- `SortableTab` 컴포넌트에 `isEditing` 상태 추가
-- 더블클릭 → `<input>` 렌더링 (현재 그룹명 pre-fill)
-- Enter / blur → `PATCH /api/v1/watchlist-groups/:id { name }` 호출
-- 성공 시 `setGroups`로 로컬 상태 업데이트
-- 기본 그룹(`is_default=true`)은 더블클릭 이벤트 무시 (이름 변경 불가)
-- `WatchlistGroupTabs`에 `onGroupRename: (group: WatchlistGroup, newName: string) => Promise<void>` 콜백 추가
 
-### 2-B. 탭 드래그앤드랍 (기본 그룹 포함 전체 정렬)
-- 현재: 커스텀 그룹만 `SortableContext`에 포함
-- 변경: 기본 그룹도 포함하여 모든 그룹 드래그 가능
-- 기본 그룹은 삭제/이름변경만 불가 (서버 가드), 순서 변경은 허용
-- `onGroupsReorder` 콜백은 전체 그룹 id 배열 전달로 확장
-- reorder API(`PUT /api/v1/watchlist-groups/reorder`)는 `is_default` 여부 무관하게 sort_order만 업데이트
+- `SortableTab` 컴포넌트에 `isEditing` 로컬 상태 추가
+- 더블클릭(`onDoubleClick`) → `isEditing = true` → `<input>` 렌더링 (현재 그룹명 pre-fill)
+- Enter / blur → `onGroupRename(group, newName.trim())` 호출 → `PATCH /api/v1/watchlist-groups/:id` (이미 존재하는 엔드포인트)
+- **드래그-더블클릭 충돌 해결**: dblclick은 PointerSensor activationConstraint(distance:5) 이전 이벤트이므로 `onDoubleClick` 핸들러 내에서 `event.stopPropagation()`을 호출해 dnd-kit 이벤트 전파 차단
+- 기본 그룹(`is_default=true`)은 `onDoubleClick` 핸들러 미등록 (이름 변경 불가)
+- `WatchlistGroupTabs`에 `onGroupRename: (group: WatchlistGroup, newName: string) => Promise<void>` 콜백 추가
+- `StockListClient`의 `handleGroupRename`: `PATCH` 호출 성공 시 `setGroups`로 로컬 상태 업데이트, 중복명 409 시 에러 toast
+
+### 2-B. 탭 드래그앤드랍 — 커스텀 그룹만, 기본 그룹 제외
+
+기본 그룹은 드래그 대상에서 제외하되, `SortableContext`에는 포함 가능(단, `useSortable` 미사용). 변경 없음: **기존 구현 유지** (커스텀 그룹만 `SortableContext` + `useSortable`).
+
+`WatchlistGroupTabs`의 `DndContext`에 `id="tabs-dnd"` 명시:
+```tsx
+<DndContext id="tabs-dnd" sensors={sensors} ...>
+```
+
+`onGroupsReorder` 콜백은 기존 그대로 커스텀 그룹 id 배열만 전달. `StockListClient.handleGroupsReorder`는 기본 그룹을 앞에 고정하는 기존 로직 유지.
 
 ### 2-C. 종목 행 드래그 → 그룹 드롭존
-- `StockRow`에 drag handle 열 추가 (`GripVertical` 아이콘, `useDraggable` from dnd-kit)
-- `DndContext`를 `StockListClient` 수준에서 wrapping (탭 DndContext와 별도, 중첩 불가 → 별도 컨텍스트 ID 구분)
-- 드래그 시작(`onDragStart`) → `draggingStock` 상태 설정
-- 드래그 중: 화면 하단에 `GroupDropZone` 컴포넌트 슬라이드-업 (fixed position, bottom-0)
-  - 각 그룹 버튼을 `useDroppable`로 등록
-  - 현재 종목이 속한 그룹은 이미 체크 표시
-- 드롭 완료(`onDragEnd`): `handleGroupToggle(targetGroup, draggingStock)` 호출
-- `DragOverlay`: 드래그 중 종목명 + 코드 표시
-- `draggingStock` 해제 → `GroupDropZone` 슬라이드-다운 후 언마운트
 
-**신규 컴포넌트**: `web/src/components/stocks/group-drop-zone.tsx`
+**DndContext 분리**: 탭용(`id="tabs-dnd"`)과 종목용(`id="stock-dnd"`)을 별도로 유지해 이벤트 누출 방지.
+
+**구현 구조**:
+```tsx
+// StockListClient JSX
+<DndContext id="stock-dnd" sensors={stockSensors} onDragStart={handleStockDragStart} onDragEnd={handleStockDragEnd}>
+  {/* 테이블 (StockRow에 drag handle 추가) */}
+  <DragOverlay>
+    {draggingStock && <StockDragPreview stock={draggingStock} />}
+  </DragOverlay>
+  {/* GroupDropZone (draggingStock 있을 때만 렌더) */}
+  {draggingStock && (
+    <GroupDropZone groups={groups} symGroups={symGroups} draggingSymbol={draggingStock.symbol} />
+  )}
+</DndContext>
+```
+
+**StockRow 변경**: 첫 번째 열에 `GripVertical` 아이콘(drag handle) 추가. `useDraggable({ id: stock.symbol })`로 drag 등록. handle에만 `{...listeners}` 적용 (행 전체가 아닌 핸들만 드래그 가능).
+
+**GroupDropZone 컴포넌트** (`group-drop-zone.tsx`):
+- `position: fixed; bottom: 0; left: 0; right: 0` 슬라이드-업 패널
+- 각 그룹 버튼: `useDroppable({ id: group.id })`
+- 현재 종목이 이미 속한 그룹은 이미 체크 표시
+- `DragOverlay`는 `DndContext id="stock-dnd"` 내부에 위치
+
+**handleStockDragEnd**:
+```typescript
+function handleStockDragEnd({ active, over }: DragEndEvent) {
+  setDraggingStock(null);
+  if (!over || !draggingStock) return;
+  const targetGroup = groups.find(g => g.id === over.id);
+  if (!targetGroup) return;
+  handleGroupToggle(targetGroup, draggingStock);
+}
+```
 
 ---
 
 ## 3. 즐겨찾기 상단 고정 토글
 
-- `pinFavorites: boolean` 상태 추가 (초기값 `localStorage.getItem('pinFavorites') !== 'false'`, 즉 기본 켜짐)
-- 탭 바 오른쪽에 핀 토글 버튼 (`Pin` / `PinOff` 아이콘, lucide-react)
-- `pinFavorites=true`일 때: 현재 동작 유지 (즐겨찾기 상단 고정)
-- `pinFavorites=false`일 때: 즐겨찾기와 비즐겨찾기 구분 없이 선택된 정렬 기준으로 혼합
-- 전체탭(DB 뷰)에서만 유효 (그룹 탭은 즐겨찾기만 표시하므로 핀 무의미)
-- 상태 변경 시 `localStorage.setItem('pinFavorites', ...)` 저장
+- `pinFavorites: boolean` 상태, **lazy initializer로 SSR 안전하게 처리**:
+```typescript
+const [pinFavorites, setPinFavorites] = useState<boolean>(
+  () => typeof window !== "undefined"
+    ? localStorage.getItem("pinFavorites") !== "false"
+    : true
+);
+```
+- 변경 시 `localStorage.setItem("pinFavorites", String(value))` 저장
+- 탭 바 오른쪽에 `Pin`/`PinOff` 아이콘 토글 버튼 (lucide-react)
+- **전체탭(DB 뷰)에서만 유효**: `activeTab === "all"` + `showAllStocksMode` 일 때 즐겨찾기 상단 고정 여부 제어
+- `pinFavorites=false` 시: `mergedStocks` 계산에서 favs/nonFavs 분리 없이 혼합 정렬
 
 ---
 
 ## 4. 전체탭 동작 변경
 
-### 기존
-- 전체탭 = 모든 그룹의 즐겨찾기 합집합 (탭 뷰)
-- 즐겨찾기 없으면 전체 DB 뷰
+### 변경 전
+- 전체탭 = 모든 그룹 즐겨찾기 합집합 (탭 뷰)
+- 즐겨찾기 없으면 전체 DB
 
-### 변경
-- **전체탭 = 항상 전체 DB 무한 스크롤 뷰** (즐겨찾기 유무와 무관)
-- 즐겨찾기는 `pinFavorites` 설정에 따라 상단 고정 또는 혼합
+### 변경 후
+- **전체탭 = 항상 전체 DB 무한 스크롤 뷰** (즐겨찾기 유무 무관)
 - 다른 그룹 탭 = 해당 그룹 즐겨찾기만 (검색어 없을 때)
-- `showAllStocksMode` 조건 변경: `activeTab === "all"` 이면 항상 전체DB 뷰
+- 기존 `tabFavorites` 중 `activeTab === "all"` 분기 제거
 
-### 탭별 표시 로직 정리
-| 상태 | 전체탭 | 그룹탭 |
+```typescript
+// 변경 후 showAllStocksMode
+const showAllStocksMode = activeTab === "all" || (favSet.size === 0 && !showSearchMode);
+```
+
+| 탭 | 검색어 없음 | 검색어 있음 |
 |---|---|---|
-| 검색어 없음 | 전체 DB (즐겨찾기 상단 고정 토글) | 해당 그룹 즐겨찾기만 |
-| 검색어 있음 | 전체 DB 검색 결과 (즐겨찾기 필터링 포함) | 해당 그룹 즐겨찾기 중 일치 + DB 검색 결과 |
+| 전체탭 | 전체 DB (즐겨찾기 상단 고정 토글) | 전체 DB 검색 (즐겨찾기 필터링 포함) |
+| 그룹탭 | 해당 그룹 즐겨찾기만 | 해당 그룹 즐겨찾기 중 일치 + DB 비즐겨찾기 |
 
 ---
 
 ## 5. 검색어 입력 시 즐겨찾기 필터링
 
-### 현재
-- 검색 모드에서 `displayStocks.favs` = 전체 즐겨찾기 (쿼리 무관)
-
-### 변경
-- 검색 모드에서 `displayStocks.favs` = `query`로 `name/symbol` 필터링된 즐겨찾기
-- 그룹탭 + 검색어: 해당 그룹 즐겨찾기 중 검색어에 맞는 것 + DB 검색 결과 (비즐겨찾기)
-- 전체탭 + 검색어: 전체 즐겨찾기 중 검색어에 맞는 것 + DB 검색 결과 (비즐겨찾기)
+현재 검색 모드에서 `displayStocks.favs` = 전체 즐겨찾기 (쿼리 무관).
+**변경**: `mergedStocks` 계산 시 검색어로 즐겨찾기 필터링:
 
 ```typescript
-// mergedStocks 계산 시
-const filteredFavs = showSearchMode
-  ? favStocks.filter(s =>
-      s.name.includes(query) || s.symbol.includes(query.toUpperCase())
-    )
-  : favStocks;
+const mergedStocks = useMemo(() => {
+  const q = query.trim().toLowerCase();
+  const baseFavs = activeTab === "all"
+    ? favStocks  // 전체탭: 모든 즐겨찾기
+    : favStocks.filter(s => (symGroups[s.symbol] ?? []).includes(activeTab)); // 그룹탭: 해당 그룹만
+
+  const filteredFavs = showSearchMode && q
+    ? baseFavs.filter(s =>
+        s.name.toLowerCase().includes(q) || s.symbol.toLowerCase().includes(q)
+      )
+    : baseFavs;
+
+  const favSymbols = new Set(filteredFavs.map(f => f.symbol));
+  const updatedFavs = filteredFavs.map(fav => stocks.find(s => s.symbol === fav.symbol) ?? fav);
+  const nonFavs = stocks.filter(s => !favSymbols.has(s.symbol));
+  return { favs: updatedFavs, nonFavs };
+}, [stocks, favStocks, query, showSearchMode, activeTab, symGroups]);
 ```
 
 ---
 
 ## 6. 낙관적 업데이트 버그 수정
 
-### 현재 문제
-`handleGroupToggle`에서 `await fetch()` 이후 state 업데이트 → API 응답 대기 중 UI 불변
+**현재 문제**: `handleGroupToggle`에서 `await fetch()` 이후 state 업데이트 → API 응답 대기 중 UI 불변
 
-### 수정 방법
-1. fetch **이전**에 먼저 `setSymGroups` / `setFavSet` / `setFavStocks` 업데이트 (낙관적)
-2. API 실패 시 이전 상태로 롤백 (`prevSymGroups`, `prevFavSet`, `prevFavStocks` 스냅샷 보존)
+**수정**: fetch 전에 먼저 state 업데이트, 실패 시 스냅샷(`symGroups`, `favSet`, `favStocks`) 롤백:
 
 ```typescript
-const handleGroupToggle = useCallback(async (group, stockOverride?) => {
+const handleGroupToggle = useCallback(async (group: WatchlistGroup, stockOverride?: StockCache) => {
   const stock = stockOverride ?? groupPopup?.stock;
   if (!stock) return;
 
   // 롤백용 스냅샷
   const prevSymGroups = symGroups;
-  const prevFavSet = favSet;
-  const prevFavStocks = favStocks;
+  const prevFavSet = new Set(favSet);
+  const prevFavStocks = [...favStocks];
 
   const currentGroups = symGroups[stock.symbol] ?? [];
   const inGroup = currentGroups.includes(group.id);
@@ -144,11 +193,18 @@ const handleGroupToggle = useCallback(async (group, stockOverride?) => {
   // API 호출 (실패 시 롤백)
   try {
     if (inGroup) {
-      await fetch(`/api/v1/watchlist-groups/${group.id}/stocks/${stock.symbol}`, { method: "DELETE" });
+      const res = await fetch(`/api/v1/watchlist-groups/${group.id}/stocks/${stock.symbol}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
     } else {
-      await fetch(`/api/v1/watchlist-groups/${group.id}/stocks`, { method: "POST", ... });
+      const res = await fetch(`/api/v1/watchlist-groups/${group.id}/stocks`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: stock.symbol, name: stock.name }),
+      });
+      if (!res.ok && !(await res.json().then(j => j.error?.includes("이미")))) throw new Error();
     }
   } catch {
+    // 롤백
     setSymGroups(prevSymGroups);
     setFavSet(prevFavSet);
     setFavStocks(prevFavStocks);
@@ -160,17 +216,14 @@ const handleGroupToggle = useCallback(async (group, stockOverride?) => {
 
 ## 7. 팝업 버튼 재구성
 
-### 현재 순서
-1. 포트에 추가/삭제
-2. 즐겨찾기 추가/해제 (★)
-3. 상세보기
+**현재 순서**: 포트에 추가 → 즐겨찾기 추가/해제(★) → 상세보기
+**변경 후 순서**: 상세보기 → 포트에 추가 → 관심그룹 일괄 해제 (★ 버튼 제거)
 
-### 변경 후 순서
-1. 상세보기
-2. 포트에 추가/삭제
-3. 관심그룹 일괄 해제 (즐겨찾기인 경우만 표시, `isFavorite=true`일 때)
-
-**"관심그룹 일괄 해제"**: 클릭 시 `onToggleFavorite()` 호출 (부모의 `handleStarClick` 위임, 모든 그룹 제거 로직 동일)
+**"관심그룹 일괄 해제"** 신규 버튼:
+- `isFavorite=true`일 때만 렌더
+- 클릭 시 `onToggleFavorite()` 호출 → 부모의 `handleStarClick`이 모든 그룹에서 제거 처리 (기존 로직 재사용)
+- 아이콘: `StarOff` (lucide-react)
+- 레이블: "관심그룹 일괄 해제"
 
 ---
 
@@ -179,7 +232,7 @@ const handleGroupToggle = useCallback(async (group, stockOverride?) => {
 | 파일 | 변경 내용 |
 |---|---|
 | `web/src/app/stocks/page.tsx` | 제목 섹션 제거 |
-| `web/src/components/stocks/stock-list-client.tsx` | 헤더 통합, 전체탭 로직, 검색 필터링, 낙관적 업데이트, 핀 토글, 드래그 컨텍스트 |
-| `web/src/components/stocks/watchlist-group-tabs.tsx` | 인라인 이름 변경, 전체 그룹 드래그, onGroupRename 콜백 |
-| `web/src/components/stocks/group-drop-zone.tsx` | 신규: 드래그 드롭존 |
-| `web/src/components/common/stock-action-menu.tsx` | 버튼 순서/내용 변경 |
+| `web/src/components/stocks/stock-list-client.tsx` | 헤더 통합, 전체탭 로직, 검색 필터링, 낙관적 업데이트, 핀 토글, 종목 DndContext |
+| `web/src/components/stocks/watchlist-group-tabs.tsx` | `DndContext id="tabs-dnd"` 추가, 인라인 이름 변경, `onGroupRename` 콜백 |
+| `web/src/components/stocks/group-drop-zone.tsx` | 신규: 종목 드래그 드롭존 |
+| `web/src/components/common/stock-action-menu.tsx` | 버튼 순서 변경, "관심그룹 일괄 해제" 신규 버튼 |
