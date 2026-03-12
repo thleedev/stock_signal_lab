@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
+import { DateSelector } from "@/components/common/date-selector";
+import { getLastNDays } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -13,16 +15,16 @@ export const revalidate = 30;
 export default async function SignalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string }>;
+  searchParams: Promise<{ source?: string; date?: string }>;
 }) {
   const params = await searchParams;
   const activeSource = params.source || "all";
   const supabase = createServiceClient();
 
-  // 한국 시간 기준 오늘
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const today = kst.toISOString().slice(0, 10);
+  // 날짜: searchParams에서 가져오거나 KST 오늘
+  const last7 = getLastNDays(7);
+  const selectedDate = params.date && last7.includes(params.date) ? params.date : last7[0];
+  const today = selectedDate;
 
   // 오늘 신호 전체 조회
   let query = supabase
@@ -92,25 +94,34 @@ export default async function SignalsPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">오늘의 신호</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">{today} 기준</p>
+        <h1 className="text-2xl font-bold">AI 신호</h1>
+        <p className="text-sm text-[var(--muted)] mt-1">{selectedDate} 기준</p>
       </div>
+
+      {/* 날짜 선택 */}
+      <DateSelector basePath="/signals" selectedDate={selectedDate} />
 
       {/* 소스 탭 */}
       <div className="flex gap-2">
-        {sources.map((src) => (
-          <Link
-            key={src}
-            href={src === "all" ? "/signals" : `/signals?source=${src}`}
-            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-              activeSource === src
-                ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]"
-            }`}
-          >
-            {src === "all" ? "전체" : SOURCE_LABELS[src]}
-          </Link>
-        ))}
+        {sources.map((src) => {
+          const params = new URLSearchParams();
+          if (selectedDate !== last7[0]) params.set("date", selectedDate);
+          if (src !== "all") params.set("source", src);
+          const qs = params.toString();
+          return (
+            <Link
+              key={src}
+              href={qs ? `/signals?${qs}` : "/signals"}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                activeSource === src
+                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                  : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]"
+              }`}
+            >
+              {src === "all" ? "전체" : SOURCE_LABELS[src]}
+            </Link>
+          );
+        })}
       </div>
 
       {/* 매수/매도 2컬럼 */}
