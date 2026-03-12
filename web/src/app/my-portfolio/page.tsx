@@ -5,6 +5,7 @@ import { PortfolioTabs } from "./components/portfolio-tabs";
 import { PortfolioSummary } from "./components/portfolio-summary";
 import { HoldingsTable } from "./components/holdings-table";
 import { TradeModal } from "./components/trade-modal";
+import { PerformanceChart } from "./components/performance-chart";
 
 interface Portfolio {
   id: number;
@@ -112,6 +113,9 @@ export default function MyPortfolioPage() {
           📊 포트 비교
         </a>
       </div>
+
+      {/* 포트 성과 비교 차트 */}
+      <PerformanceChart portfolioId={activePortfolioId ?? undefined} />
 
       {/* 매수/매도 모달 */}
       <TradeModal
