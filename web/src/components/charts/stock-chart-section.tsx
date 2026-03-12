@@ -3,6 +3,8 @@
 import { useState, useMemo, memo } from "react";
 import dynamic from "next/dynamic";
 
+import type { PortfolioOverlay } from "./candle-chart";
+
 const CandleChart = dynamic(() => import("./candle-chart"), { ssr: false });
 
 interface PriceData {
@@ -30,10 +32,11 @@ interface Props {
   prices: PriceData[];
   signalDates: string[];
   signalMarkers?: SignalMarker[];
+  portfolioOverlays?: PortfolioOverlay[];
   initialPeriod?: number;
 }
 
-export default function StockChartSection({ prices, signalDates, signalMarkers, initialPeriod = 30 }: Props) {
+export default function StockChartSection({ prices, signalDates, signalMarkers, portfolioOverlays, initialPeriod = 30 }: Props) {
   const [period, setPeriod] = useState(initialPeriod);
 
   const filteredPrices = useMemo(() => {
@@ -64,7 +67,7 @@ export default function StockChartSection({ prices, signalDates, signalMarkers, 
         </div>
       </div>
       <div className="p-4">
-        <CandleChart data={filteredPrices} signalDates={signalSet} signalMarkers={signalMarkers} height={300} />
+        <CandleChart data={filteredPrices} signalDates={signalSet} signalMarkers={signalMarkers} portfolioOverlays={portfolioOverlays} height={300} />
         <div className="flex gap-4 mt-3 text-xs text-[var(--muted)]">
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 h-3 rounded-sm bg-red-600" /> 상승

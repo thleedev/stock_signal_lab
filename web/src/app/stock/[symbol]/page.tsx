@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
-import StockChartSection from "@/components/charts/stock-chart-section";
-import StockPriceHeader from "@/components/stock/stock-price-header";
+import StockDetailClient from "@/components/stock/stock-detail-client";
 
 const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",
@@ -120,18 +119,17 @@ export default async function StockDetailPage({
             <h1 className="text-2xl font-bold">{stockName}</h1>
             <span className="text-sm text-[var(--muted)]">{symbol}</span>
           </div>
-          <StockPriceHeader
-            symbol={symbol}
-            initialPrice={currentPrice}
-            initialChange={priceChange}
-            initialChangePct={priceChangePct}
-            priceDate={priceDate}
-          />
         </div>
       </div>
 
-      {/* 가격 차트 (기간 탭 내장, 클라이언트에서 필터링) */}
-      <StockChartSection
+      {/* 가격 + 매수 버튼 + 포트폴리오 오버레이 + 차트 */}
+      <StockDetailClient
+        symbol={symbol}
+        stockName={stockName}
+        currentPrice={currentPrice}
+        priceChange={priceChange}
+        priceChangePct={priceChangePct}
+        priceDate={priceDate}
         prices={priceList.map((p) => ({
           date: p.date,
           open: Number(p.open),
