@@ -91,3 +91,11 @@ export interface StockRealtimeData {
   price_change: number | null;
   price_change_pct: number | null;
 }
+
+export interface WatchlistGroup {
+  id: string;
+  name: string;
+  sort_order: number;
+  is_default: boolean;
+  created_at: string;
+}
