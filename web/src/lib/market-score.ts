@@ -4,7 +4,8 @@
  * 10개 지표를 정규화 → 방향 보정 → 가중 평균으로 종합 점수 산출
  */
 
-import type { IndicatorWeight, MarketIndicator } from '@/types/market';
+import type { IndicatorWeight } from '@/types/market';
+import { ABSOLUTE_RANGES } from '@/types/market';
 import type { MarketEvent } from '@/types/market-event';
 
 interface IndicatorData {
@@ -55,7 +56,18 @@ export function calculateMarketScore(
     const data = indicators[w.indicator_type];
     if (!data) continue;
 
-    const score = normalizeScore(data.current, data.min90d, data.max90d, w.direction);
+    // min === max이면 절대 범위 폴백
+    let min = data.min90d;
+    let max = data.max90d;
+    if (min === max) {
+      const abs = ABSOLUTE_RANGES[w.indicator_type];
+      if (abs) {
+        min = abs.min;
+        max = abs.max;
+      }
+    }
+
+    const score = normalizeScore(data.current, min, max, w.direction);
     const weightedScore = score * w.weight;
 
     breakdown[w.indicator_type] = {

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   getScoreInterpretation,
+  ABSOLUTE_RANGES,
   type IndicatorWeight,
   type MarketScoreHistory,
 } from "@/types/market";
@@ -184,10 +185,19 @@ export function MarketClient({ indicators, weights, scoreHistory, indicatorRange
       const range = indicatorRanges[ind.indicator_type];
 
       let normalized: number;
-      if (!range || range.max === range.min) {
+      let rMin = range?.min ?? 0;
+      let rMax = range?.max ?? 0;
+      if (!range || rMax === rMin) {
+        const abs = ABSOLUTE_RANGES[ind.indicator_type];
+        if (abs) {
+          rMin = abs.min;
+          rMax = abs.max;
+        }
+      }
+      if (rMax === rMin) {
         normalized = 50;
       } else {
-        const raw = ((ind.value - range.min) / (range.max - range.min)) * 100;
+        const raw = ((ind.value - rMin) / (rMax - rMin)) * 100;
         const clamped = Math.max(0, Math.min(100, raw));
         normalized = dir === -1 ? 100 - clamped : clamped;
       }

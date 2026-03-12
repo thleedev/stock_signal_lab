@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { getQuote } from '@/lib/yahoo-finance';
+import { getQuote, getHistorical } from '@/lib/yahoo-finance';
 import { calculateMarketScore, calculateEventRiskScore, calculateCombinedScore } from '@/lib/market-score';
 import { YAHOO_TICKERS, type IndicatorType, type IndicatorWeight } from '@/types/market';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   // Cron 인증
@@ -70,19 +71,67 @@ export async function POST(request: NextRequest) {
     await supabase.from('market_indicators').upsert(upsertRows, { onConflict: 'date,indicator_type' });
   }
 
+  // Step 1.5: 히스토리 데이터가 부족하면 Yahoo Finance 90일 백필
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const sinceDate = ninetyDaysAgo.toISOString().slice(0, 10);
+  const resultTypes = Object.keys(results);
+
+  const { data: existingHistory } = await supabase
+    .from('market_indicators')
+    .select('indicator_type')
+    .gte('date', sinceDate)
+    .in('indicator_type', resultTypes);
+
+  const countByType: Record<string, number> = {};
+  for (const row of existingHistory || []) {
+    countByType[row.indicator_type] = (countByType[row.indicator_type] || 0) + 1;
+  }
+
+  const needsBackfill = resultTypes.filter(type => (countByType[type] || 0) < 5);
+
+  if (needsBackfill.length > 0) {
+    console.log(`[market-indicators] Backfilling ${needsBackfill.length} indicators: ${needsBackfill.join(', ')}`);
+    const backfillResults = await Promise.allSettled(
+      needsBackfill.map(async (type) => {
+        const ticker = YAHOO_TICKERS[type as keyof typeof YAHOO_TICKERS];
+        if (!ticker) return { type, data: [] };
+        const history = await getHistorical(ticker, 90);
+        return { type, data: history };
+      })
+    );
+
+    const backfillRows: Array<Record<string, unknown>> = [];
+    for (const r of backfillResults) {
+      if (r.status !== 'fulfilled') continue;
+      const { type, data } = r.value;
+      for (const d of data) {
+        backfillRows.push({
+          date: d.date,
+          indicator_type: type,
+          value: d.close,
+          raw_data: { source: 'backfill' },
+        });
+      }
+    }
+
+    if (backfillRows.length > 0) {
+      // 50개씩 배치 upsert (Supabase 제한 대응)
+      for (let i = 0; i < backfillRows.length; i += 50) {
+        const batch = backfillRows.slice(i, i + 50);
+        await supabase.from('market_indicators')
+          .upsert(batch, { onConflict: 'date,indicator_type', ignoreDuplicates: true });
+      }
+      console.log(`[market-indicators] Backfilled ${backfillRows.length} rows`);
+    }
+  }
+
   // Step 2: 종합 점수 계산
   const { data: weights } = await supabase
     .from('indicator_weights')
     .select('*');
 
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  const sinceDate = ninetyDaysAgo.toISOString().slice(0, 10);
-
   const indicatorData: Record<string, { current: number; min90d: number; max90d: number }> = {};
-
-  // 90일 히스토리 단일 쿼리로 일괄 조회
-  const resultTypes = Object.keys(results);
   const { data: allHistory } = await supabase
     .from('market_indicators')
     .select('indicator_type, value')

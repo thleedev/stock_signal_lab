@@ -24,8 +24,25 @@ export const YAHOO_TICKERS: Record<string, string> = {
   KOSDAQ: '^KQ11',
   GOLD: 'GC=F',
   DXY: 'DX-Y.NYB',
+  KR_3Y: '122630.KS', // KODEX 레버리지 대용 (한국 3년물 직접 티커 없음)
   KORU: 'KORU',
   EWY: 'EWY',
+};
+
+// 단일 데이터 포인트일 때 사용할 절대 범위 (min/max 90일 대체)
+export const ABSOLUTE_RANGES: Record<string, { min: number; max: number }> = {
+  VIX: { min: 10, max: 50 },
+  USD_KRW: { min: 1100, max: 1550 },
+  US_10Y: { min: 1.0, max: 5.5 },
+  WTI: { min: 40, max: 130 },
+  KOSPI: { min: 1800, max: 3200 },
+  KOSDAQ: { min: 500, max: 1100 },
+  GOLD: { min: 1600, max: 3000 },
+  DXY: { min: 90, max: 115 },
+  KR_3Y: { min: 1.0, max: 5.0 },
+  KORU: { min: 3, max: 40 },
+  EWY: { min: 35, max: 85 },
+  FEAR_GREED: { min: 0, max: 100 },
 };
 
 export interface MarketIndicator {
