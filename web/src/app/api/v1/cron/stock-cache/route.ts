@@ -48,33 +48,39 @@ export async function POST(request: NextRequest) {
     const targets = stocks.filter(({ symbol }) => priceMap.has(symbol));
     const skipped = stocks.length - targets.length;
 
-    // 배치 실행 (20건씩)
-    const BATCH_SIZE = 20;
+    // bulk upsert (500건씩 배치)
+    const BATCH_SIZE = 500;
     for (let i = 0; i < targets.length; i += BATCH_SIZE) {
       const batch = targets.slice(i, i + BATCH_SIZE);
-      const results = await Promise.allSettled(
-        batch.map(async ({ symbol }) => {
-          const price = priceMap.get(symbol)!;
-          const updateData: Record<string, unknown> = {
-            current_price: price.current_price,
-            market_cap: price.market_cap,
-            updated_at: now,
-          };
-          if (price.volume > 0) {
-            updateData.volume = price.volume;
-            updateData.price_change = price.price_change;
-            updateData.price_change_pct = price.price_change_pct;
-          }
-          const { error: e } = await supabase
-            .from('stock_cache')
-            .update(updateData)
-            .eq('symbol', symbol);
-          if (e) throw new Error(`${symbol}: ${e.message}`);
-        })
-      );
-      for (const r of results) {
-        if (r.status === 'fulfilled') updated++;
-        else failed++;
+      const rows = batch.map(({ symbol }) => {
+        const price = priceMap.get(symbol)!;
+        const row: Record<string, unknown> = {
+          symbol,
+          current_price: price.current_price,
+          market_cap: price.market_cap,
+          updated_at: now,
+        };
+        if (price.name) {
+          row.name = price.name;
+        }
+        if (price.volume > 0) {
+          row.volume = price.volume;
+          row.price_change = price.price_change;
+          row.price_change_pct = price.price_change_pct;
+        }
+        return row;
+      });
+
+      const { error: e, count } = await supabase
+        .from('stock_cache')
+        .upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false })
+        .select('symbol');
+
+      if (e) {
+        console.error(`[stock-cache] Batch upsert error:`, e.message);
+        failed += batch.length;
+      } else {
+        updated += count ?? batch.length;
       }
     }
     lap(`가격 업데이트 완료: ${updated}성공 ${failed}실패 ${skipped}스킵`);
@@ -100,16 +106,17 @@ export async function POST(request: NextRequest) {
       }
 
       const signalEntries = Object.entries(symbolSignals);
-      for (let i = 0; i < signalEntries.length; i += BATCH_SIZE) {
-        await Promise.allSettled(
-          signalEntries.slice(i, i + BATCH_SIZE).map(([symbol, info]) =>
-            supabase.from('stock_cache').update({
-              signal_count_30d: info.count,
-              latest_signal_type: info.latestType,
-              latest_signal_date: info.latestDate,
-            }).eq('symbol', symbol)
-          )
-        );
+      const SIGNAL_BATCH = 500;
+      for (let i = 0; i < signalEntries.length; i += SIGNAL_BATCH) {
+        const rows = signalEntries.slice(i, i + SIGNAL_BATCH).map(([symbol, info]) => ({
+          symbol,
+          signal_count_30d: info.count,
+          latest_signal_type: info.latestType,
+          latest_signal_date: info.latestDate,
+        }));
+        await supabase
+          .from('stock_cache')
+          .upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
       }
       lap(`신호 집계 완료: ${signalEntries.length}종목`);
     }

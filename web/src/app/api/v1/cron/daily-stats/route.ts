@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     const sources: SignalSource[] = ['lassi', 'stockbot', 'quant'];
     const execTypes: ExecutionType[] = ['lump', 'split'];
 
-    // === 1. 포트폴리오 스냅샷 (6개) ===
+    // === 1. 포트폴리오 스냅샷 (6개) - 병렬 실행 ===
     const combined: Record<ExecutionType, {
       total: number;
       breakdown: Record<string, { value: number; return_pct: number }>;
@@ -33,22 +33,22 @@ export async function GET(request: Request) {
       split: { total: 0, breakdown: {} },
     };
 
-    for (const source of sources) {
-      for (const execType of execTypes) {
-        const pv = await getPortfolioValue(supabase, source, execType);
+    const snapshotTasks = sources.flatMap((source) =>
+      execTypes.map(async (execType) => {
+        const [pv, { data: prevSnapshot }] = await Promise.all([
+          getPortfolioValue(supabase, source, execType),
+          supabase
+            .from('portfolio_snapshots')
+            .select('total_value')
+            .eq('source', source)
+            .eq('execution_type', execType)
+            .lt('date', today)
+            .order('date', { ascending: false })
+            .limit(1)
+            .single(),
+        ]);
+
         const initialCash = PORTFOLIO_CONFIG.CASH_PER_STRATEGY;
-
-        // 전일 스냅샷 조회
-        const { data: prevSnapshot } = await supabase
-          .from('portfolio_snapshots')
-          .select('total_value')
-          .eq('source', source)
-          .eq('execution_type', execType)
-          .lt('date', today)
-          .order('date', { ascending: false })
-          .limit(1)
-          .single();
-
         const prevValue = prevSnapshot?.total_value ?? initialCash;
         const dailyReturn = prevValue > 0
           ? ((pv.total_value - prevValue) / prevValue) * 100
@@ -68,19 +68,21 @@ export async function GET(request: Request) {
             cumulative_return_pct: Math.round(cumReturn * 100) / 100,
           }, { onConflict: 'date,source,execution_type' });
 
-        // 통합 집계용
-        combined[execType].total += pv.total_value;
-        combined[execType].breakdown[source] = {
-          value: pv.total_value,
-          return_pct: Math.round(cumReturn * 100) / 100,
-        };
-      }
+        return { source, execType, pv, cumReturn };
+      })
+    );
+
+    const snapshotResults = await Promise.all(snapshotTasks);
+    for (const { source, execType, pv, cumReturn } of snapshotResults) {
+      combined[execType].total += pv.total_value;
+      combined[execType].breakdown[source] = {
+        value: pv.total_value,
+        return_pct: Math.round(cumReturn * 100) / 100,
+      };
     }
 
-    // === 2. 통합 포트폴리오 스냅샷 (2개) ===
-    const totalInitial = PORTFOLIO_CONFIG.INITIAL_CASH_PER_SOURCE * sources.length;
-
-    for (const execType of execTypes) {
+    // === 2. 통합 포트폴리오 스냅샷 (2개) - 병렬 실행 ===
+    await Promise.all(execTypes.map(async (execType) => {
       const { data: prevCombined } = await supabase
         .from('combined_portfolio_snapshots')
         .select('total_value')
@@ -107,16 +109,19 @@ export async function GET(request: Request) {
           cumulative_return_pct: Math.round(cumReturn * 100) / 100,
           breakdown: combined[execType].breakdown,
         }, { onConflict: 'date,execution_type' });
-    }
+    }));
 
-    // === 3. 일간 신호 통계 ===
-    for (const source of sources) {
-      const { data: todaySignals } = await supabase
-        .from('signals')
-        .select('signal_type')
-        .eq('source', source)
-        .gte('timestamp', `${today}T00:00:00+09:00`)
-        .lte('timestamp', `${today}T23:59:59+09:00`);
+    // === 3. 일간 신호 통계 - 병렬 실행 ===
+    await Promise.all(sources.map(async (source) => {
+      const [{ data: todaySignals }, ...tradeStats] = await Promise.all([
+        supabase
+          .from('signals')
+          .select('signal_type')
+          .eq('source', source)
+          .gte('timestamp', `${today}T00:00:00+09:00`)
+          .lte('timestamp', `${today}T23:59:59+09:00`),
+        ...execTypes.map((execType) => calculateTradeStats(supabase, source, execType)),
+      ]);
 
       const buyCount = todaySignals?.filter((s) =>
         s.signal_type === 'BUY' || s.signal_type === 'BUY_FORECAST'
@@ -125,11 +130,9 @@ export async function GET(request: Request) {
         s.signal_type === 'SELL' || s.signal_type === 'SELL_COMPLETE'
       ).length ?? 0;
 
-      for (const execType of execTypes) {
-        // 완결 거래(매수→매도 사이클) 수 + 적중률
-        const stats = await calculateTradeStats(supabase, source, execType);
-
-        await supabase
+      await Promise.all(execTypes.map((execType, idx) => {
+        const stats = tradeStats[idx];
+        return supabase
           .from('daily_signal_stats')
           .upsert({
             date: today,
@@ -142,8 +145,8 @@ export async function GET(request: Request) {
             hit_rate: stats.hitRate,
             avg_return: stats.avgReturn,
           }, { onConflict: 'date,source,execution_type' });
-      }
-    }
+      }));
+    }));
 
     return NextResponse.json({
       success: true,

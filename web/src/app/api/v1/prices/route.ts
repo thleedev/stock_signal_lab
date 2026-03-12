@@ -4,49 +4,78 @@ import { fetchAllStockPrices, StockPriceData } from '@/lib/naver-stock-api';
 
 export const dynamic = 'force-dynamic';
 
-// 서버 메모리 캐시 (60초)
+// 서버 메모리 캐시 (60초) - 같은 인스턴스 내 중복 호출 방지
 let naverCache: { data: Map<string, StockPriceData>; ts: number } | null = null;
 const CACHE_TTL = 60_000;
 
-async function getLivePrices(): Promise<Map<string, StockPriceData>> {
+/** DB에 최근 60초 이내 업데이트가 있는지 확인 (다른 인스턴스가 갱신했을 수 있음) */
+async function isDbCacheFresh(): Promise<boolean> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from('stock_cache')
+    .select('updated_at')
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .single();
+  if (!data?.updated_at) return false;
+  return Date.now() - new Date(data.updated_at).getTime() < CACHE_TTL;
+}
+
+/**
+ * 실시간 가격 조회. 반환값:
+ * - { source: 'memory' | 'naver', data: Map } → priceMap에서 읽기
+ * - { source: 'db' } → DB가 이미 최신이므로 stock_cache에서 읽기
+ */
+async function getLivePrices(): Promise<{ source: 'memory' | 'naver' | 'db'; data?: Map<string, StockPriceData> }> {
+  // 1) 같은 인스턴스 메모리 캐시 확인
   if (naverCache && Date.now() - naverCache.ts < CACHE_TTL) {
-    return naverCache.data;
+    return { source: 'memory', data: naverCache.data };
   }
+
+  // 2) 다른 인스턴스가 이미 DB를 갱신했으면 네이버 API 호출 스킵
+  if (await isDbCacheFresh()) {
+    return { source: 'db' };
+  }
+
+  // 3) 네이버 API 호출
   const data = await fetchAllStockPrices();
   naverCache = { data, ts: Date.now() };
 
   // stock_cache 업데이트 (fire-and-forget)
   updateStockCache(data).catch(() => {});
 
-  return data;
+  return { source: 'naver', data };
 }
 
 async function updateStockCache(priceMap: Map<string, StockPriceData>) {
   const supabase = createServiceClient();
   const now = new Date().toISOString();
   const entries = Array.from(priceMap.values());
-  const BATCH = 50;
+  const BATCH = 500;
 
   for (let i = 0; i < entries.length; i += BATCH) {
     const batch = entries.slice(i, i + BATCH);
-    await Promise.allSettled(
-      batch.map((price) => {
-        const updateData: Record<string, unknown> = {
-          current_price: price.current_price,
-          market_cap: price.market_cap,
-          updated_at: now,
-        };
-        if (price.volume > 0) {
-          updateData.volume = price.volume;
-          updateData.price_change = price.price_change;
-          updateData.price_change_pct = price.price_change_pct;
-        }
-        return supabase
-          .from('stock_cache')
-          .update(updateData)
-          .eq('symbol', price.symbol);
-      })
-    );
+    const rows = batch.map((price) => {
+      const row: Record<string, unknown> = {
+        symbol: price.symbol,
+        current_price: price.current_price,
+        market_cap: price.market_cap,
+        updated_at: now,
+      };
+      if (price.name) {
+        row.name = price.name;
+      }
+      if (price.volume > 0) {
+        row.volume = price.volume;
+        row.price_change = price.price_change;
+        row.price_change_pct = price.price_change_pct;
+      }
+      return row;
+    });
+
+    await supabase
+      .from('stock_cache')
+      .upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
   }
 }
 
@@ -74,8 +103,37 @@ export async function GET(request: NextRequest) {
   }
 
   if (live) {
-    // 네이버에서 실시간 조회
-    const priceMap = await getLivePrices();
+    const liveResult = await getLivePrices();
+
+    // DB가 이미 최신이면 stock_cache에서 읽기 (네이버 API 호출 스킵)
+    if (liveResult.source === 'db') {
+      const supabase = createServiceClient();
+      const { data: dbData } = await supabase
+        .from('stock_cache')
+        .select('symbol, current_price, price_change, price_change_pct, volume, market_cap')
+        .in('symbol', symbols);
+
+      const dbResult: Record<string, {
+        current_price: number | null;
+        price_change: number | null;
+        price_change_pct: number | null;
+        volume: number | null;
+        market_cap: number | null;
+      }> = {};
+      for (const row of dbData ?? []) {
+        dbResult[row.symbol] = {
+          current_price: row.current_price,
+          price_change: row.price_change,
+          price_change_pct: row.price_change_pct,
+          volume: row.volume,
+          market_cap: row.market_cap,
+        };
+      }
+      return NextResponse.json({ data: dbResult, source: 'db_cache' });
+    }
+
+    // 메모리 캐시 또는 네이버 API에서 읽기
+    const priceMap = liveResult.data!;
     const result: Record<string, {
       current_price: number | null;
       price_change: number | null;
@@ -97,7 +155,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ data: result, source: 'naver', cached: !!(naverCache && Date.now() - naverCache.ts < 1000) });
+    return NextResponse.json({ data: result, source: liveResult.source, cached: liveResult.source === 'memory' });
   }
 
   // stock_cache에서 조회

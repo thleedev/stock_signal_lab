@@ -17,37 +17,57 @@ export async function POST(request: NextRequest) {
   const today = new Date().toISOString().slice(0, 10);
   const results: Record<string, number> = {};
 
-  // Step 1: Yahoo Finance 지표 수집
-  for (const [type, ticker] of Object.entries(YAHOO_TICKERS)) {
-    const quote = await getQuote(ticker);
-    if (!quote) continue;
+  // Step 1: Yahoo Finance 지표 수집 (병렬화)
+  const tickerEntries = Object.entries(YAHOO_TICKERS);
+  const indicatorTypes = tickerEntries.map(([type]) => type);
 
-    // 전일 값 조회
-    const { data: prev } = await supabase
-      .from('market_indicators')
-      .select('value')
-      .eq('indicator_type', type)
-      .lt('date', today)
-      .order('date', { ascending: false })
-      .limit(1)
-      .single();
+  // 1a) 전일 값 일괄 조회
+  const { data: prevRows } = await supabase
+    .from('market_indicators')
+    .select('indicator_type, value, date')
+    .in('indicator_type', indicatorTypes)
+    .lt('date', today)
+    .order('date', { ascending: false });
 
-    const prevValue = prev ? Number(prev.value) : null;
+  // 각 타입별 최신 전일 값 추출
+  const prevMap: Record<string, number> = {};
+  if (prevRows) {
+    for (const row of prevRows) {
+      if (!prevMap[row.indicator_type]) {
+        prevMap[row.indicator_type] = Number(row.value);
+      }
+    }
+  }
+
+  // 1b) Yahoo 호출 병렬화
+  const quoteResults = await Promise.allSettled(
+    tickerEntries.map(async ([type, ticker]) => {
+      const quote = await getQuote(ticker);
+      return { type, quote };
+    })
+  );
+
+  // 1c) 결과 수집 및 bulk upsert
+  const upsertRows: Array<Record<string, unknown>> = [];
+  for (const r of quoteResults) {
+    if (r.status !== 'fulfilled' || !r.value.quote) continue;
+    const { type, quote } = r.value;
+    const prevValue = prevMap[type] ?? null;
     const changePct = prevValue ? ((quote.price - prevValue) / prevValue) * 100 : null;
 
-    await supabase.from('market_indicators').upsert(
-      {
-        date: today,
-        indicator_type: type,
-        value: quote.price,
-        prev_value: prevValue,
-        change_pct: changePct,
-        raw_data: { name: quote.name, previousClose: quote.previousClose },
-      },
-      { onConflict: 'date,indicator_type' }
-    );
-
+    upsertRows.push({
+      date: today,
+      indicator_type: type,
+      value: quote.price,
+      prev_value: prevValue,
+      change_pct: changePct,
+      raw_data: { name: quote.name, previousClose: quote.previousClose },
+    });
     results[type] = quote.price;
+  }
+
+  if (upsertRows.length > 0) {
+    await supabase.from('market_indicators').upsert(upsertRows, { onConflict: 'date,indicator_type' });
   }
 
   // Step 2: 종합 점수 계산
@@ -61,20 +81,33 @@ export async function POST(request: NextRequest) {
 
   const indicatorData: Record<string, { current: number; min90d: number; max90d: number }> = {};
 
-  for (const type of Object.keys(results)) {
-    const { data: history } = await supabase
-      .from('market_indicators')
-      .select('value')
-      .eq('indicator_type', type)
-      .gte('date', sinceDate);
+  // 90일 히스토리 단일 쿼리로 일괄 조회
+  const resultTypes = Object.keys(results);
+  const { data: allHistory } = await supabase
+    .from('market_indicators')
+    .select('indicator_type, value')
+    .in('indicator_type', resultTypes)
+    .gte('date', sinceDate);
 
-    if (history && history.length > 0) {
-      const values = history.map((h: { value: number }) => Number(h.value));
-      indicatorData[type] = {
-        current: results[type],
-        min90d: Math.min(...values),
-        max90d: Math.max(...values),
-      };
+  if (allHistory && allHistory.length > 0) {
+    // JS에서 타입별 그룹핑
+    const historyByType: Record<string, number[]> = {};
+    for (const row of allHistory) {
+      if (!historyByType[row.indicator_type]) {
+        historyByType[row.indicator_type] = [];
+      }
+      historyByType[row.indicator_type].push(Number(row.value));
+    }
+
+    for (const type of resultTypes) {
+      const values = historyByType[type];
+      if (values && values.length > 0) {
+        indicatorData[type] = {
+          current: results[type],
+          min90d: Math.min(...values),
+          max90d: Math.max(...values),
+        };
+      }
     }
   }
 

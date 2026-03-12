@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import Link from "next/link";
 import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
@@ -229,25 +229,27 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     [favSet]
   );
 
-  // 즐겨찾기 상단 고정 + 일반 종목 (즐겨찾기 제외) 결합
-  const displayStocks = useMemo(() => {
-    // 즐겨찾기 종목 (favStocks 기반, 하지만 실시간 데이터는 stocks에서 갱신)
+  // 1단계: 즐겨찾기/일반 종목 병합 (정렬과 무관)
+  const mergedStocks = useMemo(() => {
     const favSymbols = new Set(favStocks.map((f) => f.symbol));
     const updatedFavs = favStocks.map((fav) => {
       const updated = stocks.find((s) => s.symbol === fav.symbol);
       return updated ?? fav;
     });
-    // 그룹 필터 적용
     const filteredFavs = favGroupFilter
       ? updatedFavs.filter((f) => (favGroups[f.symbol] || "기본") === favGroupFilter)
       : updatedFavs;
-
-    // 일반 종목 (즐겨찾기 제외)
     const nonFavs = favGroupFilter
-      ? [] // 그룹 필터 시 즐겨찾기만 표시
+      ? []
       : stocks.filter((s) => !favSymbols.has(s.symbol));
+    return { favs: filteredFavs, nonFavs };
+  }, [stocks, favStocks, favGroupFilter, favGroups]);
 
-    // gap 정렬이면 클라이언트에서 정렬 (매수가 < 현재가인 것 우선)
+  // 2단계: 정렬 + gap 사전 계산
+  const displayStocks = useMemo(() => {
+    const favs = [...mergedStocks.favs];
+    const nonFavs = [...mergedStocks.nonFavs];
+
     if (sortBy === "gap") {
       const sortByGap = (a: StockCache, b: StockCache) => {
         const gapA = calcGap(a, gapSource);
@@ -261,12 +263,12 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         if (!aPos && bPos) return 1;
         return gapA.gap - gapB.gap;
       };
-      filteredFavs.sort(sortByGap);
+      favs.sort(sortByGap);
       nonFavs.sort(sortByGap);
     }
 
-    return { favs: filteredFavs, nonFavs };
-  }, [stocks, favStocks, sortBy, gapSource, favGroupFilter, favGroups]);
+    return { favs, nonFavs };
+  }, [mergedStocks, sortBy, gapSource]);
 
   const handleRowClick = useCallback((e: React.MouseEvent, stock: StockCache) => {
     // 즐겨찾기 버튼 클릭은 무시
@@ -277,97 +279,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     });
   }, []);
 
-  const renderRow = (stock: StockCache, isFav: boolean) => {
-    const gapResult = calcGap(stock, gapSource);
-    const gap = gapResult?.gap ?? null;
-    const gapSrc = gapResult?.source ?? null;
-    const signals = stock.signals ?? {
-      lassi: { type: null, price: null },
-      stockbot: { type: null, price: null },
-      quant: { type: null, price: null },
-    };
-
-    return (
-      <tr
-        key={stock.symbol}
-        onClick={(e) => handleRowClick(e, stock)}
-        className={`hover:bg-[var(--card-hover)] transition-colors cursor-pointer ${
-          isFav ? "bg-yellow-900/5" : ""
-        }`}
-      >
-        <td className="px-3 py-2.5">
-          <div className="flex items-center gap-0.5">
-            <button
-              onClick={() => toggleFavorite(stock)}
-              className="p-0.5 hover:scale-110 transition-transform"
-            >
-              <Star
-                className={`w-4 h-4 ${
-                  isFav
-                    ? "text-yellow-400 fill-yellow-400"
-                    : "text-[var(--border)] hover:text-yellow-400"
-                }`}
-              />
-            </button>
-            {portSet.has(stock.symbol) && (
-              <Briefcase className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/20" />
-            )}
-          </div>
-        </td>
-        <td className="px-3 py-2.5">
-          <span className="font-medium">{stock.name}</span>
-        </td>
-        <td className="px-3 py-2.5 text-[var(--muted)] text-xs">
-          {stock.symbol}
-        </td>
-        <td
-          className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change)}`}
-        >
-          {formatNumber(stock.current_price)}
-        </td>
-        <td
-          className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change_pct)}`}
-        >
-          {formatPercent(stock.price_change_pct)}
-        </td>
-        <td className="px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
-          {formatNumber(stock.volume)}
-        </td>
-        <td className="px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
-          {stock.per != null ? stock.per.toFixed(1) : "-"}
-        </td>
-        {/* 퀀트 */}
-        <td className="px-2 py-2.5 text-center">
-          <SignalBadge sig={signals.quant} source="quant" />
-        </td>
-        {/* 라씨 */}
-        <td className="px-2 py-2.5 text-center">
-          <SignalBadge sig={signals.lassi} source="lassi" />
-        </td>
-        {/* 스톡봇 */}
-        <td className="px-2 py-2.5 text-center">
-          <SignalBadge sig={signals.stockbot} source="stockbot" />
-        </td>
-        {/* Gap */}
-        <td className="px-3 py-2.5 text-right tabular-nums">
-          {gap != null ? (
-            <div className="flex flex-col items-end gap-0.5">
-              <span className={`text-xs font-medium ${gap >= 0 ? "text-red-400" : "text-blue-400"}`}>
-                {gap >= 0 ? "+" : ""}{gap.toFixed(1)}%
-              </span>
-              {gapSrc && (
-                <span className="text-[9px] text-[var(--muted)]">
-                  {SOURCE_LABELS[gapSrc] ?? gapSrc}
-                </span>
-              )}
-            </div>
-          ) : (
-            <span className="text-xs text-[var(--border)]">-</span>
-          )}
-        </td>
-      </tr>
-    );
-  };
+  // renderRow는 StockRow memo 컴포넌트로 대체됨 (아래 정의)
 
   // 가격 업데이트 시간 및 갱신
   const [updateTime, setUpdateTime] = useState(lastPriceUpdate);
@@ -389,6 +301,10 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return `${d.toLocaleDateString("ko-KR")} ${d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 업데이트`;
   }, [updateTime]);
 
+  // stocks를 ref로 참조하여 useCallback 의존성에서 제거
+  const stocksRef = useRef(stocks);
+  stocksRef.current = stocks;
+
   const refreshPrices = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -396,7 +312,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       // 1) POST로 네이버 전종목 시세 갱신 (메모리 캐시 + DB fire-and-forget)
       await fetch("/api/v1/prices", { method: "POST" });
       // 2) 현재 표시 중인 종목들의 라이브 가격을 즉시 가져오기
-      const symbols = stocks.map((s) => s.symbol);
+      const symbols = stocksRef.current.map((s) => s.symbol);
       const CHUNK = 200;
       const allPrices: Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }> = {};
 
@@ -428,7 +344,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     } finally {
       setRefreshing(false);
     }
-  }, [refreshing, stocks]);
+  }, [refreshing]);
 
   // 페이지 진입 시 5분 이상 지났으면 자동 갱신
   useEffect(() => {
@@ -566,7 +482,17 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
               {/* 즐겨찾기 종목 상단 고정 */}
               {displayStocks.favs.length > 0 && (
                 <>
-                  {displayStocks.favs.map((stock) => renderRow(stock, true))}
+                  {displayStocks.favs.map((stock) => (
+                    <StockRow
+                      key={stock.symbol}
+                      stock={stock}
+                      isFav={true}
+                      gapSource={gapSource}
+                      isInPortfolio={portSet.has(stock.symbol)}
+                      onToggleFavorite={toggleFavorite}
+                      onRowClick={handleRowClick}
+                    />
+                  ))}
                   {/* 구분선 */}
                   <tr>
                     <td colSpan={11} className="px-0 py-0">
@@ -588,7 +514,17 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                   </td>
                 </tr>
               ) : (
-                displayStocks.nonFavs.map((stock) => renderRow(stock, false))
+                displayStocks.nonFavs.map((stock) => (
+                  <StockRow
+                    key={stock.symbol}
+                    stock={stock}
+                    isFav={false}
+                    gapSource={gapSource}
+                    isInPortfolio={portSet.has(stock.symbol)}
+                    onToggleFavorite={toggleFavorite}
+                    onRowClick={handleRowClick}
+                  />
+                ))
               )}
             </tbody>
           </table>
@@ -628,3 +564,100 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     </div>
   );
 }
+
+/** 메모이제이션된 테이블 행 컴포넌트 */
+interface StockRowProps {
+  stock: StockCache;
+  isFav: boolean;
+  gapSource: SourceKey | "all";
+  isInPortfolio: boolean;
+  onToggleFavorite: (stock: StockCache) => void;
+  onRowClick: (e: React.MouseEvent, stock: StockCache) => void;
+}
+
+const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio, onToggleFavorite, onRowClick }: StockRowProps) {
+  const gapResult = calcGap(stock, gapSource);
+  const gap = gapResult?.gap ?? null;
+  const gapSrc = gapResult?.source ?? null;
+  const signals = stock.signals ?? {
+    lassi: { type: null, price: null },
+    stockbot: { type: null, price: null },
+    quant: { type: null, price: null },
+  };
+
+  return (
+    <tr
+      onClick={(e) => onRowClick(e, stock)}
+      className={`hover:bg-[var(--card-hover)] transition-colors cursor-pointer ${
+        isFav ? "bg-yellow-900/5" : ""
+      }`}
+    >
+      <td className="px-3 py-2.5">
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={() => onToggleFavorite(stock)}
+            className="p-0.5 hover:scale-110 transition-transform"
+          >
+            <Star
+              className={`w-4 h-4 ${
+                isFav
+                  ? "text-yellow-400 fill-yellow-400"
+                  : "text-[var(--border)] hover:text-yellow-400"
+              }`}
+            />
+          </button>
+          {isInPortfolio && (
+            <Briefcase className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/20" />
+          )}
+        </div>
+      </td>
+      <td className="px-3 py-2.5">
+        <span className="font-medium">{stock.name}</span>
+      </td>
+      <td className="px-3 py-2.5 text-[var(--muted)] text-xs">
+        {stock.symbol}
+      </td>
+      <td
+        className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change)}`}
+      >
+        {formatNumber(stock.current_price)}
+      </td>
+      <td
+        className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change_pct)}`}
+      >
+        {formatPercent(stock.price_change_pct)}
+      </td>
+      <td className="px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
+        {formatNumber(stock.volume)}
+      </td>
+      <td className="px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
+        {stock.per != null ? stock.per.toFixed(1) : "-"}
+      </td>
+      <td className="px-2 py-2.5 text-center">
+        <SignalBadge sig={signals.quant} source="quant" />
+      </td>
+      <td className="px-2 py-2.5 text-center">
+        <SignalBadge sig={signals.lassi} source="lassi" />
+      </td>
+      <td className="px-2 py-2.5 text-center">
+        <SignalBadge sig={signals.stockbot} source="stockbot" />
+      </td>
+      <td className="px-3 py-2.5 text-right tabular-nums">
+        {gap != null ? (
+          <div className="flex flex-col items-end gap-0.5">
+            <span className={`text-xs font-medium ${gap >= 0 ? "text-red-400" : "text-blue-400"}`}>
+              {gap >= 0 ? "+" : ""}{gap.toFixed(1)}%
+            </span>
+            {gapSrc && (
+              <span className="text-[9px] text-[var(--muted)]">
+                {SOURCE_LABELS[gapSrc] ?? gapSrc}
+              </span>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-[var(--border)]">-</span>
+        )}
+      </td>
+    </tr>
+  );
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, memo } from "react";
 import dynamic from "next/dynamic";
 
 const CandleChart = dynamic(() => import("./candle-chart"), { ssr: false });
@@ -41,7 +41,7 @@ export default function StockChartSection({ prices, signalDates, signalMarkers, 
     return prices.filter((p) => p.date >= cutoff);
   }, [prices, period]);
 
-  const signalSet = new Set(signalDates);
+  const signalSet = useMemo(() => new Set(signalDates), [signalDates]);
 
   return (
     <div className="card">
