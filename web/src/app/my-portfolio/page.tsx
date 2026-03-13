@@ -32,6 +32,7 @@ interface Holding {
 }
 
 interface Summary {
+  current_return_pct: number;
   total_return_pct: number;
   holding_count: number;
   completed_trade_count: number;
@@ -66,7 +67,7 @@ export default function MyPortfolioPage() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [activePortfolioId, setActivePortfolioId] = useState<number | null>(null);
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [summary, setSummary] = useState<Summary>({ total_return_pct: 0, holding_count: 0, completed_trade_count: 0 });
+  const [summary, setSummary] = useState<Summary>({ current_return_pct: 0, total_return_pct: 0, holding_count: 0, completed_trade_count: 0 });
 
   // 실시간 가격
   const symbols = useMemo(() => holdings.map((h) => h.symbol), [holdings]);
@@ -120,7 +121,7 @@ export default function MyPortfolioPage() {
     const res = await fetch(`/api/v1/user-portfolio/holdings${params}`);
     const data = await res.json();
     setHoldings(data.holdings ?? []);
-    setSummary(data.summary ?? { total_return_pct: 0, holding_count: 0, completed_trade_count: 0 });
+    setSummary(data.summary ?? { current_return_pct: 0, total_return_pct: 0, holding_count: 0, completed_trade_count: 0 });
   }, [activePortfolioId]);
 
   useEffect(() => { fetchPortfolios(); }, [fetchPortfolios]);
@@ -334,7 +335,8 @@ export default function MyPortfolioPage() {
     );
   };
 
-  const isPositive = summary.total_return_pct >= 0;
+  const isCurrentPositive = summary.current_return_pct >= 0;
+  const isTotalPositive = summary.total_return_pct >= 0;
 
   return (
     <div className="space-y-4">
@@ -346,9 +348,15 @@ export default function MyPortfolioPage() {
         </div>
         <div className="flex items-center gap-5">
           <div className="text-right">
-            <div className="text-[10px] text-[var(--muted)]">총 수익률</div>
-            <div className={`text-lg font-bold tabular-nums ${isPositive ? "text-red-400" : "text-blue-400"}`}>
-              {isPositive ? "+" : ""}{summary.total_return_pct.toFixed(1)}%
+            <div className="text-[10px] text-[var(--muted)]">현재수익률</div>
+            <div className={`text-lg font-bold tabular-nums ${isCurrentPositive ? "text-red-400" : "text-blue-400"}`}>
+              {isCurrentPositive ? "+" : ""}{summary.current_return_pct.toFixed(1)}%
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[10px] text-[var(--muted)]">총수익률</div>
+            <div className={`text-lg font-bold tabular-nums ${isTotalPositive ? "text-red-400" : "text-blue-400"}`}>
+              {isTotalPositive ? "+" : ""}{summary.total_return_pct.toFixed(1)}%
             </div>
           </div>
           <div className="text-right">
