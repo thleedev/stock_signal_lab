@@ -3,7 +3,7 @@ import { createServiceClient } from "@/lib/supabase";
 import { DateSelector } from "@/components/common/date-selector";
 import { getLastNWeekdays, getKstDayRange } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
-import { StockRankingSection } from "@/components/signals/StockRankingSection";
+import { UnifiedAnalysisSection, type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
 import { SOURCE_LABELS, extractSignalPrice } from "@/lib/signal-constants";
 
 export const revalidate = 30;
@@ -93,6 +93,38 @@ export default async function SignalsPage({
     sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
   }
 
+  // ── 종목분석 탭 ──────────────────────────────────────────
+  let signalMap: SignalMap = {};
+
+  if (activeTab === "analysis") {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const since30d = thirtyDaysAgo.toISOString();
+
+    const { data: buySignals } = await supabase
+      .from("signals")
+      .select("symbol, source, signal_type, raw_data, timestamp")
+      .in("signal_type", ["BUY", "BUY_FORECAST"])
+      .in("source", ["lassi", "stockbot", "quant"])
+      .gte("timestamp", since30d)
+      .order("timestamp", { ascending: false });
+
+    for (const sig of buySignals ?? []) {
+      if (!sig.symbol) continue;
+      const rd = sig.raw_data as Record<string, number> | null;
+      const buyPrice =
+        rd?.signal_price || rd?.recommend_price || rd?.buy_range_low || 0;
+      if (buyPrice <= 0) continue;
+      if (!signalMap[sig.symbol]) signalMap[sig.symbol] = {};
+      if (!signalMap[sig.symbol][sig.source]) {
+        signalMap[sig.symbol][sig.source] = {
+          buyPrice,
+          date: sig.timestamp,
+        };
+      }
+    }
+  }
+
   const sources = ["all", "lassi", "stockbot", "quant"] as const;
 
   return (
@@ -160,7 +192,8 @@ export default async function SignalsPage({
       )}
 
       {activeTab === "analysis" && (
-        <StockRankingSection
+        <UnifiedAnalysisSection
+          signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}
         />
