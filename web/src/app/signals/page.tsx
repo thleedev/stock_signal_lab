@@ -103,7 +103,7 @@ export default async function SignalsPage({
   }
 
   // ── 종목분석 탭 ──────────────────────────────────────────
-  let signalMap: SignalMap = {};
+  const signalMap: SignalMap = {};
 
   if (activeTab === "analysis") {
     const thirtyDaysAgo = new Date();
