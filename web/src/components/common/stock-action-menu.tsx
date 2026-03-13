@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Star, StarOff, Briefcase, ExternalLink, X, Check } from "lucide-react";
 import type { WatchlistGroup } from "@/types/stock";
 import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
+import { useStockModal } from "@/contexts/stock-modal-context";
 
 interface Portfolio {
   id: number;
@@ -42,6 +43,7 @@ export default function StockActionMenu({
   onGroupToggle,
 }: StockActionMenuProps) {
   const router = useRouter();
+  const { openStockModal } = useStockModal();
   const menuRef = useRef<HTMLDivElement>(null);
   const [adding, setAdding] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -70,9 +72,20 @@ export default function StockActionMenu({
     if (isInPortfolio) {
       setAdding(true);
       try {
-        await fetch(`/api/v1/watchlist?symbol=${encodeURIComponent(symbol)}`, {
-          method: "DELETE",
-        });
+        const res = await fetch(`/api/v1/user-portfolio/trades?symbol=${encodeURIComponent(symbol)}`);
+        const data = await res.json();
+        const trades: Array<{ id: number; side: string; created_at: string }> = data.trades ?? [];
+        const latestBuy = trades
+          .filter((t) => t.side === "BUY")
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+        if (latestBuy) {
+          const delRes = await fetch(`/api/v1/user-portfolio/trades?trade_id=${latestBuy.id}`, {
+            method: "DELETE",
+          });
+          if (delRes.status === 409) {
+            alert("이미 처리된 거래입니다.");
+          }
+        }
       } catch (e) {
         console.error("[StockActionMenu] 포트 삭제 실패:", e);
       } finally {
@@ -107,8 +120,8 @@ export default function StockActionMenu({
 
   const handleViewDetail = useCallback(() => {
     onClose();
-    router.push(`/stock/${symbol}`);
-  }, [symbol, onClose, router]);
+    openStockModal(symbol, name);
+  }, [symbol, name, onClose, openStockModal]);
 
   if (!isOpen) return null;
 
