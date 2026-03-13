@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { StarOff, Briefcase, ExternalLink, X, Check } from "lucide-react";
+import { Star, StarOff, Briefcase, ExternalLink, X, Check } from "lucide-react";
 import type { WatchlistGroup } from "@/types/stock";
 import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
 
@@ -173,14 +173,23 @@ export default function StockActionMenu({
                 <span>{isInPortfolio ? "포트에서 삭제" : "포트에 추가"}</span>
               </button>
 
-              {/* 3. 관심그룹 일괄 해제 (즐겨찾기인 경우만) */}
-              {isFavorite && (
+              {/* 3. 관심종목 추가/일괄 해제 */}
+              {onToggleFavorite && (
                 <button
-                  onClick={() => { onToggleFavorite?.(); onClose(); }}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left text-orange-400 hover:text-orange-300"
+                  onClick={() => { onToggleFavorite(); onClose(); }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
                 >
-                  <StarOff className="w-4 h-4" />
-                  <span>관심그룹 일괄 해제</span>
+                  {isFavorite ? (
+                    <>
+                      <StarOff className="w-4 h-4 text-orange-400" />
+                      <span className="text-orange-400">관심그룹 일괄 해제</span>
+                    </>
+                  ) : (
+                    <>
+                      <Star className="w-4 h-4 text-yellow-400" />
+                      <span>관심종목 추가</span>
+                    </>
+                  )}
                 </button>
               )}
             </div>

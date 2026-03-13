@@ -1,0 +1,215 @@
+<h2>UI 구조 설계</h2>
+<p class="subtitle">포트종목 메뉴의 전체 레이아웃</p>
+
+<div class="section">
+  <h3>1. 포트종목 페이지 (/my-portfolio)</h3>
+  <div class="mockup">
+    <div class="mockup-header">포트종목 페이지 레이아웃</div>
+    <div class="mockup-body" style="padding: 0;">
+      <!-- 탭 바 -->
+      <div style="display:flex; align-items:center; gap:0; border-bottom:2px solid #e2e8f0; background:#f8fafc; padding: 0 12px;">
+        <div style="padding:10px 16px; background:white; border:2px solid #e2e8f0; border-bottom:2px solid white; margin-bottom:-2px; border-radius:8px 8px 0 0; font-weight:bold; font-size:13px;">
+          전체 📌
+        </div>
+        <div style="padding:10px 16px; color:#64748b; font-size:13px; cursor:pointer;">
+          성장주
+        </div>
+        <div style="padding:10px 16px; color:#64748b; font-size:13px; cursor:pointer;">
+          배당주
+        </div>
+        <div style="padding:10px 16px; color:#64748b; font-size:13px; cursor:pointer;">
+          단타
+        </div>
+        <div style="padding:8px 12px; color:#94a3b8; font-size:16px; cursor:pointer; font-weight:bold;">
+          +
+        </div>
+      </div>
+
+      <!-- 포트 요약 -->
+      <div style="padding:16px; background:white;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:16px;">
+          <div>
+            <div style="font-size:11px; color:#94a3b8;">총 수익률</div>
+            <div style="font-size:24px; font-weight:bold; color:#ef4444;">+12.5%</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:11px; color:#94a3b8;">보유 종목</div>
+            <div style="font-size:24px; font-weight:bold;">5</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px; color:#94a3b8;">완료 거래</div>
+            <div style="font-size:24px; font-weight:bold;">12</div>
+          </div>
+        </div>
+
+        <!-- 종목 리스트 -->
+        <div style="border:1px solid #e2e8f0; border-radius:8px; overflow:hidden;">
+          <!-- 헤더 -->
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; padding:8px 12px; background:#f8fafc; font-size:11px; color:#94a3b8; border-bottom:1px solid #e2e8f0;">
+            <div>종목</div>
+            <div style="text-align:right;">매수가</div>
+            <div style="text-align:right;">현재가</div>
+            <div style="text-align:right;">수익률</div>
+            <div style="text-align:right;">상태</div>
+          </div>
+          <!-- 종목 1 -->
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; padding:10px 12px; font-size:12px; border-bottom:1px solid #f1f5f9; align-items:center;">
+            <div>
+              <div style="font-weight:600;">삼성전자</div>
+              <div style="font-size:10px; color:#94a3b8;">005930</div>
+            </div>
+            <div style="text-align:right;">72,000</div>
+            <div style="text-align:right;">78,500</div>
+            <div style="text-align:right; color:#ef4444; font-weight:600;">+9.0%</div>
+            <div style="text-align:right;">
+              <span style="background:#fef2f2; color:#ef4444; padding:2px 6px; border-radius:4px; font-size:10px;">보유중</span>
+            </div>
+          </div>
+          <!-- 종목 2 - 손절 경고 -->
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; padding:10px 12px; font-size:12px; border-bottom:1px solid #f1f5f9; align-items:center; background:#fff7ed;">
+            <div>
+              <div style="font-weight:600;">카카오 ⚠️</div>
+              <div style="font-size:10px; color:#94a3b8;">035720 · AI 매도신호</div>
+            </div>
+            <div style="text-align:right;">52,000</div>
+            <div style="text-align:right;">48,900</div>
+            <div style="text-align:right; color:#3b82f6; font-weight:600;">-5.9%</div>
+            <div style="text-align:right;">
+              <span style="background:#fef3c7; color:#d97706; padding:2px 6px; border-radius:4px; font-size:10px;">손절 근접</span>
+            </div>
+          </div>
+          <!-- 종목 3 -->
+          <div style="display:grid; grid-template-columns:2fr 1fr 1fr 1fr 1fr; padding:10px 12px; font-size:12px; align-items:center;">
+            <div>
+              <div style="font-weight:600;">SK하이닉스</div>
+              <div style="font-size:10px; color:#94a3b8;">000660</div>
+            </div>
+            <div style="text-align:right;">185,000</div>
+            <div style="text-align:right;">201,500</div>
+            <div style="text-align:right; color:#ef4444; font-weight:600;">+8.9%</div>
+            <div style="text-align:right;">
+              <span style="background:#fef2f2; color:#ef4444; padding:2px 6px; border-radius:4px; font-size:10px;">보유중</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 하단 버튼 -->
+        <div style="display:flex; gap:8px; margin-top:12px;">
+          <button class="mock-button" style="flex:1; background:#ef4444; color:white; border:none; padding:10px; border-radius:8px; font-size:13px;">+ 종목 매수</button>
+          <button class="mock-button" style="flex:1; background:#3b82f6; color:white; border:none; padding:10px; border-radius:8px; font-size:13px;">📊 포트 비교</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>2. 매수 입력 모달</h3>
+  <div class="mockup">
+    <div class="mockup-header">종목 매수 다이얼로그</div>
+    <div class="mockup-body" style="max-width:360px; margin:0 auto;">
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">종목 검색</div>
+        <div style="display:flex; align-items:center; border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px;">
+          <span style="font-size:14px;">삼성전자 (005930)</span>
+          <span style="margin-left:auto; color:#94a3b8;">🔍</span>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+        <div>
+          <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">매수가</div>
+          <div style="border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:14px;">72,000</div>
+          <div style="font-size:10px; color:#94a3b8; margin-top:2px;">현재가 자동입력</div>
+        </div>
+        <div>
+          <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">수량</div>
+          <div style="border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:14px;">10</div>
+        </div>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+        <div>
+          <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">목표가 (선택)</div>
+          <div style="border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:14px; color:#ef4444;">79,200</div>
+          <div style="font-size:10px; color:#94a3b8; margin-top:2px;">+10% 자동제안</div>
+        </div>
+        <div>
+          <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">손절가 (선택)</div>
+          <div style="border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:14px; color:#3b82f6;">68,400</div>
+          <div style="font-size:10px; color:#94a3b8; margin-top:2px;">-5% 자동제안</div>
+        </div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">포트 선택</div>
+        <div style="display:flex; gap:6px;">
+          <span style="padding:4px 12px; background:#ef4444; color:white; border-radius:16px; font-size:12px;">성장주</span>
+          <span style="padding:4px 12px; background:#f1f5f9; border-radius:16px; font-size:12px; color:#64748b;">배당주</span>
+          <span style="padding:4px 12px; background:#f1f5f9; border-radius:16px; font-size:12px; color:#64748b;">단타</span>
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">매매 메모 (선택)</div>
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:12px; color:#94a3b8; min-height:40px;">AI 매수신호 확인, 실적 개선 기대...</div>
+      </div>
+      <button class="mock-button" style="width:100%; background:#ef4444; color:white; border:none; padding:12px; border-radius:8px; font-size:14px; font-weight:600;">매수 확인</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>3. 종목상세 차트 오버레이</h3>
+  <div class="mockup">
+    <div class="mockup-header">종목상세 페이지 - 차트 영역</div>
+    <div class="mockup-body">
+      <!-- 포트 체크박스 -->
+      <div style="display:flex; gap:12px; margin-bottom:12px; padding:8px; background:#f8fafc; border-radius:8px;">
+        <label style="display:flex; align-items:center; gap:4px; font-size:12px;">
+          <input type="checkbox" checked> <span style="color:#ef4444; font-weight:600;">성장주</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px; font-size:12px;">
+          <input type="checkbox"> <span style="color:#8b5cf6; font-weight:600;">배당주</span>
+        </label>
+        <label style="display:flex; align-items:center; gap:4px; font-size:12px;">
+          <input type="checkbox"> <span style="color:#f59e0b; font-weight:600;">단타</span>
+        </label>
+        <span style="margin-left:auto; font-size:11px; color:#94a3b8;">AI 신호도 표시</span>
+        <label style="display:flex; align-items:center; gap:4px; font-size:12px;">
+          <input type="checkbox" checked> AI
+        </label>
+      </div>
+
+      <!-- 차트 목업 -->
+      <div style="position:relative; height:200px; background:linear-gradient(180deg, #fafafa 0%, #f0f0f0 100%); border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;">
+        <!-- 목표가 라인 -->
+        <div style="position:absolute; top:30px; left:0; right:0; border-top:2px dashed #ef4444; opacity:0.6;">
+          <span style="position:absolute; right:4px; top:-16px; font-size:10px; color:#ef4444; background:white; padding:0 4px;">목표 79,200</span>
+        </div>
+        <!-- 매수가 라인 -->
+        <div style="position:absolute; top:100px; left:0; right:0; border-top:2px solid #22c55e;">
+          <span style="position:absolute; right:4px; top:-16px; font-size:10px; color:#22c55e; background:white; padding:0 4px;">매수 72,000</span>
+        </div>
+        <!-- 손절가 라인 -->
+        <div style="position:absolute; top:150px; left:0; right:0; border-top:2px dashed #3b82f6; opacity:0.6;">
+          <span style="position:absolute; right:4px; top:-16px; font-size:10px; color:#3b82f6; background:white; padding:0 4px;">손절 68,400</span>
+        </div>
+        <!-- 매수 마커 -->
+        <div style="position:absolute; top:95px; left:40%; font-size:16px;">🔺</div>
+        <div style="position:absolute; top:108px; left:39%; font-size:9px; color:#ef4444; font-weight:bold;">성장주 매수</div>
+        <!-- AI 신호 마커 -->
+        <div style="position:absolute; top:75px; left:25%; font-size:14px;">△</div>
+        <div style="position:absolute; top:88px; left:24%; font-size:9px; color:#94a3b8;">라 매수</div>
+        <!-- 캔들 간이 표현 -->
+        <div style="position:absolute; bottom:20px; left:10%; right:10%; height:2px; background:#cbd5e1;"></div>
+        <div style="position:absolute; bottom:15px; left:15%; font-size:9px; color:#94a3b8;">3/1</div>
+        <div style="position:absolute; bottom:15px; left:85%; font-size:9px; color:#94a3b8;">3/12</div>
+      </div>
+
+      <!-- 범례 -->
+      <div style="display:flex; gap:16px; margin-top:8px; font-size:11px; color:#64748b;">
+        <span>━ <span style="color:#22c55e;">매수가</span></span>
+        <span>╌ <span style="color:#ef4444;">목표가</span></span>
+        <span>╌ <span style="color:#3b82f6;">손절가</span></span>
+        <span>🔺 매수/매도 시점</span>
+      </div>
+    </div>
+  </div>
+</div>

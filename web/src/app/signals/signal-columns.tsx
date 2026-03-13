@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutList, Grid3X3, Layers, Briefcase } from "lucide-react";
 import StockActionMenu from "@/components/common/stock-action-menu";
+import type { WatchlistGroup } from "@/types/stock";
 
 const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",
@@ -358,17 +359,23 @@ export default function SignalColumns({
   sellSignals,
   favoriteSymbols,
   watchlistSymbols = [],
+  groups: initialGroups = [],
+  symbolGroups: initialSymbolGroups = {},
 }: {
   buySignals: Signal[];
   sellSignals: Signal[];
   favoriteSymbols: string[];
   watchlistSymbols?: string[];
+  groups?: WatchlistGroup[];
+  symbolGroups?: Record<string, string[]>;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [viewMode, setViewMode] = useState<"list" | "summary" | "industry">("list");
   const [favSet, setFavSet] = useState(() => new Set(favoriteSymbols));
   const [portSet] = useState(() => new Set(watchlistSymbols));
+  const [groups] = useState<WatchlistGroup[]>(initialGroups);
+  const [symGroups, setSymGroups] = useState<Record<string, string[]>>(initialSymbolGroups);
   const [actionMenu, setActionMenu] = useState<{
     signal: Signal;
     position: { x: number; y: number };
@@ -396,6 +403,77 @@ export default function SignalColumns({
       },
     });
   }, []);
+
+  const handleToggleFavorite = useCallback(() => {
+    if (!actionMenu) return;
+    const { symbol, name } = actionMenu.signal;
+    const isFav = favSet.has(symbol);
+
+    if (isFav) {
+      // 모든 그룹에서 제거
+      const groupIds = symGroups[symbol] ?? [];
+      groupIds.forEach((gid) => {
+        fetch(`/api/v1/watchlist-groups/${gid}/stocks/${symbol}`, { method: "DELETE" });
+      });
+      setFavSet((prev) => { const n = new Set(prev); n.delete(symbol); return n; });
+      setSymGroups((prev) => { const next = { ...prev }; delete next[symbol]; return next; });
+    } else {
+      // 커스텀 그룹 없으면 기본 그룹 자동 추가
+      const defaultGroup = groups.find((g) => g.is_default);
+      if (defaultGroup) {
+        fetch(`/api/v1/watchlist-groups/${defaultGroup.id}/stocks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol, name }),
+        });
+        setSymGroups((prev) => ({ ...prev, [symbol]: [defaultGroup.id] }));
+      }
+      setFavSet((prev) => new Set([...prev, symbol]));
+    }
+    setActionMenu(null);
+  }, [actionMenu, favSet, symGroups, groups]);
+
+  const handleGroupToggle = useCallback(async (group: WatchlistGroup) => {
+    if (!actionMenu) return;
+    const { symbol, name } = actionMenu.signal;
+    const currentGroups = symGroups[symbol] ?? [];
+    const inGroup = currentGroups.includes(group.id);
+
+    // 낙관적 업데이트
+    if (inGroup) {
+      const newGroups = currentGroups.filter((id) => id !== group.id);
+      setSymGroups((prev) => ({ ...prev, [symbol]: newGroups }));
+      if (newGroups.length === 0) {
+        setFavSet((prev) => { const n = new Set(prev); n.delete(symbol); return n; });
+      }
+    } else {
+      setSymGroups((prev) => ({ ...prev, [symbol]: [...currentGroups, group.id] }));
+      setFavSet((prev) => new Set([...prev, symbol]));
+    }
+
+    try {
+      if (inGroup) {
+        const res = await fetch(`/api/v1/watchlist-groups/${group.id}/stocks/${symbol}`, { method: "DELETE" });
+        if (!res.ok) throw new Error("DELETE 실패");
+      } else {
+        const res = await fetch(`/api/v1/watchlist-groups/${group.id}/stocks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol, name }),
+        });
+        if (!res.ok && res.status !== 409) throw new Error("POST 실패");
+      }
+    } catch (e) {
+      console.error("[handleGroupToggle] 실패, 롤백:", e);
+      // 롤백
+      setSymGroups((prev) => ({ ...prev, [symbol]: currentGroups }));
+      if (!inGroup) {
+        if (currentGroups.length === 0) setFavSet((prev) => { const n = new Set(prev); n.delete(symbol); return n; });
+      } else {
+        setFavSet((prev) => new Set([...prev, symbol]));
+      }
+    }
+  }, [actionMenu, symGroups]);
 
   return (
     <>
@@ -561,23 +639,10 @@ export default function SignalColumns({
           position={actionMenu.position}
           isFavorite={favSet.has(actionMenu.signal.symbol)}
           isInPortfolio={portSet.has(actionMenu.signal.symbol)}
-          onToggleFavorite={() => {
-            const sym = actionMenu.signal.symbol;
-            const newSet = new Set(favSet);
-            if (favSet.has(sym)) {
-              newSet.delete(sym);
-              fetch(`/api/v1/favorites/${sym}`, { method: "DELETE" });
-            } else {
-              newSet.add(sym);
-              fetch("/api/v1/favorites", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ symbol: sym, name: actionMenu.signal.name }),
-              });
-            }
-            setFavSet(newSet);
-            setActionMenu(null);
-          }}
+          onToggleFavorite={handleToggleFavorite}
+          groups={groups}
+          symbolGroupIds={symGroups[actionMenu.signal.symbol] ?? []}
+          onGroupToggle={handleGroupToggle}
         />
       )}
     </>

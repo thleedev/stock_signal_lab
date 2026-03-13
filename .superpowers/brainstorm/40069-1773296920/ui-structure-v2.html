@@ -1,0 +1,208 @@
+<h2>매수 입력 모달 (수정안)</h2>
+<p class="subtitle">수량 제거, 가격 입력에 % 버튼 + 슬라이더 추가</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Option A: % 버튼 방식</div>
+    <div class="mockup-body" style="max-width:360px; margin:0 auto;">
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">종목 검색</div>
+        <div style="display:flex; align-items:center; border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px;">
+          <span style="font-size:14px;">삼성전자 (005930)</span>
+          <span style="margin-left:auto; color:#94a3b8;">🔍</span>
+        </div>
+      </div>
+
+      <!-- 매수가 -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:11px; color:#94a3b8;">매수가</div>
+          <div style="font-size:10px; color:#94a3b8;">현재가: 72,000</div>
+        </div>
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; font-size:18px; font-weight:bold; text-align:center; margin-bottom:6px;">72,000</div>
+        <div style="display:flex; gap:4px; justify-content:center;">
+          <span style="padding:4px 8px; background:#dbeafe; color:#2563eb; border-radius:6px; font-size:11px; cursor:pointer;">-10%</span>
+          <span style="padding:4px 8px; background:#dbeafe; color:#2563eb; border-radius:6px; font-size:11px; cursor:pointer;">-5%</span>
+          <span style="padding:4px 8px; background:#f0fdf4; color:#16a34a; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid #bbf7d0;">현재가</span>
+          <span style="padding:4px 8px; background:#fef2f2; color:#dc2626; border-radius:6px; font-size:11px; cursor:pointer;">+5%</span>
+          <span style="padding:4px 8px; background:#fef2f2; color:#dc2626; border-radius:6px; font-size:11px; cursor:pointer;">+10%</span>
+        </div>
+      </div>
+
+      <!-- 목표가 -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:11px; color:#94a3b8;">목표가 <span style="color:#cbd5e1;">(선택)</span></div>
+          <div style="font-size:10px; color:#ef4444;">+10.0%</div>
+        </div>
+        <div style="border:1px solid #fecaca; border-radius:8px; padding:10px 12px; font-size:18px; font-weight:bold; text-align:center; color:#ef4444; margin-bottom:6px;">79,200</div>
+        <div style="display:flex; gap:4px; justify-content:center;">
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">+5%</span>
+          <span style="padding:4px 8px; background:#fef2f2; color:#dc2626; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid #fecaca;">+10%</span>
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">+15%</span>
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">+20%</span>
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">+30%</span>
+        </div>
+      </div>
+
+      <!-- 손절가 -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:11px; color:#94a3b8;">손절가 <span style="color:#cbd5e1;">(선택)</span></div>
+          <div style="font-size:10px; color:#3b82f6;">-5.0%</div>
+        </div>
+        <div style="border:1px solid #bfdbfe; border-radius:8px; padding:10px 12px; font-size:18px; font-weight:bold; text-align:center; color:#3b82f6; margin-bottom:6px;">68,400</div>
+        <div style="display:flex; gap:4px; justify-content:center;">
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">-3%</span>
+          <span style="padding:4px 8px; background:#dbeafe; color:#2563eb; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid #bfdbfe;">-5%</span>
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">-7%</span>
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">-10%</span>
+          <span style="padding:4px 8px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:11px; cursor:pointer;">-15%</span>
+        </div>
+      </div>
+
+      <!-- 포트 + 메모 -->
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">포트 선택</div>
+        <div style="display:flex; gap:6px;">
+          <span style="padding:4px 12px; background:#ef4444; color:white; border-radius:16px; font-size:12px;">성장주</span>
+          <span style="padding:4px 12px; background:#f1f5f9; border-radius:16px; font-size:12px; color:#64748b;">배당주</span>
+          <span style="padding:4px 12px; background:#f1f5f9; border-radius:16px; font-size:12px; color:#64748b;">단타</span>
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">매매 메모 (선택)</div>
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:12px; color:#94a3b8; min-height:36px;">AI 매수신호 확인...</div>
+      </div>
+      <button style="width:100%; background:#ef4444; color:white; border:none; padding:12px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;">매수 확인</button>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">Option B: 슬라이더 + % 버튼 혼합</div>
+    <div class="mockup-body" style="max-width:360px; margin:0 auto;">
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">종목 검색</div>
+        <div style="display:flex; align-items:center; border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px;">
+          <span style="font-size:14px;">삼성전자 (005930)</span>
+          <span style="margin-left:auto; color:#94a3b8;">🔍</span>
+        </div>
+      </div>
+
+      <!-- 매수가 -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:11px; color:#94a3b8;">매수가</div>
+          <div style="font-size:10px; color:#94a3b8;">현재가: 72,000</div>
+        </div>
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:10px 12px; font-size:18px; font-weight:bold; text-align:center; margin-bottom:6px;">72,000</div>
+        <div style="display:flex; gap:4px; justify-content:center; margin-bottom:4px;">
+          <span style="padding:4px 8px; background:#dbeafe; color:#2563eb; border-radius:6px; font-size:11px;">-5%</span>
+          <span style="padding:4px 8px; background:#f0fdf4; color:#16a34a; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid #bbf7d0;">현재가</span>
+          <span style="padding:4px 8px; background:#fef2f2; color:#dc2626; border-radius:6px; font-size:11px;">+5%</span>
+        </div>
+      </div>
+
+      <!-- 목표가 슬라이더 -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:11px; color:#94a3b8;">목표가 <span style="color:#cbd5e1;">(선택)</span></div>
+          <div style="font-size:13px; font-weight:bold; color:#ef4444;">79,200 (+10%)</div>
+        </div>
+        <!-- 슬라이더 트랙 -->
+        <div style="position:relative; height:32px; margin-bottom:4px;">
+          <div style="position:absolute; top:14px; left:0; right:0; height:4px; background:#fee2e2; border-radius:2px;"></div>
+          <div style="position:absolute; top:14px; left:0; width:33%; height:4px; background:#ef4444; border-radius:2px;"></div>
+          <div style="position:absolute; top:8px; left:31%; width:16px; height:16px; background:white; border:2px solid #ef4444; border-radius:50%; cursor:pointer;"></div>
+          <!-- 눈금 라벨 -->
+          <div style="position:absolute; top:22px; left:0; font-size:9px; color:#94a3b8;">+5%</div>
+          <div style="position:absolute; top:22px; left:48%; font-size:9px; color:#94a3b8;">+15%</div>
+          <div style="position:absolute; top:22px; right:0; font-size:9px; color:#94a3b8;">+30%</div>
+        </div>
+        <div style="display:flex; gap:4px; justify-content:center;">
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">+5</span>
+          <span style="padding:3px 7px; background:#fef2f2; color:#dc2626; border-radius:6px; font-size:10px; font-weight:bold; border:1px solid #fecaca;">+10</span>
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">+15</span>
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">+20</span>
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">+30</span>
+        </div>
+      </div>
+
+      <!-- 손절가 슬라이더 -->
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <div style="font-size:11px; color:#94a3b8;">손절가 <span style="color:#cbd5e1;">(선택)</span></div>
+          <div style="font-size:13px; font-weight:bold; color:#3b82f6;">68,400 (-5%)</div>
+        </div>
+        <div style="position:relative; height:32px; margin-bottom:4px;">
+          <div style="position:absolute; top:14px; left:0; right:0; height:4px; background:#dbeafe; border-radius:2px;"></div>
+          <div style="position:absolute; top:14px; left:0; width:25%; height:4px; background:#3b82f6; border-radius:2px;"></div>
+          <div style="position:absolute; top:8px; left:23%; width:16px; height:16px; background:white; border:2px solid #3b82f6; border-radius:50%; cursor:pointer;"></div>
+          <div style="position:absolute; top:22px; left:0; font-size:9px; color:#94a3b8;">-3%</div>
+          <div style="position:absolute; top:22px; left:48%; font-size:9px; color:#94a3b8;">-10%</div>
+          <div style="position:absolute; top:22px; right:0; font-size:9px; color:#94a3b8;">-20%</div>
+        </div>
+        <div style="display:flex; gap:4px; justify-content:center;">
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">-3</span>
+          <span style="padding:3px 7px; background:#dbeafe; color:#2563eb; border-radius:6px; font-size:10px; font-weight:bold; border:1px solid #bfdbfe;">-5</span>
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">-7</span>
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">-10</span>
+          <span style="padding:3px 7px; background:#f1f5f9; color:#64748b; border-radius:6px; font-size:10px;">-15</span>
+        </div>
+      </div>
+
+      <!-- 포트 + 메모 -->
+      <div style="margin-bottom:12px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">포트 선택</div>
+        <div style="display:flex; gap:6px;">
+          <span style="padding:4px 12px; background:#ef4444; color:white; border-radius:16px; font-size:12px;">성장주</span>
+          <span style="padding:4px 12px; background:#f1f5f9; border-radius:16px; font-size:12px; color:#64748b;">배당주</span>
+        </div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <div style="font-size:11px; color:#94a3b8; margin-bottom:4px;">매매 메모 (선택)</div>
+        <div style="border:1px solid #e2e8f0; border-radius:8px; padding:8px 12px; font-size:12px; color:#94a3b8; min-height:36px;">AI 매수신호 확인...</div>
+      </div>
+      <button style="width:100%; background:#ef4444; color:white; border:none; padding:12px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer;">매수 확인</button>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top:24px;">
+  <h3>비교</h3>
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>A: % 버튼만</h4>
+      <ul>
+        <li>심플하고 직관적</li>
+        <li>구현 단순</li>
+        <li>모바일에서도 깔끔</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>B: 슬라이더 + 버튼</h4>
+      <ul>
+        <li>세밀한 조절 가능</li>
+        <li>시각적으로 범위 파악 용이</li>
+        <li>구현 복잡도 약간 높음</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>% 버튼만</h3>
+      <p>깔끔하고 빠른 입력. 프리셋 버튼 + 직접 입력.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>슬라이더 + % 버튼</h3>
+      <p>슬라이더로 세밀 조절, 버튼으로 빠른 프리셋 선택.</p>
+    </div>
+  </div>
+</div>
