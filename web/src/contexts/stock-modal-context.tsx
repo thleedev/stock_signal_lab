@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { StockDetailModal } from "@/components/stock-modal/StockDetailModal";
 
 interface StockModalState {
   symbol: string;
@@ -29,7 +30,7 @@ export function StockModalProvider({ children }: { children: ReactNode }) {
   return (
     <StockModalContext.Provider value={{ modal, openStockModal, closeStockModal }}>
       {children}
-      {/* StockDetailModal will be added here later */}
+      <StockDetailModal />
     </StockModalContext.Provider>
   );
 }
