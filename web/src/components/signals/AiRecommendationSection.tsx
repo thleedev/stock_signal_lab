@@ -136,7 +136,7 @@ function RecommendationCard({ item }: { item: AiRecommendation }) {
           <Badge label="✅ 섹터 거래대금 급증" variant="green" />
         )}
         {item.double_top && <Badge label="⚠️ 쌍봉 (-8점)" variant="orange" />}
-        {!item.foreign_buying && !item.institution_buying && (
+        {!item.foreign_buying && !item.institution_buying && !item.volume_vs_sector && (
           <Badge label="수급 미집계" variant="gray" />
         )}
       </div>
