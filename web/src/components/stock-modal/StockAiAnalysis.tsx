@@ -1,6 +1,6 @@
 "use client";
 
-interface Signal {
+export interface Signal {
   id: string;
   symbol: string;
   signal_type: string;
@@ -41,7 +41,7 @@ export function StockAiAnalysis({ signals, currentPrice }: Props) {
     }
     // fallback: raw_data 내부 필드
     const rd = s.raw_data ?? {};
-    return (rd.signal_price ?? rd.recommend_price ?? rd.buy_range_low ?? 0) as number;
+    return Number(rd.signal_price ?? rd.recommend_price ?? rd.buy_range_low ?? 0) || 0;
   };
 
   const latestBuyPrice = latestBuy ? getSignalPrice(latestBuy) : 0;

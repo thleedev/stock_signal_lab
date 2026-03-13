@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useStockModal } from "@/contexts/stock-modal-context";
 import { StockModalHeader } from "./StockModalHeader";
-import { StockAiAnalysis } from "./StockAiAnalysis";
+import { StockAiAnalysis, Signal } from "./StockAiAnalysis";
 import { PortfolioManagementSection } from "./PortfolioManagementSection";
 import { GroupManagementSection } from "./GroupManagementSection";
 import dynamic from "next/dynamic";
@@ -45,7 +45,7 @@ interface Group {
 export function StockDetailModal() {
   const { modal, closeStockModal } = useStockModal();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [signals, setSignals] = useState<unknown[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [allGroups, setAllGroups] = useState<Group[]>([]);
@@ -79,7 +79,7 @@ export function StockDetailModal() {
       ]);
 
       setMetrics(metricsData);
-      setSignals(Array.isArray(signalsData) ? signalsData : (signalsData?.signals ?? []));
+      setSignals(Array.isArray(signalsData) ? (signalsData as Signal[]) : ((signalsData?.signals ?? []) as Signal[]));
       setTrades(Array.isArray(tradesData) ? tradesData : (tradesData?.trades ?? []));
       setPortfolios(Array.isArray(portfoliosData) ? portfoliosData : (portfoliosData?.portfolios ?? []));
 
@@ -228,7 +228,7 @@ export function StockDetailModal() {
                 )}
 
                 <StockAiAnalysis
-                  signals={signals as Parameters<typeof StockAiAnalysis>[0]["signals"]}
+                  signals={signals}
                   currentPrice={currentPrice}
                 />
 
@@ -258,7 +258,10 @@ export function StockDetailModal() {
 
           <div className="border-t border-[var(--border)] px-6 py-3 flex gap-3">
             <button
-              onClick={() => setTradeModalOpen(true)}
+              onClick={() => {
+                setTradePortfolioId(null);
+                setTradeModalOpen(true);
+              }}
               className="flex-1 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90"
             >
               포트에 추가
