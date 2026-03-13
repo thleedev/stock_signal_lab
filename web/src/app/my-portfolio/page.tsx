@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import Link from "next/link";
+import { useStockModal } from "@/contexts/stock-modal-context";
 import { Search, X, Plus, Pencil, Check, BarChart3 } from "lucide-react";
 import { usePriceRefresh } from "@/hooks/use-price-refresh";
 import { PortfolioTabs } from "./components/portfolio-tabs";
@@ -63,6 +63,8 @@ function priceColor(change: number | null): string {
 }
 
 export default function MyPortfolioPage() {
+  const { openStockModal } = useStockModal();
+
   // 포트 상태
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [activePortfolioId, setActivePortfolioId] = useState<number | null>(null);
@@ -485,9 +487,12 @@ export default function MyPortfolioPage() {
                       }`}
                     >
                       <td className="px-3 py-2.5">
-                        <Link href={`/stock/${h.symbol}`} className="font-medium hover:text-[var(--accent)]">
+                        <button
+                          onClick={() => openStockModal(h.symbol, h.name)}
+                          className="font-medium hover:text-[var(--accent)] text-left"
+                        >
                           {h.name} {hasSellSignal && "⚠️"}
-                        </Link>
+                        </button>
                         {hasSellSignal && (
                           <div className="text-[10px] text-amber-400">AI 매도신호</div>
                         )}
