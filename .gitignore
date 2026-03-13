@@ -70,3 +70,4 @@ screenshots/
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.worktrees/
