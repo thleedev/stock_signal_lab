@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Target, Briefcase, Zap, BarChart3, TrendingUp, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Briefcase, Zap, BarChart3, TrendingUp, MoreHorizontal } from "lucide-react";
 import { useState } from "react";
 
 const MAIN_TABS = [
@@ -13,7 +13,6 @@ const MAIN_TABS = [
 ];
 
 const MORE_TABS = [
-  { href: "/gap", label: "GAP", icon: Target },
   { href: "/market", label: "시황", icon: TrendingUp },
   { href: "/investment", label: "포트종목", icon: Briefcase },
   { href: "/portfolio", label: "AI포트", icon: Briefcase },

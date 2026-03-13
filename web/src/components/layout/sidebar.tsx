@@ -9,7 +9,6 @@ import {
   Briefcase,
   Zap,
   PieChart,
-  Target,
   Settings,
   FileText,
   GitCompareArrows,
@@ -18,7 +17,6 @@ import {
 const NAV_ITEMS = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
   { href: "/stocks", label: "종목", icon: BarChart3 },
-  { href: "/gap", label: "GAP 추천", icon: Target },
   { href: "/market", label: "투자 시황", icon: TrendingUp },
   { href: "/my-portfolio", label: "포트 종목", icon: Briefcase },
   { href: "/signals", label: "AI 신호", icon: Zap },
