@@ -58,8 +58,6 @@ export default function StockDetailClient({
       <div className="mt-6">
         <StockPortfolioOverlay
           symbol={symbol}
-          stockName={stockName}
-          currentPrice={currentPrice}
           onOverlaysChange={handleOverlaysChange}
         />
         <StockChartSection

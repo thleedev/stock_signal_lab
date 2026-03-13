@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
+import { useState, useEffect } from "react";
 import type { PortfolioOverlay } from "@/components/charts/candle-chart";
 
 const PORTFOLIO_COLORS = ["#ef4444", "#8b5cf6", "#f59e0b", "#10b981", "#0ea5e9", "#ec4899"];
@@ -27,21 +26,16 @@ interface Trade {
 
 interface Props {
   symbol: string;
-  stockName: string;
-  currentPrice: number | null;
   onOverlaysChange?: (overlays: PortfolioOverlay[]) => void;
 }
 
 export default function StockPortfolioOverlay({
   symbol,
-  stockName,
-  currentPrice,
   onOverlaysChange,
 }: Props) {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [checkedPortIds, setCheckedPortIds] = useState<Set<number>>(new Set());
-  const [tradeModalOpen, setTradeModalOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/v1/user-portfolio")
@@ -106,41 +100,19 @@ export default function StockPortfolioOverlay({
   if (userPorts.length === 0) return null;
 
   return (
-    <>
-      {/* 포트 체크박스 */}
-      <div className="flex gap-3 p-2 bg-[var(--card)] rounded-lg mb-2 flex-wrap">
-        {userPorts.map((p, i) => (
-          <label key={p.id} className="flex items-center gap-1 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={checkedPortIds.has(p.id)}
-              onChange={() => togglePortfolio(p.id)}
-            />
-            <span style={{ color: PORTFOLIO_COLORS[i % PORTFOLIO_COLORS.length] }} className="font-semibold">
-              {p.name}
-            </span>
-          </label>
-        ))}
-      </div>
-
-      {/* 매수 모달 */}
-      <TradeModal
-        mode="buy"
-        isOpen={tradeModalOpen}
-        onClose={() => {
-          setTradeModalOpen(false);
-        }}
-        onSubmit={() => {
-          // 거래 후 trades 재조회
-          fetch(`/api/v1/user-portfolio/trades?symbol=${symbol}`)
-            .then((r) => r.json())
-            .then((d) => setTrades(d.trades ?? []));
-        }}
-        initialSymbol={symbol}
-        initialName={stockName}
-        initialPrice={currentPrice ?? undefined}
-        portfolios={portfolios}
-      />
-    </>
+    <div className="flex gap-3 p-2 bg-[var(--card)] rounded-lg mb-2 flex-wrap">
+      {userPorts.map((p, i) => (
+        <label key={p.id} className="flex items-center gap-1 text-xs cursor-pointer">
+          <input
+            type="checkbox"
+            checked={checkedPortIds.has(p.id)}
+            onChange={() => togglePortfolio(p.id)}
+          />
+          <span style={{ color: PORTFOLIO_COLORS[i % PORTFOLIO_COLORS.length] }} className="font-semibold">
+            {p.name}
+          </span>
+        </label>
+      ))}
+    </div>
   );
 }
