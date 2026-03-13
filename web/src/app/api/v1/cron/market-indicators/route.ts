@@ -3,9 +3,31 @@ import { createServiceClient } from '@/lib/supabase';
 import { getQuote, getHistorical } from '@/lib/yahoo-finance';
 import { calculateMarketScore, calculateEventRiskScore, calculateCombinedScore } from '@/lib/market-score';
 import { YAHOO_TICKERS, type IndicatorType, type IndicatorWeight } from '@/types/market';
+import { calculateRiskIndex, RISK_THRESHOLDS } from '@/lib/market-thresholds';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
+
+/**
+ * CNN Fear & Greed Index 조회 (비공식 API)
+ * 실패 시 null 반환
+ */
+async function fetchCnnFearGreed(): Promise<number | null> {
+  try {
+    const res = await fetch(
+      'https://production.dataviz.cnn.io/index/fearandgreed/graphdata/',
+      { signal: AbortSignal.timeout(8000) }
+    );
+    if (!res.ok) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json: any = await res.json();
+    const score = json?.fear_and_greed?.score;
+    if (typeof score !== 'number' || score < 0 || score > 100) return null;
+    return Math.round(score * 100) / 100;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(request: NextRequest) {
   // Cron 인증
@@ -69,6 +91,22 @@ export async function POST(request: NextRequest) {
 
   if (upsertRows.length > 0) {
     await supabase.from('market_indicators').upsert(upsertRows, { onConflict: 'date,indicator_type' });
+  }
+
+  // Step 1d: CNN Fear & Greed 수집
+  const cnnScore = await fetchCnnFearGreed();
+  if (cnnScore !== null) {
+    results['CNN_FEAR_GREED'] = cnnScore;
+    try {
+      await supabase.from('market_indicators').upsert(
+        { date: today, indicator_type: 'CNN_FEAR_GREED' as IndicatorType, value: cnnScore, raw_data: { source: 'cnn', method: 'api' } },
+        { onConflict: 'date,indicator_type' }
+      );
+    } catch (error) {
+      console.error('[market-indicators] Failed to upsert CNN_FEAR_GREED:', error);
+    }
+  } else {
+    console.warn('[market-indicators] CNN Fear & Greed fetch returned null, using fallback');
   }
 
   // Step 1.5: 히스토리 데이터가 부족하면 Yahoo Finance 90일 백필
@@ -178,6 +216,38 @@ export async function POST(request: NextRequest) {
   const eventRiskScore = calculateEventRiskScore(upcomingEvents || []);
   const combinedScore = calculateCombinedScore(totalScore, eventRiskScore);
 
+  // Step 5: 공포탐욕 지수 계산 및 저장
+  const vixData = indicatorData['VIX'];
+  let fearGreed: number | null = null;
+  if (vixData) {
+    const vixNormalized = vixData.max90d !== vixData.min90d
+      ? ((vixData.current - vixData.min90d) / (vixData.max90d - vixData.min90d)) * 100
+      : 50;
+    fearGreed = 100 - vixNormalized; // 간단 버전
+
+    await supabase.from('market_indicators').upsert(
+      {
+        date: today,
+        indicator_type: 'FEAR_GREED' as IndicatorType,
+        value: fearGreed,
+        raw_data: { method: 'vix_based' },
+      },
+      { onConflict: 'date,indicator_type' }
+    );
+  }
+
+  // risk_index 계산 (Step 5의 fearGreed가 이미 계산된 이후)
+  const riskValues: Record<string, number | null> = {};
+  for (const type of Object.keys(RISK_THRESHOLDS)) {
+    riskValues[type] = results[type] ?? null;
+  }
+  // CNN_FEAR_GREED 누락 시 Step 5에서 계산된 fearGreed 폴백
+  if (riskValues['CNN_FEAR_GREED'] == null && vixData) {
+    riskValues['CNN_FEAR_GREED'] = fearGreed;
+  }
+  const riskIndexResult = calculateRiskIndex(riskValues);
+  const riskIndex = riskIndexResult.validCount > 0 ? riskIndexResult.riskIndex : null;
+
   // Step 4: 점수 히스토리 저장
   const weightsSnapshot: Record<string, number> = {};
   for (const w of (weights || []) as IndicatorWeight[]) {
@@ -192,28 +262,10 @@ export async function POST(request: NextRequest) {
       weights_snapshot: weightsSnapshot,
       event_risk_score: eventRiskScore,
       combined_score: combinedScore,
+      risk_index: riskIndex,
     },
     { onConflict: 'date' }
   );
-
-  // Step 5: 공포탐욕 지수 저장
-  const vixData = indicatorData['VIX'];
-  if (vixData) {
-    const vixNormalized = vixData.max90d !== vixData.min90d
-      ? ((vixData.current - vixData.min90d) / (vixData.max90d - vixData.min90d)) * 100
-      : 50;
-    const fearGreed = 100 - vixNormalized; // 간단 버전
-
-    await supabase.from('market_indicators').upsert(
-      {
-        date: today,
-        indicator_type: 'FEAR_GREED' as IndicatorType,
-        value: fearGreed,
-        raw_data: { method: 'vix_based' },
-      },
-      { onConflict: 'date,indicator_type' }
-    );
-  }
 
   return NextResponse.json({
     success: true,
