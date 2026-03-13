@@ -173,7 +173,25 @@ export function StockDetailModal() {
 
           <div className="flex-1 overflow-y-auto">
             {loading && (
-              <div className="p-8 text-center text-[var(--muted)]">로딩 중...</div>
+              <div className="p-6 space-y-4 animate-pulse">
+                {/* 가격 표시 영역 */}
+                <div className="space-y-2">
+                  <div className="h-4 bg-[var(--muted)]/20 rounded w-3/4" />
+                  <div className="h-4 bg-[var(--muted)]/20 rounded w-1/2" />
+                </div>
+                {/* 투자지표 그리드 */}
+                <div className="grid grid-cols-3 gap-3 mt-4">
+                  <div className="h-14 bg-[var(--muted)]/20 rounded-lg" />
+                  <div className="h-14 bg-[var(--muted)]/20 rounded-lg" />
+                  <div className="h-14 bg-[var(--muted)]/20 rounded-lg" />
+                </div>
+                {/* AI 분석 섹션 */}
+                <div className="space-y-2 mt-2">
+                  <div className="h-3 bg-[var(--muted)]/20 rounded w-full" />
+                  <div className="h-3 bg-[var(--muted)]/20 rounded w-full" />
+                  <div className="h-3 bg-[var(--muted)]/20 rounded w-3/4" />
+                </div>
+              </div>
             )}
             {error && (
               <div className="p-8 text-center">

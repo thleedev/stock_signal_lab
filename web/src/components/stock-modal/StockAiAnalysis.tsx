@@ -56,11 +56,41 @@ export function StockAiAnalysis({ signals, currentPrice }: Props) {
     });
   }
 
+  // AI 추천 점수: 신호 횟수 기반 프록시 점수
+  const signalCount = signals.length;
+  const buyCount = signals.filter(
+    (s) => s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST"
+  ).length;
+
   return (
     <div className="px-6 py-4 border-b border-[var(--border)]">
       <h3 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wide mb-3">
         AI 신호 &amp; 분석
       </h3>
+
+      {/* AI 추천 점수 */}
+      <div className="flex items-center gap-3 mb-3 p-2.5 rounded-lg bg-[var(--background)]">
+        <div className="text-center">
+          <p className="text-[10px] text-[var(--muted)] mb-0.5">신호 횟수</p>
+          <p className="text-lg font-bold tabular-nums">{signalCount}<span className="text-xs font-normal text-[var(--muted)] ml-0.5">건</span></p>
+        </div>
+        <div className="w-px h-8 bg-[var(--border)]" />
+        <div className="text-center">
+          <p className="text-[10px] text-[var(--muted)] mb-0.5">매수 신호</p>
+          <p className="text-lg font-bold tabular-nums text-red-500">{buyCount}<span className="text-xs font-normal text-[var(--muted)] ml-0.5">건</span></p>
+        </div>
+        {signalCount > 0 && (
+          <>
+            <div className="w-px h-8 bg-[var(--border)]" />
+            <div className="text-center">
+              <p className="text-[10px] text-[var(--muted)] mb-0.5">매수 비율</p>
+              <p className="text-lg font-bold tabular-nums text-blue-500">
+                {Math.round((buyCount / signalCount) * 100)}<span className="text-xs font-normal text-[var(--muted)] ml-0.5">%</span>
+              </p>
+            </div>
+          </>
+        )}
+      </div>
 
       {badges.length > 0 && (
         <div className="flex flex-wrap gap-1 mb-3">
