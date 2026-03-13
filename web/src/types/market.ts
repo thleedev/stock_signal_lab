@@ -12,7 +12,9 @@ export type IndicatorType =
   | 'KR_3Y'
   | 'KORU'
   | 'EWY'
-  | 'FEAR_GREED';
+  | 'FEAR_GREED'
+  | 'VKOSPI'
+  | 'CNN_FEAR_GREED';
 
 // Yahoo Finance 티커 매핑
 export const YAHOO_TICKERS: Record<string, string> = {
@@ -27,6 +29,7 @@ export const YAHOO_TICKERS: Record<string, string> = {
   KR_3Y: '122630.KS', // KODEX 레버리지 대용 (한국 3년물 직접 티커 없음)
   KORU: 'KORU',
   EWY: 'EWY',
+  VKOSPI: '^VKOSPI',
 };
 
 // 단일 데이터 포인트일 때 사용할 절대 범위 (min/max 90일 대체)
@@ -80,6 +83,7 @@ export interface MarketScoreHistory {
   weights_snapshot: Record<string, number>;
   event_risk_score: number | null;
   combined_score: number | null;
+  risk_index: number | null;
 }
 
 // 시황 점수 해석
