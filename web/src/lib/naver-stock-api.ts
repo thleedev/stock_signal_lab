@@ -147,36 +147,38 @@ export interface StockInvestorData {
 }
 
 /**
- * 종목별 당일 투자자별 매매동향 (외국인/기관/개인 순매수)
+ * 종목별 최근 거래일 투자자별 매매동향 (외국인/기관/개인 순매수)
+ * integration API의 dealTrendInfos[0] (가장 최근 영업일) 사용
  */
 export async function fetchStockInvestorData(symbol: string): Promise<StockInvestorData | null> {
   try {
-    const res = await fetch(`${NAVER_STOCK_API}/stock/${symbol}/investor`, {
+    const res = await fetch(`${NAVER_STOCK_API}/stock/${symbol}/integration`, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
     });
     if (!res.ok) return null;
 
     const data = await res.json();
-    const list = data.investorList as Array<{
-      investorType: string;
-      tradingVolume: { buy: string; sell: string; net: string };
+    const trends = data.dealTrendInfos as Array<{
+      bizdate: string;
+      foreignerPureBuyQuant: string;
+      organPureBuyQuant: string;
+      individualPureBuyQuant: string;
     }> | undefined;
-    if (!list || list.length === 0) return null;
+    if (!trends || trends.length === 0) return null;
+
+    // 가장 최근 영업일 데이터
+    const latest = trends[0];
 
     const parseNet = (str: string | undefined): number => {
       if (!str) return 0;
+      // "+406,662" → 406662, "-4,868,716" → -4868716
       return parseInt(str.replace(/,/g, ''), 10) || 0;
     };
 
-    const find = (type: string) => list.find((i) => i.investorType === type);
-    const foreign = find('외국인');
-    const institution = find('기관');
-    const individual = find('개인');
-
     return {
-      foreign_net: parseNet(foreign?.tradingVolume?.net),
-      institution_net: parseNet(institution?.tradingVolume?.net),
-      individual_net: parseNet(individual?.tradingVolume?.net),
+      foreign_net: parseNet(latest.foreignerPureBuyQuant),
+      institution_net: parseNet(latest.organPureBuyQuant),
+      individual_net: parseNet(latest.individualPureBuyQuant),
     };
   } catch {
     return null;
