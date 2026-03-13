@@ -15,6 +15,11 @@ interface HoldingRow {
   created_at: string;
 }
 
+interface SellRow {
+  buy_trade_id: number;
+  price: number;
+}
+
 function getStatus(
   currentPrice: number,
   targetPrice: number | null,
@@ -43,20 +48,52 @@ export async function GET(request: Request) {
   const { data: allBuys, error: buyError } = await buyQuery;
   if (buyError) return NextResponse.json({ error: buyError.message }, { status: 500 });
 
-  // 매도된 BUY ID 목록
-  const { data: sells } = await supabase
+  // 매도된 BUY ID 목록 + 매도가
+  let sellQuery = supabase
     .from("user_trades")
-    .select("buy_trade_id")
+    .select("buy_trade_id, price")
     .eq("side", "SELL")
     .not("buy_trade_id", "is", null);
 
-  const soldBuyIds = new Set((sells ?? []).map((s: { buy_trade_id: number }) => s.buy_trade_id));
+  if (portfolioId) {
+    sellQuery = sellQuery.eq("portfolio_id", portfolioId);
+  }
+
+  const { data: sells } = await sellQuery;
+
+  const soldBuyIds = new Set((sells ?? []).map((s: SellRow) => s.buy_trade_id));
+
+  // 완료 거래: (매수가, 매도가) 쌍 구성
+  const completedTrades: Array<{ buyPrice: number; sellPrice: number }> = [];
+  if ((sells ?? []).length > 0) {
+    const soldBuyIdList = [...soldBuyIds];
+    const { data: soldBuys } = await supabase
+      .from("user_trades")
+      .select("id, price")
+      .in("id", soldBuyIdList);
+
+    const buyPriceMap = new Map(
+      (soldBuys ?? []).map((b: { id: number; price: number }) => [b.id, b.price])
+    );
+
+    for (const sell of sells ?? []) {
+      const buyPrice = buyPriceMap.get(sell.buy_trade_id);
+      if (buyPrice) {
+        completedTrades.push({ buyPrice, sellPrice: Number(sell.price) });
+      }
+    }
+  }
   const openBuys = (allBuys ?? []).filter((b: HoldingRow) => !soldBuyIds.has(b.id));
 
   if (openBuys.length === 0) {
     return NextResponse.json({
       holdings: [],
-      summary: { total_return_pct: 0, holding_count: 0, completed_trade_count: soldBuyIds.size },
+      summary: {
+        current_return_pct: 0,
+        total_return_pct: 0,
+        holding_count: 0,
+        completed_trade_count: soldBuyIds.size,
+      },
     });
   }
 
@@ -136,15 +173,44 @@ export async function GET(request: Request) {
     };
   });
 
-  const returnPcts = holdings.map((h: { return_pct: number }) => h.return_pct);
-  const totalReturnPct =
-    returnPcts.length > 0
-      ? Math.round((returnPcts.reduce((a: number, b: number) => a + b, 0) / returnPcts.length) * 100) / 100
-      : 0;
+  // 현재수익률: 보유 종목 매수금액 가중 평균
+  let currentReturnPct = 0;
+  if (holdings.length > 0) {
+    const totalBuy = holdings.reduce((sum: number, h: { buy_price: number }) => sum + h.buy_price, 0);
+    const totalGain = holdings.reduce(
+      (sum: number, h: { current_price: number; buy_price: number }) =>
+        sum + (h.current_price - h.buy_price),
+      0
+    );
+    currentReturnPct = totalBuy > 0 ? Math.round((totalGain / totalBuy) * 10000) / 100 : 0;
+  }
+
+  // 총수익률: 보유 + 완료 거래 매수금액 가중 평균
+  let totalReturnPct = currentReturnPct;
+  if (completedTrades.length > 0) {
+    const openBuyTotal = holdings.reduce(
+      (sum: number, h: { buy_price: number }) => sum + h.buy_price,
+      0
+    );
+    const openGainTotal = holdings.reduce(
+      (sum: number, h: { current_price: number; buy_price: number }) =>
+        sum + (h.current_price - h.buy_price),
+      0
+    );
+    const closedBuyTotal = completedTrades.reduce((sum, t) => sum + t.buyPrice, 0);
+    const closedGainTotal = completedTrades.reduce((sum, t) => sum + (t.sellPrice - t.buyPrice), 0);
+
+    const allBuyTotal = openBuyTotal + closedBuyTotal;
+    totalReturnPct =
+      allBuyTotal > 0
+        ? Math.round(((openGainTotal + closedGainTotal) / allBuyTotal) * 10000) / 100
+        : 0;
+  }
 
   return NextResponse.json({
     holdings,
     summary: {
+      current_return_pct: currentReturnPct,
       total_return_pct: totalReturnPct,
       holding_count: holdings.length,
       completed_trade_count: soldBuyIds.size,
