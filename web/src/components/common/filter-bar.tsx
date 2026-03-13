@@ -73,8 +73,15 @@ export function FilterBar({
         setMoreOpen(false);
       }
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMoreOpen(false);
+    }
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   // 검색 확장 시 input 포커스
@@ -105,12 +112,25 @@ export function FilterBar({
           className="flex-1 pl-3 pr-3 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:border-[var(--accent)]"
         />
         {onWeightClick && (
-          <button type="button" onClick={onWeightClick} className={`${iconBtnCls} shrink-0`}>
+          <button
+            type="button"
+            aria-label="가중치 설정"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onWeightClick}
+            className={`${iconBtnCls} shrink-0`}
+          >
             <SlidersHorizontal size={15} />
           </button>
         )}
         {onRefresh && (
-          <button type="button" onClick={onRefresh} disabled={refreshing} className={`${iconBtnCls} shrink-0 disabled:opacity-50`}>
+          <button
+            type="button"
+            aria-label="새로고침"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={onRefresh}
+            disabled={refreshing}
+            className={`${iconBtnCls} shrink-0 disabled:opacity-50`}
+          >
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
           </button>
         )}
@@ -172,6 +192,7 @@ export function FilterBar({
           {/* 모바일 🔍 아이콘 버튼 */}
           <button
             type="button"
+            aria-label="검색"
             className={`sm:hidden ${iconBtnCls}`}
             onClick={() => setSearchExpanded(true)}
           >
@@ -214,7 +235,8 @@ export function FilterBar({
             type="button"
             onClick={() => setMoreOpen((v) => !v)}
             aria-expanded={moreOpen}
-            aria-haspopup="true"
+            aria-label="더보기"
+            aria-haspopup="menu"
             className={`${iconBtnCls} ${moreOpen ? '!bg-[var(--accent)] !text-white !border-[var(--accent)]' : ''}`}
           >
             <MoreHorizontal size={15} />
@@ -268,7 +290,7 @@ export function FilterBar({
 
       {/* ⚙ 가중치 버튼 */}
       {onWeightClick && (
-        <button type="button" onClick={onWeightClick} className={`ml-auto sm:ml-0 ${iconBtnCls}`}>
+        <button type="button" aria-label="가중치 설정" onClick={onWeightClick} className={`ml-auto sm:ml-0 ${iconBtnCls}`}>
           <SlidersHorizontal size={15} />
         </button>
       )}
@@ -277,6 +299,7 @@ export function FilterBar({
       {onRefresh && (
         <button
           type="button"
+          aria-label="새로고침"
           onClick={onRefresh}
           disabled={refreshing}
           className={`${iconBtnCls} disabled:opacity-50`}
