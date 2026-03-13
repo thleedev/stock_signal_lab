@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw, Pin, PinOff, GripVertical } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
+import { SOURCE_LABELS_SHORT, SIGNAL_COLORS, SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import WatchlistGroupTabs, { type TabId } from "@/components/stocks/watchlist-group-tabs";
 import GroupSelectPopup from "@/components/stocks/group-select-popup";
@@ -31,25 +32,6 @@ interface Props {
   hasFavorites: boolean;                  // 즐겨찾기 존재 여부 (진입 탭 결정용)
 }
 
-const SIGNAL_COLORS: Record<string, string> = {
-  BUY: "bg-red-900/50 text-red-400 border-red-700",
-  BUY_FORECAST: "bg-red-900/30 text-red-300 border-red-800",
-  SELL: "bg-blue-900/50 text-blue-400 border-blue-700",
-  SELL_COMPLETE: "bg-blue-900/30 text-blue-300 border-blue-800",
-};
-
-const SIGNAL_LABELS: Record<string, string> = {
-  BUY: "매수",
-  BUY_FORECAST: "매수예고",
-  SELL: "매도",
-  SELL_COMPLETE: "매도완료",
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  quant: "퀀트",
-  lassi: "라씨",
-  stockbot: "스톡봇",
-};
 
 function formatNumber(n: number | null): string {
   if (n == null) return "-";
@@ -109,9 +91,9 @@ function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
         className={`inline-block text-[10px] leading-tight px-1.5 py-0.5 rounded border whitespace-nowrap ${
           SIGNAL_COLORS[sig.type] ?? "bg-gray-800 text-gray-400 border-gray-700"
         }`}
-        title={`${SOURCE_LABELS[source]} ${sig.type}`}
+        title={`${SOURCE_LABELS_SHORT[source]} ${sig.type}`}
       >
-        {SIGNAL_LABELS[sig.type] ?? sig.type}
+        {SIGNAL_TYPE_LABELS[sig.type] ?? sig.type}
       </span>
       {sig.price != null && sig.price > 0 && (
         <span className="text-[10px] text-[var(--muted)] tabular-nums">
@@ -120,6 +102,23 @@ function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
       )}
     </div>
   );
+}
+
+type LivePriceMap = Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }>;
+
+function applyLivePrices(list: StockCache[], prices: LivePriceMap): StockCache[] {
+  return list.map((stock) => {
+    const live = prices[stock.symbol];
+    if (!live) return stock;
+    return {
+      ...stock,
+      current_price: live.current_price ?? stock.current_price,
+      price_change: live.price_change ?? stock.price_change,
+      price_change_pct: live.price_change_pct ?? stock.price_change_pct,
+      volume: live.volume ?? stock.volume,
+      market_cap: live.market_cap ?? stock.market_cap,
+    };
+  });
 }
 
 export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, groups: initialGroups, symbolGroups: initialSymbolGroups }: Props) {
@@ -204,9 +203,13 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         const newData: StockCache[] = json.data ?? [];
 
         if (reset) {
-          setStocks(newData);
+          setStocks(applyLivePrices(newData, livePricesRef.current));
         } else {
-          setStocks((prev) => [...prev, ...newData]);
+          setStocks((prev) => {
+            const existingSymbols = new Set(prev.map((s) => s.symbol));
+            const dedupedNew = newData.filter((s) => !existingSymbols.has(s.symbol));
+            return [...prev, ...applyLivePrices(dedupedNew, livePricesRef.current)];
+          });
         }
         setHasMore(pageNum < (json.totalPages ?? 1));
       } catch (e) {
@@ -253,6 +256,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   // query가 있으면 전체 DB 검색 모드, 없으면 탭 관심종목 모드
   const showSearchMode = query.trim().length > 0;
 
+  // 성능 최적화: stocks를 Map으로 변환하여 O(1) 조회
+  const stocksMap = useMemo(() => new Map(stocks.map((s) => [s.symbol, s])), [stocks]);
+
   // 1단계: 즐겨찾기/일반 종목 병합 (탭 + 검색어 필터링)
   const mergedStocks = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -273,15 +279,13 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           )
         : baseFavs;
 
-    // 최신 가격 데이터로 즐겨찾기 업데이트
-    const updatedFavs = filteredFavs.map(
-      (fav) => stocks.find((s) => s.symbol === fav.symbol) ?? fav
-    );
+    // 최신 가격 데이터로 즐겨찾기 업데이트 (Map으로 O(n) 조회)
+    const updatedFavs = filteredFavs.map((fav) => stocksMap.get(fav.symbol) ?? fav);
     const favSymbols = new Set(filteredFavs.map((f) => f.symbol));
     const nonFavs = stocks.filter((s) => !favSymbols.has(s.symbol));
 
     return { favs: updatedFavs, nonFavs };
-  }, [stocks, favStocks, query, showSearchMode, activeTab, symGroups]);
+  }, [stocks, stocksMap, favStocks, query, showSearchMode, activeTab, symGroups]);
 
   // 2단계: 정렬 + pinFavorites 적용
   const displayStocks = useMemo(() => {
@@ -545,39 +549,38 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
   const stocksRef = useRef(stocks);
   stocksRef.current = stocks;
+  const favStocksRef = useRef(favStocks);
+  favStocksRef.current = favStocks;
+  // 최근 fetch된 live price 캐시 (새 페이지 로드 시 적용)
+  const livePricesRef = useRef<Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }>>({});
 
   const refreshPrices = useCallback(async () => {
     if (refreshing) return;
     setRefreshing(true);
     try {
       await fetch("/api/v1/prices", { method: "POST" });
-      const symbols = stocksRef.current.map((s) => s.symbol);
+
+      // stocks + favStocks 전체 심볼 수집
+      const allSymbols = [
+        ...stocksRef.current.map((s) => s.symbol),
+        ...favStocksRef.current.map((s) => s.symbol),
+      ];
+      const uniqueSymbols = [...new Set(allSymbols)];
       const CHUNK = 200;
-      const allPrices: Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }> = {};
+      const allPrices: typeof livePricesRef.current = {};
 
       await Promise.all(
-        Array.from({ length: Math.ceil(symbols.length / CHUNK) }, (_, i) => {
-          const chunk = symbols.slice(i * CHUNK, (i + 1) * CHUNK);
+        Array.from({ length: Math.ceil(uniqueSymbols.length / CHUNK) }, (_, i) => {
+          const chunk = uniqueSymbols.slice(i * CHUNK, (i + 1) * CHUNK);
           return fetch(`/api/v1/prices?symbols=${chunk.join(",")}&live=true`)
             .then((r) => r.json())
             .then(({ data }) => { if (data) Object.assign(allPrices, data); });
         })
       );
 
-      setStocks((prev) =>
-        prev.map((stock) => {
-          const live = allPrices[stock.symbol];
-          if (!live) return stock;
-          return {
-            ...stock,
-            current_price: live.current_price ?? stock.current_price,
-            price_change: live.price_change ?? stock.price_change,
-            price_change_pct: live.price_change_pct ?? stock.price_change_pct,
-            volume: live.volume ?? stock.volume,
-            market_cap: live.market_cap ?? stock.market_cap,
-          };
-        })
-      );
+      livePricesRef.current = { ...livePricesRef.current, ...allPrices };
+      setStocks((prev) => applyLivePrices(prev, allPrices));
+      setFavStocks((prev) => applyLivePrices(prev, allPrices));
       setUpdateTime(new Date().toISOString());
     } finally {
       setRefreshing(false);
@@ -597,11 +600,11 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       <tr className="border-b border-[var(--border)] text-[var(--muted)] text-xs">
         <th className="px-3 py-3 text-left w-10"></th>
         <th className="px-3 py-3 text-left">종목명</th>
-        <th className="px-3 py-3 text-left">코드</th>
+        <th className="hidden md:table-cell px-3 py-3 text-left">코드</th>
         <th className="px-3 py-3 text-right">현재가</th>
         <th className="px-3 py-3 text-right">등락률</th>
-        <th className="px-3 py-3 text-right">거래량</th>
-        <th className="px-3 py-3 text-right">PER</th>
+        <th className="hidden md:table-cell px-3 py-3 text-right">거래량</th>
+        <th className="hidden md:table-cell px-3 py-3 text-right">PER</th>
         <th className="px-2 py-3 text-center">퀀트</th>
         <th className="px-2 py-3 text-center">라씨</th>
         <th className="px-2 py-3 text-center">스톡봇</th>
@@ -920,7 +923,7 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
       <td className="px-3 py-2.5">
         <span className="font-medium">{stock.name}</span>
       </td>
-      <td className="px-3 py-2.5 text-[var(--muted)] text-xs">
+      <td className="hidden md:table-cell px-3 py-2.5 text-[var(--muted)] text-xs">
         {stock.symbol}
       </td>
       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change)}`}>
@@ -929,10 +932,10 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change_pct)}`}>
         {formatPercent(stock.price_change_pct)}
       </td>
-      <td className="px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
+      <td className="hidden md:table-cell px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
         {formatNumber(stock.volume)}
       </td>
-      <td className="px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
+      <td className="hidden md:table-cell px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
         {stock.per != null ? stock.per.toFixed(1) : "-"}
       </td>
       <td className="px-2 py-2.5 text-center">
@@ -952,7 +955,7 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
             </span>
             {gapSrc && (
               <span className="text-[9px] text-[var(--muted)]">
-                {SOURCE_LABELS[gapSrc] ?? gapSrc}
+                {SOURCE_LABELS_SHORT[gapSrc] ?? gapSrc}
               </span>
             )}
           </div>

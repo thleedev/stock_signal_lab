@@ -60,9 +60,6 @@ export async function POST(request: NextRequest) {
           market_cap: price.market_cap,
           updated_at: now,
         };
-        if (price.name) {
-          row.name = price.name;
-        }
         if (price.volume > 0) {
           row.volume = price.volume;
           row.price_change = price.price_change;

@@ -1,5 +1,3 @@
-import { SupabaseClient } from '@supabase/supabase-js';
-
 export interface TechnicalScoreResult {
   score: number; // -8~30
   rsi: number | null;
@@ -11,6 +9,15 @@ export interface TechnicalScoreResult {
   volume_surge: boolean;
   week52_low_near: boolean;
   data_insufficient: boolean;
+}
+
+export interface DailyPrice {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
 
 function calcEMA(closes: number[], period: number): number[] {
@@ -55,21 +62,11 @@ function calcBollingerLower(closes: number[], period = 20, stdMultiplier = 2): n
   return mean - stdMultiplier * Math.sqrt(variance);
 }
 
-export async function calcTechnicalScore(
-  supabase: SupabaseClient,
-  symbol: string,
+export function calcTechnicalScore(
+  prices: DailyPrice[],
   high52w: number | null,
   low52w: number | null
-): Promise<TechnicalScoreResult> {
-  // 최신 65일을 DESC로 가져온 뒤 reverse() → 시간 오름차순
-  const { data: pricesDesc } = await supabase
-    .from('daily_prices')
-    .select('date, open, high, low, close, volume')
-    .eq('symbol', symbol)
-    .order('date', { ascending: false })
-    .limit(65);
-  const prices = (pricesDesc ?? []).reverse();
-
+): TechnicalScoreResult {
   const empty: TechnicalScoreResult = {
     score: 0,
     rsi: null,
@@ -104,7 +101,7 @@ export async function calcTechnicalScore(
   const sma20 = calcSMA(closes, 20);
   let goldenCross = false;
   if (sma5.length >= 4 && sma20.length >= 4) {
-    const offset = sma5.length - sma20.length; // sma5가 더 길다
+    const offset = sma5.length - sma20.length;
     for (let i = Math.max(1, sma20.length - 3); i < sma20.length; i++) {
       const i5 = i + offset;
       if (i5 >= 1 && i5 < sma5.length) {
@@ -195,7 +192,7 @@ export async function calcTechnicalScore(
 
   // 쌍봉 패턴: 최근 20거래일 내 두 고점이 ±2% 이내, 사이에 -5% 이상 하락,
   // 현재가가 두 번째 고점의 97%~103% 구간 (매도 경고 구간에서만 페널티)
-  let doubleTup = false;
+  let doubleTop = false;
   if (highs.length >= 20) {
     const recentHighs = highs.slice(-20);
     const recentClosesFull = closes.slice(-20);
@@ -210,14 +207,14 @@ export async function calcTechnicalScore(
           const dropRatio = (Math.min(h1, h2) - minBetween) / Math.min(h1, h2);
           const nearSecondPeak = currentPrice >= h2 * 0.97 && currentPrice <= h2 * 1.03;
           if (dropRatio >= 0.05 && nearSecondPeak) {
-            doubleTup = true;
+            doubleTop = true;
             break outer;
           }
         }
       }
     }
   }
-  if (doubleTup) score -= 8;
+  if (doubleTop) score -= 8;
 
   return {
     score: Math.max(-8, Math.min(score, 30)),
@@ -226,7 +223,7 @@ export async function calcTechnicalScore(
     golden_cross: goldenCross,
     bollinger_bottom: bollingerBottom,
     phoenix_pattern: phoenixPattern,
-    double_top: doubleTup,
+    double_top: doubleTop,
     volume_surge: volumeSurge,
     week52_low_near: week52LowNear,
     data_insufficient: false,

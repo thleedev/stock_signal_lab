@@ -96,8 +96,9 @@ export async function fetchAllStockPrices(): Promise<Map<string, StockPriceData>
       const price = parseNumber(item.closePrice);
       if (price <= 0) continue;
 
-      const sign = item.compareToPreviousPrice?.name === 'FALLING' ? -1 : 1;
-      const priceChange = parseNumber(item.compareToPreviousClosePrice) * sign;
+      // API가 이미 부호 포함 값을 반환함 (하락 시 음수)
+      // compareToPreviousClosePrice: "-4,900", fluctuationsRatio: "-2.61"
+      const priceChange = parseNumber(item.compareToPreviousClosePrice);
 
       result.set(item.itemCode, {
         symbol: item.itemCode,
@@ -105,7 +106,7 @@ export async function fetchAllStockPrices(): Promise<Map<string, StockPriceData>
         market,
         current_price: price,
         price_change: priceChange,
-        price_change_pct: parseFloat(item.fluctuationsRatio) * sign || 0,
+        price_change_pct: parseFloat(item.fluctuationsRatio) || 0,
         volume: parseNumber(item.accumulatedTradingVolume),
         market_cap: parseMarketCap(item.marketValue),
       });
@@ -206,6 +207,62 @@ export async function fetchBulkInvestorData(
   }
 
   return result;
+}
+
+export interface NaverDailyPrice {
+  date: string;  // YYYY-MM-DD
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/**
+ * 네이버 fchart API로 일봉 차트 데이터 조회
+ * KIS API 없이 전 종목 차트 데이터 제공 가능
+ *
+ * @param symbol 종목 코드 (6자리)
+ * @param days 조회 일수 (기본 90)
+ */
+export async function fetchNaverDailyPrices(
+  symbol: string,
+  days = 90
+): Promise<NaverDailyPrice[]> {
+  try {
+    const res = await fetch(
+      `https://fchart.stock.naver.com/sise.nhn?symbol=${symbol}&timeframe=day&count=${days}&requestType=0`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    );
+    if (!res.ok) return [];
+    const xml = await res.text();
+
+    // <item data="20250313|73400|74100|72600|73200|1234567" /> 파싱
+    const matches = xml.matchAll(/<item data="([^"]+)"/g);
+    const result: NaverDailyPrice[] = [];
+
+    for (const match of matches) {
+      const parts = match[1].split('|');
+      if (parts.length < 6) continue;
+      const [rawDate, open, high, low, close, volume] = parts;
+      if (!rawDate || rawDate.length !== 8) continue;
+      const date = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
+      const closeVal = parseInt(close, 10);
+      if (!closeVal || closeVal <= 0) continue;
+      result.push({
+        date,
+        open: parseInt(open, 10) || closeVal,
+        high: parseInt(high, 10) || closeVal,
+        low: parseInt(low, 10) || closeVal,
+        close: closeVal,
+        volume: parseInt(volume, 10) || 0,
+      });
+    }
+
+    return result;
+  } catch {
+    return [];
+  }
 }
 
 /**

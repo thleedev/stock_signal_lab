@@ -1,6 +1,7 @@
 import { createServiceClient } from "@/lib/supabase";
 import StockListClient from "@/components/stocks/stock-list-client";
 import type { WatchlistGroup } from "@/types/stock";
+import { extractSignalPrice } from "@/lib/signal-constants";
 
 export const revalidate = 60;
 
@@ -8,8 +9,8 @@ export default async function StocksPage() {
   const supabase = createServiceClient();
 
   const [
-    { data: favorites },
-    { data: stocks },
+    { data: rawFavorites },
+    { data: rawStocks },
     { data: watchlistItems },
     { data: groupRows },
     { data: groupStockRows },
@@ -36,12 +37,41 @@ export default async function StocksPage() {
   }
 
   const lastPriceUpdate = latestUpdate?.updated_at ?? null;
-  const hasFavorites = (favorites?.length ?? 0) > 0;
+  const hasFavorites = (rawFavorites?.length ?? 0) > 0;
+
+  // stock_info에서 이름 보완 (stock_cache에 코드값으로 잘못 저장된 종목 수정)
+  const isCodeLike = (name: string, sym: string) => name === sym || /^\d{6}$/.test(name);
+  let infoNameMap: Record<string, string> = {};
+
+  const uniqueSymbols = [...new Set([
+    ...(rawFavorites ?? []).map((f) => f.symbol as string),
+    ...(rawStocks ?? []).map((s) => s.symbol as string),
+  ])];
+
+  if (uniqueSymbols.length > 0) {
+    const { data: stockInfoNames } = await supabase
+      .from("stock_info")
+      .select("symbol, name")
+      .in("symbol", uniqueSymbols);
+    if (stockInfoNames) {
+      infoNameMap = Object.fromEntries(
+        stockInfoNames.map((s) => [s.symbol as string, s.name as string])
+      );
+    }
+  }
+
+  const fixName = <T extends { symbol: string; name: string }>(s: T): T =>
+    isCodeLike(s.name, s.symbol) && infoNameMap[s.symbol]
+      ? { ...s, name: infoNameMap[s.symbol] }
+      : s;
+
+  const favorites = (rawFavorites ?? []).map(fixName);
+  const stocks = (rawStocks ?? []).map(fixName);
 
   // 신호 병합 (기존 로직 유지)
   const allSymbols = new Set<string>();
-  favorites?.forEach((f) => allSymbols.add(f.symbol));
-  stocks?.forEach((s) => allSymbols.add(s.symbol));
+  favorites.forEach((f) => allSymbols.add(f.symbol));
+  stocks.forEach((s) => allSymbols.add(s.symbol));
 
   let signalMap: Record<string, Record<string, { type: string; price: number | null }>> = {};
 
@@ -61,25 +91,10 @@ export default async function StocksPage() {
         if (!sym) continue;
         if (!signalMap[sym]) signalMap[sym] = {};
         if (!signalMap[sym][src]) {
-          const raw = row.raw_data as Record<string, unknown> | null;
-          let price: number | null = null;
-          if (raw) {
-            const sp = raw.signal_price as number | undefined;
-            if (sp && sp > 0) price = sp;
-            else {
-              const rp = raw.recommend_price as number | undefined;
-              if (rp && rp > 0) price = rp;
-              else {
-                const bp = raw.buy_price as number | undefined;
-                if (bp && bp > 0) price = bp;
-                else {
-                  const slp = raw.sell_price as number | undefined;
-                  if (slp && slp > 0) price = slp;
-                }
-              }
-            }
-          }
-          signalMap[sym][src] = { type: row.signal_type, price };
+          signalMap[sym][src] = {
+            type: row.signal_type,
+            price: extractSignalPrice(row.raw_data as Record<string, unknown> | null),
+          };
         }
       }
     }
@@ -87,7 +102,7 @@ export default async function StocksPage() {
 
   const emptySignal = { type: null, price: null };
   const mergeSignals = (list: typeof stocks) =>
-    (list ?? []).map((s) => ({
+    list.map((s) => ({
       ...s,
       signals: {
         lassi: signalMap[s.symbol]?.lassi ?? emptySignal,

@@ -1,26 +1,7 @@
 import { createServiceClient } from "@/lib/supabase";
 import { DateSelector } from "@/components/common/date-selector";
-import { getLastNDays } from "@/lib/date-utils";
-
-const SOURCE_COLORS: Record<string, string> = {
-  lassi: "bg-red-900/30 text-red-400 border-red-800/50",
-  stockbot: "bg-green-900/30 text-green-400 border-green-800/50",
-  quant: "bg-blue-900/30 text-blue-400 border-blue-800/50",
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  lassi: "라씨매매",
-  stockbot: "스톡봇",
-  quant: "퀀트",
-};
-
-const SIGNAL_TYPE_LABELS: Record<string, string> = {
-  BUY: "매수",
-  BUY_FORECAST: "매수예고",
-  SELL: "매도",
-  SELL_COMPLETE: "매도완료",
-  HOLD: "보유중",
-};
+import { getLastNDays, getKstDayRange } from "@/lib/date-utils";
+import { SOURCE_COLORS, SOURCE_LABELS, SIGNAL_TYPE_LABELS, BUY_SIGNAL_TYPES } from "@/lib/signal-constants";
 
 const SECTION_ICONS: Record<string, string> = {
   "시장 동향 종합": "📊",
@@ -44,8 +25,7 @@ export default async function ReportsPage({
   const selectedDate = params.date && last7.includes(params.date) ? params.date : last7[0];
   const supabase = createServiceClient();
 
-  const dateStart = `${selectedDate}T00:00:00+09:00`;
-  const dateEnd = `${selectedDate}T23:59:59+09:00`;
+  const { start: dateStart, end: dateEnd } = getKstDayRange(selectedDate);
 
   const [
     { data: signals },
@@ -76,7 +56,7 @@ export default async function ReportsPage({
     const src = s.source as string;
     if (!sourceCounts[src]) continue;
     sourceCounts[src].total++;
-    if (["BUY", "BUY_FORECAST"].includes(s.signal_type)) {
+    if ((BUY_SIGNAL_TYPES as readonly string[]).includes(s.signal_type)) {
       sourceCounts[src].buy++;
     } else {
       sourceCounts[src].sell++;
@@ -212,7 +192,7 @@ export default async function ReportsPage({
             {(signals ?? []).map((s: Record<string, string>) => (
               <div key={s.id} className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors">
                 <span className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${
-                  ["BUY", "BUY_FORECAST"].includes(s.signal_type)
+                  (BUY_SIGNAL_TYPES as readonly string[]).includes(s.signal_type)
                     ? "bg-red-900/30 text-red-400"
                     : "bg-blue-900/30 text-blue-400"
                 }`}>

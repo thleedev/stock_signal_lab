@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
             updateData.pbr = indicator.pbr || null;
             updateData.eps = indicator.eps || null;
             updateData.bps = indicator.bps || null;
+            updateData.roe = indicator.roe || null;
             updateData.high_52w = indicator.high_52w || null;
             updateData.low_52w = indicator.low_52w || null;
             updateData.dividend_yield = indicator.dividend_yield || null;

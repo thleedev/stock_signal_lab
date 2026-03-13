@@ -1,27 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { extractSignalPrice } from '@/lib/signal-constants';
 
 export const dynamic = 'force-dynamic';
-
-/**
- * 신호에서 가격 추출 (raw_data JSON에서)
- */
-function extractSignalPrice(rawData: Record<string, unknown> | null): number | null {
-  if (!rawData) return null;
-  const sp = rawData.signal_price as number | undefined;
-  if (sp && sp > 0) return sp;
-  const rp = rawData.recommend_price as number | undefined;
-  if (rp && rp > 0) return rp;
-  const bp = rawData.buy_price as number | undefined;
-  if (bp && bp > 0) return bp;
-  const slp = rawData.sell_price as number | undefined;
-  if (slp && slp > 0) return slp;
-  const p = rawData.price as number | undefined;
-  if (p && p > 0) return p;
-  const cp = rawData.current_price as number | undefined;
-  if (cp && cp > 0) return cp;
-  return null;
-}
 
 export async function GET(request: NextRequest) {
   const supabase = createServiceClient();
@@ -78,6 +59,33 @@ export async function GET(request: NextRequest) {
   }
 
   let mergedData = data || [];
+
+  // stock_info에서 이름 보완 (name이 코드값으로 잘못 저장된 종목 수정)
+  if (mergedData.length > 0) {
+    const badSymbols = mergedData
+      .filter((s) => s.name === s.symbol || /^\d{6}$/.test(s.name))
+      .map((s) => s.symbol);
+    if (badSymbols.length > 0) {
+      const { data: infoNames } = await supabase
+        .from('stock_info')
+        .select('symbol, name')
+        .in('symbol', badSymbols);
+      if (infoNames && infoNames.length > 0) {
+        const infoMap = Object.fromEntries(infoNames.map((s) => [s.symbol, s.name]));
+        mergedData = mergedData.map((s) =>
+          infoMap[s.symbol] ? { ...s, name: infoMap[s.symbol] } : s
+        );
+        // 이름이 수정된 경우 정렬 재적용 (DB 정렬이 구 이름 기준이었으므로)
+        if (sortBy === 'name') {
+          mergedData = [...mergedData].sort((a, b) =>
+            sortDir
+              ? b.name.localeCompare(a.name, 'ko')
+              : a.name.localeCompare(b.name, 'ko')
+          );
+        }
+      }
+    }
+  }
 
   // withSignals: 소스별 최신 신호를 조인
   if (withSignals && mergedData.length > 0) {

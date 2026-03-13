@@ -7,12 +7,13 @@ import { useState } from "react";
 
 const MAIN_TABS = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
-  { href: "/signals", label: "신호", icon: Zap },
   { href: "/stocks", label: "종목", icon: BarChart3 },
-  { href: "/gap", label: "GAP", icon: Target },
+  { href: "/signals", label: "AI신호", icon: Zap },
+  { href: "/my-portfolio", label: "프트종목", icon: Briefcase },
 ];
 
 const MORE_TABS = [
+  { href: "/gap", label: "GAP", icon: Target },
   { href: "/market", label: "시황", icon: TrendingUp },
   { href: "/investment", label: "포트종목", icon: Briefcase },
   { href: "/portfolio", label: "AI포트", icon: Briefcase },
@@ -40,7 +41,7 @@ export function MobileTabBar() {
           onClick={() => setMoreOpen(false)}
         >
           <div
-            className="absolute bottom-14 left-0 right-0 bg-[#0d1117] border-t border-[var(--border)] p-3 grid grid-cols-5 gap-2"
+            className="absolute bottom-14 left-0 right-0 bg-[#0d1117] border-t border-[var(--border)] p-3 grid grid-cols-6 gap-2"
             onClick={(e) => e.stopPropagation()}
           >
             {MORE_TABS.map((item) => {

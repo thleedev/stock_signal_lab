@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { getStockIndicators } from '@/lib/kis-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,56 +10,41 @@ export async function GET(
   const { symbol } = await params;
   const supabase = createServiceClient();
 
-  // 캐시 체크 (5분 이내면 캐시 반환)
-  const { data: cached } = await supabase
-    .from('stock_cache')
-    .select('*')
-    .eq('symbol', symbol)
-    .single();
+  const [{ data: cache }, { data: info }] = await Promise.all([
+    supabase
+      .from('stock_cache')
+      .select('symbol, name, current_price, price_change_pct, per, pbr, roe, eps, bps, market_cap, high_52w, low_52w, dividend_yield, volume')
+      .eq('symbol', symbol)
+      .single(),
+    supabase
+      .from('stock_info')
+      .select('symbol, name')
+      .eq('symbol', symbol)
+      .single(),
+  ]);
 
-  if (cached?.updated_at) {
-    const cacheAge = Date.now() - new Date(cached.updated_at).getTime();
-    if (cacheAge < 5 * 60 * 1000) {
-      return NextResponse.json(cached);
-    }
+  if (!cache) {
+    return NextResponse.json({ error: '종목을 찾을 수 없습니다' }, { status: 404 });
   }
 
-  // KIS API 실시간 조회
-  const indicators = await getStockIndicators(symbol);
-  if (!indicators) {
-    if (cached) return NextResponse.json(cached);
-    return NextResponse.json({ error: 'Failed to fetch data' }, { status: 502 });
-  }
+  // stock_info에서 이름 보완
+  const isCodeLike = (name: string) => name === symbol || /^\d{6}$/.test(name);
+  const name = (isCodeLike(cache.name ?? '') && info?.name) ? info.name : cache.name;
 
-  // stock_cache UPSERT
-  const updateData = {
-    symbol,
-    name: cached?.name || symbol,
-    market: cached?.market || 'KOSPI',
-    current_price: indicators.price,
-    price_change: indicators.price_change,
-    price_change_pct: indicators.price_change_pct,
-    volume: indicators.volume,
-    market_cap: indicators.market_cap,
-    per: indicators.per,
-    pbr: indicators.pbr,
-    eps: indicators.eps,
-    bps: indicators.bps,
-    high_52w: indicators.high_52w,
-    low_52w: indicators.low_52w,
-    dividend_yield: indicators.dividend_yield,
-    updated_at: new Date().toISOString(),
-  };
-
-  const { data: updated, error } = await supabase
-    .from('stock_cache')
-    .upsert(updateData, { onConflict: 'symbol' })
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(updated);
+  return NextResponse.json({
+    symbol: cache.symbol,
+    name,
+    current_price: cache.current_price ?? null,
+    price_change_pct: cache.price_change_pct ?? null,
+    per: cache.per ?? null,
+    pbr: cache.pbr ?? null,
+    roe: cache.roe ?? null,
+    eps: cache.eps ?? null,
+    bps: cache.bps ?? null,
+    market_cap: cache.market_cap ?? null,
+    high_52w: cache.high_52w ?? null,
+    low_52w: cache.low_52w ?? null,
+    dividend_yield: cache.dividend_yield ?? null,
+    volume: cache.volume ?? null,
+  });
 }

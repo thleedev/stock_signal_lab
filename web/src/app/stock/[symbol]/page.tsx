@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import StockDetailClient from "@/components/stock/stock-detail-client";
+import { fetchNaverDailyPrices } from "@/lib/naver-stock-api";
 
 const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",
@@ -35,13 +36,16 @@ export default async function StockDetailPage({
   // 90일 전체 데이터를 한번에 가져옴 (차트에서 클라이언트 필터링)
   const fromDate = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
 
-  // 일별 시세 조회
-  const { data: prices } = await supabase
-    .from("daily_prices")
-    .select("date, open, high, low, close, volume")
-    .eq("symbol", symbol)
-    .gte("date", fromDate)
-    .order("date", { ascending: true });
+  // 일별 시세 조회 + 네이버 차트 병렬 조회
+  const [{ data: prices }, naverPrices] = await Promise.all([
+    supabase
+      .from("daily_prices")
+      .select("date, open, high, low, close, volume")
+      .eq("symbol", symbol)
+      .gte("date", fromDate)
+      .order("date", { ascending: true }),
+    fetchNaverDailyPrices(symbol, 90),
+  ]);
 
   // 신호 이력 조회
   const { data: signals } = await supabase
@@ -66,33 +70,25 @@ export default async function StockDetailPage({
     .eq("symbol", symbol)
     .single();
 
-  // 최신 가격 정보 (daily_prices 우선, 없으면 stock_cache 사용)
-  const latestPrice = prices && prices.length > 0 ? prices[prices.length - 1] : null;
-  const prevPrice = prices && prices.length > 1 ? prices[prices.length - 2] : null;
-
+  // 현재가/등락률: stock_cache 우선 (네이버 실시간 데이터로 목록 페이지와 일치)
+  // daily_prices 기반 계산은 소스 불일치로 괴리 발생하므로 사용 안 함
   let currentPrice: number | null = null;
   let priceChange = 0;
   let priceChangePct = "0.00";
   let priceDate = "";
 
-  if (latestPrice) {
-    currentPrice = latestPrice.close;
-    priceChange = prevPrice ? latestPrice.close - prevPrice.close : 0;
-    priceChangePct = prevPrice && prevPrice.close > 0
-      ? ((priceChange / prevPrice.close) * 100).toFixed(2)
-      : "0.00";
-    priceDate = latestPrice.date;
-  } else if (stockCache?.current_price) {
+  if (stockCache?.current_price) {
     currentPrice = stockCache.current_price;
     priceChange = stockCache.price_change ?? 0;
     priceChangePct = stockCache.price_change_pct?.toFixed(2) ?? "0.00";
-    priceDate = "stock_cache";
+    priceDate = "realtime";
   }
+
+  // 차트 데이터: daily_prices 우선, 없으면 네이버 fchart 폴백 (전 종목 지원)
+  const priceList = (prices && prices.length > 0) ? prices : naverPrices;
 
   // 종목명 (stock_cache 우선)
   const stockName = stockCache?.name ?? signals?.[0]?.name ?? trades?.[0]?.name ?? symbol;
-
-  const priceList = prices ?? [];
 
   // 신호 날짜 (차트 마커용)
   const signalDates = (signals ?? []).map((s: Record<string, string>) => s.timestamp?.slice(0, 10)).filter(Boolean);

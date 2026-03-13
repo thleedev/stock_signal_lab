@@ -1,160 +1,170 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { DateSelector } from "@/components/common/date-selector";
-import { getLastNDays } from "@/lib/date-utils";
+import { getLastNWeekdays, getKstDayRange } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
-import { AiRecommendationSection } from "@/components/signals/AiRecommendationSection";
-import { AiRecommendationResponse } from "@/types/ai-recommendation";
-import { getTodayKst } from "@/lib/ai-recommendation";
-
-const SOURCE_LABELS: Record<string, string> = {
-  lassi: "라씨매매",
-  stockbot: "스톡봇",
-  quant: "퀀트",
-};
+import { StockRankingSection } from "@/components/signals/StockRankingSection";
+import { SOURCE_LABELS, extractSignalPrice } from "@/lib/signal-constants";
 
 export const revalidate = 30;
 
 export default async function SignalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string; date?: string }>;
+  searchParams: Promise<{ source?: string; date?: string; tab?: string }>;
 }) {
   const params = await searchParams;
   const activeSource = params.source || "all";
+  const activeTab = params.tab === "analysis" ? "analysis" : "signals";
   const supabase = createServiceClient();
 
-  // AI 추천 초기 데이터 서버사이드 조회 (lib 직접 호출, fetch() 자가 호출 금지)
-  const todayKst = getTodayKst();
-  const { data: aiRecs } = await supabase
-    .from("ai_recommendations")
-    .select("*")
-    .eq("date", todayKst)
-    .order("rank", { ascending: true })
-    .limit(5);
-  const aiRecommendationsRes: AiRecommendationResponse | null =
-    aiRecs && aiRecs.length > 0
-      ? {
-          recommendations: aiRecs,
-          generated_at: aiRecs[0].created_at,
-          total_candidates: aiRecs[0].total_candidates ?? 0,
-          needs_refresh: false,
-        }
-      : null;
+  const last7 = getLastNWeekdays(7);
+  const selectedDate =
+    params.date === "all" ? "all"
+    : params.date && last7.includes(params.date) ? params.date
+    : last7[0];
 
-  // 날짜: searchParams에서 가져오거나 KST 오늘
-  const last7 = getLastNDays(7);
-  const selectedDate = params.date && last7.includes(params.date) ? params.date : last7[0];
-  const today = selectedDate;
-
-  // 오늘 신호 전체 조회
-  let query = supabase
-    .from("signals")
-    .select("*")
-    .gte("timestamp", `${today}T00:00:00+09:00`)
-    .lt("timestamp", `${today}T23:59:59+09:00`)
-    .order("timestamp", { ascending: false });
-
-  if (activeSource !== "all") {
-    query = query.eq("source", activeSource);
-  }
-
-  // 1단계: 신호 쿼리 + 독립 쿼리 병렬 실행
-  const [
-    { data: rawSignals },
-    { data: favorites },
-    { data: watchlistItems },
-  ] = await Promise.all([
-    query,
+  // 즐겨찾기 + 보유 → 두 탭 공통 사용
+  const [{ data: favorites }, { data: watchlistItems }] = await Promise.all([
     supabase.from("favorite_stocks").select("symbol"),
     supabase.from("watchlist").select("symbol"),
   ]);
+  const favoriteSymbols = (favorites ?? []).map((f: { symbol: string }) => f.symbol);
+  const watchlistSymbols = (watchlistItems ?? []).map((w: { symbol: string }) => w.symbol);
 
-  const favoriteSymbols = (favorites || []).map(
-    (f: { symbol: string }) => f.symbol
-  );
-  const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
+  // ── AI 신호 탭 ──────────────────────────────────────────
+  let buySignals: Record<string, string>[] = [];
+  let sellSignals: Record<string, string>[] = [];
 
-  // 2단계: rawSignals에 의존하는 쿼리 (stock_cache + stock_info 병렬)
-  const signalSymbols = [...new Set((rawSignals || []).map((s: Record<string, string>) => s.symbol))];
-  let nameMap: Record<string, string> = {};
-  let marketMap: Record<string, string> = {};
-  let sectorMap: Record<string, string> = {};
-  if (signalSymbols.length > 0) {
-    const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
-      supabase.from("stock_cache").select("symbol, name, market").in("symbol", signalSymbols),
-      supabase.from("stock_info").select("symbol, sector").in("symbol", signalSymbols).not("sector", "is", null),
-    ]);
-    if (stockNames) {
-      nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
-      marketMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.market || "기타"]));
+  if (activeTab === "signals") {
+    let dateStart: string, dateEnd: string;
+    if (selectedDate === "all") {
+      const oldest = last7[last7.length - 1];
+      const newest = last7[0];
+      dateStart = `${oldest}T00:00:00+09:00`;
+      dateEnd = `${newest}T23:59:59+09:00`;
+    } else {
+      const range = getKstDayRange(selectedDate);
+      dateStart = range.start;
+      dateEnd = range.end;
     }
-    if (stockInfos) {
-      sectorMap = Object.fromEntries(stockInfos.map((s) => [s.symbol, s.sector]));
+    let query = supabase
+      .from("signals")
+      .select("*")
+      .gte("timestamp", dateStart)
+      .lte("timestamp", dateEnd)
+      .order("timestamp", { ascending: false });
+    if (activeSource !== "all") query = query.eq("source", activeSource);
+
+    const { data: rawSignals } = await query;
+
+    const signalSymbols = [...new Set((rawSignals || []).map((s: Record<string, string>) => s.symbol))];
+    let nameMap: Record<string, string> = {};
+    let marketMap: Record<string, string> = {};
+    let sectorMap: Record<string, string> = {};
+    if (signalSymbols.length > 0) {
+      const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
+        supabase.from("stock_cache").select("symbol, name, market").in("symbol", signalSymbols),
+        supabase.from("stock_info").select("symbol, name, sector").in("symbol", signalSymbols),
+      ]);
+      if (stockNames) {
+        nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
+        marketMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.market || "기타"]));
+      }
+      if (stockInfos) {
+        sectorMap = Object.fromEntries(stockInfos.map((s) => [s.symbol, s.sector]));
+        for (const s of stockInfos) {
+          if (!nameMap[s.symbol] && s.name) nameMap[s.symbol] = s.name;
+        }
+      }
     }
+    const signals = (rawSignals || []).map((s: Record<string, unknown>) => {
+      const rawData = s.raw_data as Record<string, unknown> | null;
+      const signalPrice = extractSignalPrice(rawData);
+      return {
+        ...s,
+        name: nameMap[s.symbol as string] || (s.name as string) || (s.symbol as string),
+        market: marketMap[s.symbol as string] || "기타",
+        sector: sectorMap[s.symbol as string] || "기타",
+        ...(signalPrice !== null ? { signal_price: String(signalPrice) } : {}),
+      } as Record<string, string>;
+    });
+    buySignals = signals.filter((s) => s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST");
+    sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
   }
-  const signals = (rawSignals || []).map((s: Record<string, string>) => ({
-    ...s,
-    name: nameMap[s.symbol] || s.name || s.symbol,
-    market: marketMap[s.symbol] || "기타",
-    sector: sectorMap[s.symbol] || "기타",
-  }));
-
-  // 매수/매도 분리
-  const buySignals = (signals || []).filter(
-    (s: Record<string, string>) =>
-      s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST"
-  );
-  const sellSignals = (signals || []).filter(
-    (s: Record<string, string>) =>
-      s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE"
-  );
 
   const sources = ["all", "lassi", "stockbot", "quant"] as const;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">AI 신호</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">{selectedDate} 기준</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">AI 신호</h1>
+          <p className="text-sm text-[var(--muted)] mt-1">{selectedDate === "all" ? "전체 기간" : `${selectedDate} 기준`}</p>
+        </div>
+        <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
+          <Link
+            href="/signals"
+            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              activeTab === "signals"
+                ? "bg-[var(--accent)] text-white"
+                : "text-[var(--muted)] hover:text-[var(--text)]"
+            }`}
+          >
+            AI 신호
+          </Link>
+          <Link
+            href="/signals?tab=analysis"
+            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              activeTab === "analysis"
+                ? "bg-[var(--accent)] text-white"
+                : "text-[var(--muted)] hover:text-[var(--text)]"
+            }`}
+          >
+            종목분석
+          </Link>
+        </div>
       </div>
 
-      {/* AI 추천 섹션 */}
-      <AiRecommendationSection initialData={aiRecommendationsRes} />
+      {activeTab === "signals" && (
+        <>
+          <DateSelector basePath="/signals" selectedDate={selectedDate} weekdaysOnly includeAll />
+          <div className="flex gap-2">
+            {sources.map((src) => {
+              const p = new URLSearchParams();
+              if (selectedDate !== last7[0]) p.set("date", selectedDate);
+              if (src !== "all") p.set("source", src);
+              const qs = p.toString();
+              return (
+                <Link
+                  key={src}
+                  href={qs ? `/signals?${qs}` : "/signals"}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    activeSource === src
+                      ? "bg-[var(--accent)] text-white border-[var(--accent)]"
+                      : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]"
+                  }`}
+                >
+                  {src === "all" ? "전체" : SOURCE_LABELS[src]}
+                </Link>
+              );
+            })}
+          </div>
+          <SignalColumns
+            buySignals={buySignals}
+            sellSignals={sellSignals}
+            favoriteSymbols={favoriteSymbols}
+            watchlistSymbols={watchlistSymbols}
+          />
+        </>
+      )}
 
-      {/* 날짜 선택 */}
-      <DateSelector basePath="/signals" selectedDate={selectedDate} />
-
-      {/* 소스 탭 */}
-      <div className="flex gap-2">
-        {sources.map((src) => {
-          const params = new URLSearchParams();
-          if (selectedDate !== last7[0]) params.set("date", selectedDate);
-          if (src !== "all") params.set("source", src);
-          const qs = params.toString();
-          return (
-            <Link
-              key={src}
-              href={qs ? `/signals?${qs}` : "/signals"}
-              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                activeSource === src
-                  ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                  : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]"
-              }`}
-            >
-              {src === "all" ? "전체" : SOURCE_LABELS[src]}
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* 매수/매도 2컬럼 */}
-      <SignalColumns
-        buySignals={buySignals}
-        sellSignals={sellSignals}
-        favoriteSymbols={favoriteSymbols}
-        watchlistSymbols={watchlistSymbols}
-      />
+      {activeTab === "analysis" && (
+        <StockRankingSection
+          favoriteSymbols={favoriteSymbols}
+          watchlistSymbols={watchlistSymbols}
+        />
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ export interface BulkIndicatorData {
   pbr: number;
   eps: number;
   bps: number;
+  roe: number;
   high_52w: number;
   low_52w: number;
   dividend_yield: number;
@@ -51,6 +52,7 @@ async function fetchSingleIndicator(symbol: string): Promise<BulkIndicatorData |
       pbr: getValue('pbr'),
       eps: getValue('eps'),
       bps: getValue('bps'),
+      roe: getValue('roe'),
       high_52w: getValue('highPriceOf52Weeks'),
       low_52w: getValue('lowPriceOf52Weeks'),
       dividend_yield: getValue('dividendYield'),
