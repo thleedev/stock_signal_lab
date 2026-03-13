@@ -28,8 +28,15 @@ export function DateDropdown({ dates, selected, onChange }: DateDropdownProps) {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const handleSelect = (date: string) => {
@@ -40,7 +47,10 @@ export function DateDropdown({ dates, selected, onChange }: DateDropdownProps) {
   return (
     <div ref={ref} className="relative shrink-0">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
         className="flex items-center gap-1 pl-3 pr-2 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm text-[var(--foreground)] hover:bg-[var(--card-hover)] transition-colors"
       >
         <span>{getDatePresetLabel(selected, dates)}</span>
@@ -54,6 +64,7 @@ export function DateDropdown({ dates, selected, onChange }: DateDropdownProps) {
         <div className="absolute top-full mt-1 left-0 z-50 min-w-[8rem] rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden">
           {dates.map((date) => (
             <button
+              type="button"
               key={date}
               onClick={() => handleSelect(date)}
               className={`w-full px-3 py-1.5 text-sm text-left hover:bg-[var(--card-hover)] transition-colors ${
@@ -66,6 +77,7 @@ export function DateDropdown({ dates, selected, onChange }: DateDropdownProps) {
             </button>
           ))}
           <button
+            type="button"
             onClick={() => handleSelect('all')}
             className={`w-full px-3 py-1.5 text-sm text-left hover:bg-[var(--card-hover)] transition-colors ${
               selected === 'all'
@@ -80,6 +92,7 @@ export function DateDropdown({ dates, selected, onChange }: DateDropdownProps) {
             <label className="text-xs text-[var(--muted)] block mb-1">직접 선택</label>
             <input
               type="date"
+              value={selected !== 'all' && !dates.includes(selected) ? selected : ''}
               className="w-full text-sm bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded px-2 py-1 focus:outline-none focus:border-[var(--accent)]"
               onChange={(e) => {
                 if (e.target.value) handleSelect(e.target.value);
