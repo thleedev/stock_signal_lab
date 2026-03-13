@@ -1,0 +1,193 @@
+/**
+ * 투자 시황 절대 임계값 기반 위험도 계산
+ *
+ * 레벨: 0=안전, 1=주의, 2=위험, 3=극위험
+ * 레벨가중치: 0, 1, 3, 6 (비선형 - 극위험에 민감하게 반응)
+ */
+
+export type RiskLevel = 0 | 1 | 2 | 3;
+
+export interface RiskThreshold {
+  label: string;
+  /** 높을수록 위험(1) vs 낮을수록 위험(-1) */
+  direction: 1 | -1;
+  /** [주의 하한, 위험 하한, 극위험 하한] — direction=1이면 이 값 이상일 때 해당 레벨 */
+  thresholds: [number, number, number];
+  /** 위험 지수 계산 시 이 지표의 중요도 가중치 */
+  weight: number;
+}
+
+export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
+  VIX: {
+    label: 'VIX (미국 공포지수)',
+    direction: 1,
+    thresholds: [20, 25, 30],
+    weight: 3,
+  },
+  VKOSPI: {
+    label: 'VKOSPI (한국 공포지수)',
+    direction: 1,
+    thresholds: [20, 25, 30],
+    weight: 3,
+  },
+  USD_KRW: {
+    label: '원/달러 환율',
+    direction: 1,
+    thresholds: [1350, 1400, 1450],
+    weight: 3,
+  },
+  DXY: {
+    label: '달러 인덱스',
+    direction: 1,
+    thresholds: [100, 104, 108],
+    weight: 2,
+  },
+  US_10Y: {
+    label: '미국 10년물 금리',
+    direction: 1,
+    thresholds: [4.0, 4.5, 5.0],
+    weight: 2,
+  },
+  WTI: {
+    label: 'WTI 원유',
+    direction: 1,
+    thresholds: [70, 80, 95],
+    weight: 1,
+  },
+  KOSPI: {
+    label: 'KOSPI',
+    direction: -1,
+    thresholds: [2600, 2400, 2200],
+    weight: 2,
+  },
+  KOSDAQ: {
+    label: 'KOSDAQ',
+    direction: -1,
+    thresholds: [800, 700, 600],
+    weight: 1,
+  },
+  CNN_FEAR_GREED: {
+    label: 'CNN 공포탐욕지수',
+    direction: -1,
+    thresholds: [60, 40, 20],
+    weight: 2,
+  },
+  EWY: {
+    label: 'EWY (한국 ETF)',
+    direction: -1,
+    thresholds: [65, 55, 45],
+    weight: 1,
+  },
+};
+
+/** 레벨별 가중치 (비선형: 극위험에 민감) */
+const LEVEL_WEIGHTS: Record<RiskLevel, number> = { 0: 0, 1: 1, 2: 3, 3: 6 };
+
+/**
+ * 단일 지표의 위험 레벨 계산
+ * value가 null/undefined이면 null 반환 (계산에서 제외)
+ */
+export function getRiskLevel(type: string, value: number | null | undefined): RiskLevel | null {
+  if (value == null) return null;
+  const t = RISK_THRESHOLDS[type];
+  if (!t) return null;
+
+  const [l1, l2, l3] = t.thresholds;
+
+  if (t.direction === 1) {
+    if (value >= l3) return 3;
+    if (value >= l2) return 2;
+    if (value >= l1) return 1;
+    return 0;
+  } else {
+    if (value < l3) return 3;
+    if (value < l2) return 2;
+    if (value < l1) return 1;
+    return 0;
+  }
+}
+
+/**
+ * 임계값 설명 문자열 반환 (UI 표시용)
+ * 예: "1,450원 초과" / "2,600 이상"
+ */
+export function getRiskThresholdLabel(type: string, level: RiskLevel): string {
+  const t = RISK_THRESHOLDS[type];
+  if (!t) return '';
+  const [l1, l2, l3] = t.thresholds;
+
+  if (t.direction === 1) {
+    if (level === 3) return `${l3.toLocaleString()} 이상`;
+    if (level === 2) return `${l2.toLocaleString()}~${l3.toLocaleString()}`;
+    if (level === 1) return `${l1.toLocaleString()}~${l2.toLocaleString()}`;
+    return `${l1.toLocaleString()} 미만`;
+  } else {
+    if (level === 3) return `${l3.toLocaleString()} 미만`;
+    if (level === 2) return `${l2.toLocaleString()}~${l3.toLocaleString()}`;
+    if (level === 1) return `${l1.toLocaleString()}~${l2.toLocaleString()}`;
+    return `${l1.toLocaleString()} 이상`;
+  }
+}
+
+export interface RiskIndexResult {
+  /** 0~100, 높을수록 위험 */
+  riskIndex: number;
+  /** 위험 레벨 breakdown */
+  breakdown: Record<string, { level: RiskLevel; value: number }>;
+  /** 데이터 있는 지표 수 */
+  validCount: number;
+  /** 위험(2) 이상 지표 수 */
+  dangerCount: number;
+}
+
+/**
+ * 전체 위험 지수 계산 (0~100, 높을수록 위험)
+ * 데이터 없는 지표는 분자/분모 모두에서 제외
+ */
+export function calculateRiskIndex(
+  values: Record<string, number | null | undefined>
+): RiskIndexResult {
+  let weightedSum = 0;
+  let maxPossible = 0;
+  let validCount = 0;
+  let dangerCount = 0;
+  const breakdown: Record<string, { level: RiskLevel; value: number }> = {};
+
+  for (const [type, threshold] of Object.entries(RISK_THRESHOLDS)) {
+    const value = values[type];
+    const level = getRiskLevel(type, value);
+    if (level === null || value == null) continue;
+
+    validCount++;
+    weightedSum += LEVEL_WEIGHTS[level] * threshold.weight;
+    maxPossible += LEVEL_WEIGHTS[3] * threshold.weight; // 6 × weight
+    breakdown[type] = { level, value };
+    if (level >= 2) dangerCount++;
+  }
+
+  const riskIndex = maxPossible > 0
+    ? Math.round((weightedSum / maxPossible) * 10000) / 100
+    : 0;
+
+  return { riskIndex, breakdown, validCount, dangerCount };
+}
+
+export interface RiskInterpretation {
+  label: string;
+  color: string;
+  action: string;
+}
+
+export const RISK_INTERPRETATIONS: RiskInterpretation[] = [
+  { label: '안전',   color: '#10b981', action: '적극 매수 가능' },
+  { label: '주의',   color: '#eab308', action: '분할 매수, 비중 조절' },
+  { label: '위험',   color: '#f97316', action: '신규 진입 자제, 방어적 투자' },
+  { label: '극위험', color: '#ef4444', action: '현금 비중 확대, 손절 검토' },
+];
+
+export function getRiskInterpretation(riskIndex: number): RiskInterpretation {
+  if (riskIndex >= 75) return RISK_INTERPRETATIONS[3];
+  if (riskIndex >= 50) return RISK_INTERPRETATIONS[2];
+  if (riskIndex >= 25) return RISK_INTERPRETATIONS[1];
+  return RISK_INTERPRETATIONS[0];
+}
