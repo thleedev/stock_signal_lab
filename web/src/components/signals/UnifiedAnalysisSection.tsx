@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, AlertTriangle, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
-import { getLastNWeekdays, formatDateLabel } from '@/lib/date-utils';
+import { getLastNWeekdays } from '@/lib/date-utils';
+import { FilterBar } from '@/components/common/filter-bar';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
+import type { WatchlistGroup } from '@/types/stock';
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 export type SignalMap = Record<string, Record<string, { buyPrice: number; date: string }>>;
@@ -14,6 +16,8 @@ interface UnifiedAnalysisProps {
   signalMap: SignalMap;
   favoriteSymbols: string[];
   watchlistSymbols: string[];
+  groups?: WatchlistGroup[];
+  symbolGroups?: Record<string, string[]>;
 }
 
 type SourceFilter = 'all' | 'quant' | 'lassi' | 'stockbot';
@@ -63,12 +67,18 @@ const SOURCE_DOTS: Record<string, string> = {
   stockbot: 'bg-green-400',
 };
 
-const MARKETS = ['all', 'KOSPI', 'KOSDAQ'] as const;
-const MARKET_LABELS: Record<string, string> = { all: '전체', KOSPI: 'KOSPI', KOSDAQ: 'KOSDAQ' };
-const SORT_OPTIONS: { key: SortMode; label: string }[] = [
-  { key: 'score', label: '점수순' },
-  { key: 'name', label: '이름순' },
+const SOURCE_OPTIONS = [
+  { key: 'all',      label: '전체'   },
+  { key: 'lassi',    label: '라씨'   },
+  { key: 'stockbot', label: '스톡봇' },
+  { key: 'quant',    label: '퀀트'   },
+];
+
+const SORT_OPTIONS_WITH_GAP: { key: SortMode; label: string }[] = [
+  { key: 'score',   label: '점수순'    },
+  { key: 'name',    label: '이름순'    },
   { key: 'updated', label: '업데이트순' },
+  { key: 'gap',     label: 'Gap순'    },
 ];
 
 // ── 배지 정의 ────────────────────────────────────────────────────────────────
@@ -367,7 +377,7 @@ function WeightPopup({
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
-export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSymbols }: UnifiedAnalysisProps) {
+export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: UnifiedAnalysisProps) {
   const [selectedDate, setSelectedDate] = useState<string>('all');
   const [data, setData] = useState<RankingResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -381,6 +391,8 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [gapAsc, setGapAsc] = useState(true);
   const portSet = useMemo(() => new Set(watchlistSymbols), [watchlistSymbols]);
+  const [groups] = useState<WatchlistGroup[]>(initialGroups);
+  const [symGroups, setSymGroups] = useState<Record<string, string[]>>(initialSymbolGroups);
   const [menu, setMenu] = useState<MenuState>({
     isOpen: false, symbol: '', name: '', currentPrice: null, isFavorite: false,
     position: { x: 0, y: 0 },
@@ -438,19 +450,72 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     setMenu({ isOpen: true, symbol, name, currentPrice, isFavorite: favs.has(symbol), position: { x: e.clientX, y: e.clientY } });
   };
   const closeMenu = () => setMenu((m) => ({ ...m, isOpen: false }));
-  const handleToggleFavorite = async () => {
-    const { symbol } = menu;
+  const handleToggleFavorite = useCallback(async () => {
+    const { symbol, name } = menu;
     const isFav = favs.has(symbol);
-    try {
-      await fetch('/api/v1/favorites', {
-        method: isFav ? 'DELETE' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol }),
+
+    if (isFav) {
+      // 모든 그룹에서 제거
+      const groupIds = symGroups[symbol] ?? [];
+      groupIds.forEach((gid) => {
+        fetch(`/api/v1/watchlist-groups/${gid}/stocks/${symbol}`, { method: 'DELETE' });
       });
-      setFavs((prev) => { const n = new Set(prev); isFav ? n.delete(symbol) : n.add(symbol); return n; });
-      setMenu((m) => ({ ...m, isFavorite: !isFav }));
-    } catch {}
-  };
+      setFavs((prev) => { const n = new Set(prev); n.delete(symbol); return n; });
+      setSymGroups((prev) => { const next = { ...prev }; delete next[symbol]; return next; });
+    } else {
+      const defaultGroup = groups.find((g) => g.is_default);
+      if (defaultGroup) {
+        fetch(`/api/v1/watchlist-groups/${defaultGroup.id}/stocks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol, name }),
+        });
+        setSymGroups((prev) => ({ ...prev, [symbol]: [defaultGroup.id] }));
+      }
+      setFavs((prev) => new Set([...prev, symbol]));
+    }
+    setMenu((m) => ({ ...m, isFavorite: !isFav }));
+  }, [menu, favs, symGroups, groups]);
+
+  const handleGroupToggle = useCallback(async (group: WatchlistGroup) => {
+    const { symbol, name } = menu;
+    const currentGroups = symGroups[symbol] ?? [];
+    const inGroup = currentGroups.includes(group.id);
+
+    // 낙관적 업데이트
+    if (inGroup) {
+      const newGroups = currentGroups.filter((id) => id !== group.id);
+      setSymGroups((prev) => ({ ...prev, [symbol]: newGroups }));
+      if (newGroups.length === 0) {
+        setFavs((prev) => { const n = new Set(prev); n.delete(symbol); return n; });
+      }
+    } else {
+      setSymGroups((prev) => ({ ...prev, [symbol]: [...currentGroups, group.id] }));
+      setFavs((prev) => new Set([...prev, symbol]));
+    }
+
+    try {
+      if (inGroup) {
+        const res = await fetch(`/api/v1/watchlist-groups/${group.id}/stocks/${symbol}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('DELETE 실패');
+      } else {
+        const res = await fetch(`/api/v1/watchlist-groups/${group.id}/stocks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol, name }),
+        });
+        if (!res.ok && res.status !== 409) throw new Error('POST 실패');
+      }
+    } catch (e) {
+      console.error('[handleGroupToggle] 실패, 롤백:', e);
+      setSymGroups((prev) => ({ ...prev, [symbol]: currentGroups }));
+      if (!inGroup) {
+        if (currentGroups.length === 0) setFavs((prev) => { const n = new Set(prev); n.delete(symbol); return n; });
+      } else {
+        setFavs((prev) => new Set([...prev, symbol]));
+      }
+    }
+  }, [menu, symGroups]);
 
   const rawItems = data?.items ?? [];
 
@@ -479,137 +544,43 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const offset = (page - 1) * LIMIT;
   const aiCount = rawItems.filter((i) => i.ai).length;
 
-  const btnCls = (active: boolean) =>
-    `px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-      active
-        ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-        : 'bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]'
-    }`;
-
   return (
     <div className="space-y-3">
-      {/* ── 날짜 선택 ── */}
-      <div className="flex gap-1.5 flex-wrap">
-        {LAST7.map((date) => (
-          <button key={date} onClick={() => handleDate(date)} className={btnCls(selectedDate === date)}>
-            {formatDateLabel(date)}
-          </button>
-        ))}
-        <button onClick={() => handleDate('all')} className={btnCls(selectedDate === 'all')}>
-          전체
-        </button>
-      </div>
-
-      {/* ── 필터 바 (시장 + AI소스 + 검색 + 가중치 + 가격갱신) ── */}
-      <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-        <div className="flex flex-col gap-1.5">
-          {/* 시장 필터 */}
-          <div className="flex gap-1">
-            {MARKETS.map((m) => (
-              <button key={m} onClick={() => handleMarket(m)} className={btnCls(market === m)}>
-                {MARKET_LABELS[m]}
-              </button>
-            ))}
-          </div>
-
-          {/* AI 소스 필터 */}
-          <div className="flex gap-1 flex-wrap">
-            {(['all', 'quant', 'lassi', 'stockbot'] as const).map((src) => (
-              <button
-                key={src}
-                onClick={() => setSourceFilter(src)}
-                className={btnCls(sourceFilter === src)}
-              >
-                {src === 'all' ? '전체AI' : SOURCE_LABELS[src]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-2 flex-1 max-w-sm items-center">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-            <input type="text" placeholder="종목명 / 코드 검색" value={q}
-              onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
-            />
-          </div>
-          {/* 가중치 아이콘 버튼 */}
-          <div className="relative shrink-0">
-            <button
-              onClick={() => setShowWeights((v) => !v)}
-              className={`p-1.5 rounded-lg border transition-colors ${
-                showWeights
-                  ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                  : 'bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]'
-              }`}
-              title="가중치 조절"
-            >
-              <SlidersHorizontal size={15} />
-            </button>
-            {showWeights && (
-              <WeightPopup
-                weights={weights}
-                onChange={setWeights}
-                onClose={() => setShowWeights(false)}
-              />
-            )}
-          </div>
-          {/* 현재가 갱신 버튼 */}
-          <button
-            onClick={refreshPrices}
-            disabled={priceLoading || liveLoading}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${priceLoading || liveLoading ? 'animate-spin' : ''}`} />
-            현재가 갱신
-          </button>
-        </div>
-
-        <div className="text-xs text-[var(--muted)] ml-auto shrink-0">
-          {total.toLocaleString()}종목
-          {aiCount > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-              AI분석 {aiCount}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* ── 정렬 바 ── */}
-      <div className="flex gap-1 items-center flex-wrap">
-        <span className="text-xs text-[var(--muted)] mr-1">정렬:</span>
-        {SORT_OPTIONS.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setSort(key)}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-              sort === key
-                ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                : 'bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-        {/* Gap 정렬 토글 */}
-        <button
-          onClick={() => {
-            if (sort === 'gap') {
-              setGapAsc((v) => !v);
-            } else {
-              setSort('gap');
-              setGapAsc(true);
-            }
+      {/* ── 필터 바 ── */}
+      <div className="relative">
+        <FilterBar
+          date={{ dates: LAST7, selected: selectedDate, onChange: handleDate }}
+          source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter) }}
+          market={{ selected: market, onChange: handleMarket }}
+          search={{ value: q, onChange: handleSearch, placeholder: '종목명 / 코드' }}
+          sort={{
+            options: SORT_OPTIONS_WITH_GAP,
+            selected: sort,
+            onChange: (s) => setSort(s as SortMode),
+            gapAsc,
+            onGapToggle: () => setGapAsc((v) => !v),
           }}
-          className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
-            sort === 'gap'
-              ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-              : 'bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]'
-          }`}
-        >
-          Gap {sort === 'gap' ? (gapAsc ? '↑' : '↓') : '↑↓'}
-        </button>
+          onWeightClick={() => setShowWeights((v) => !v)}
+          onRefresh={refreshPrices}
+          refreshing={priceLoading || liveLoading}
+        />
+        {showWeights && (
+          <WeightPopup
+            weights={weights}
+            onChange={setWeights}
+            onClose={() => setShowWeights(false)}
+          />
+        )}
+      </div>
+
+      {/* ── 종목수 표시 ── */}
+      <div className="text-xs text-[var(--muted)]">
+        {total.toLocaleString()}종목
+        {aiCount > 0 && (
+          <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+            AI분석 {aiCount}
+          </span>
+        )}
       </div>
 
       {/* ── 리스트 ── */}
@@ -665,6 +636,9 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
         isFavorite={menu.isFavorite}
         isInPortfolio={portSet.has(menu.symbol)}
         onToggleFavorite={handleToggleFavorite}
+        groups={groups}
+        symbolGroupIds={symGroups[menu.symbol] ?? []}
+        onGroupToggle={handleGroupToggle}
       />
     </div>
   );
