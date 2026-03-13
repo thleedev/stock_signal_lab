@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
+import { StockLinkButton } from "./stock-link-button";
 
 const SOURCE_META: Record<string, { label: string; color: string; borderColor: string }> = {
   lassi: { label: "라씨매매", color: "border-red-800/50 bg-red-900/30", borderColor: "border-red-700" },
@@ -229,26 +230,13 @@ export default async function PortfolioPage({
               ) : (
                 <div className="divide-y divide-[var(--border)]">
                   {holdings.map((h) => (
-                    <Link
+                    <StockLinkButton
                       key={`${src}-${h.symbol}`}
-                      href={`/stock/${h.symbol}`}
-                      className="flex items-center justify-between px-4 py-3 hover:bg-[var(--card-hover)] transition-colors"
-                    >
-                      <div>
-                        <div className="text-sm font-medium">{h.name}</div>
-                        <div className="text-xs text-[var(--muted)]">
-                          {h.symbol} · {h.quantity}주
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium">
-                          {h.price.toLocaleString()}원
-                        </div>
-                        <div className="text-xs text-[var(--muted)]">
-                          매수가
-                        </div>
-                      </div>
-                    </Link>
+                      symbol={h.symbol}
+                      name={h.name}
+                      quantity={h.quantity}
+                      price={h.price}
+                    />
                   ))}
                 </div>
               )}

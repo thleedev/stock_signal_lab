@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePriceRefresh } from "@/hooks/use-price-refresh";
 import { useMemo } from "react";
+import { useStockModal } from "@/contexts/stock-modal-context";
 
 interface FavoriteStock {
   symbol: string;
@@ -26,6 +27,8 @@ interface Props {
 }
 
 export default function DashboardPrices({ favorites, watchlist, watchlistStockData, totalSignals }: Props) {
+  const { openStockModal } = useStockModal();
+
   const allSymbols = useMemo(() => {
     const set = new Set<string>();
     for (const f of favorites) set.add(f.symbol);
@@ -70,10 +73,10 @@ export default function DashboardPrices({ favorites, watchlist, watchlistStockDa
               const price = live?.current_price ?? f.current_price;
               const pct = live?.price_change_pct ?? f.price_change_pct;
               return (
-                <Link
+                <button
                   key={f.symbol}
-                  href={`/stock/${f.symbol}`}
-                  className="p-2 rounded-lg bg-[var(--background)] hover:bg-[var(--card-hover)] transition-colors"
+                  onClick={() => openStockModal(f.symbol, f.name)}
+                  className="p-2 rounded-lg bg-[var(--background)] hover:bg-[var(--card-hover)] transition-colors text-left w-full"
                 >
                   <div className="text-sm font-medium truncate">{f.name}</div>
                   <div className="text-lg font-bold mt-0.5">
@@ -84,7 +87,7 @@ export default function DashboardPrices({ favorites, watchlist, watchlistStockDa
                   }`}>
                     {(pct ?? 0) > 0 ? "+" : ""}{pct ?? 0}%
                   </div>
-                </Link>
+                </button>
               );
             })}
           </div>
@@ -131,10 +134,10 @@ export default function DashboardPrices({ favorites, watchlist, watchlistStockDa
                 : null;
 
               return (
-                <Link
+                <button
                   key={w.symbol}
-                  href={`/stock/${w.symbol}`}
-                  className="flex items-center justify-between px-4 py-3 hover:bg-[var(--card-hover)] transition-colors"
+                  onClick={() => openStockModal(w.symbol, w.name)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--card-hover)] transition-colors text-left"
                 >
                   <div>
                     <div className="text-sm font-medium">{w.name}</div>
@@ -155,7 +158,7 @@ export default function DashboardPrices({ favorites, watchlist, watchlistStockDa
                       </div>
                     )}
                   </div>
-                </Link>
+                </button>
               );
             })}
           </div>
