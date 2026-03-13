@@ -17,15 +17,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ko">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <div className="min-h-screen">
-          <Sidebar />
-          <main className="md:pl-60 pb-20 md:pb-0">
-            <div className="max-w-7xl mx-auto px-4 py-6">
-              <ClientProviders>{children}</ClientProviders>
-            </div>
-          </main>
-          <MobileTabBar />
-        </div>
+        <ClientProviders>
+          <div className="min-h-screen">
+            <Sidebar />
+            <main className="md:pl-60 pb-20 md:pb-0">
+              <div className="max-w-7xl mx-auto px-4 py-6">
+                {children}
+              </div>
+            </main>
+            <MobileTabBar />
+          </div>
+        </ClientProviders>
       </body>
     </html>
   );
