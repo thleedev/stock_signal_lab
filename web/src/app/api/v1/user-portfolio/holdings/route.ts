@@ -78,7 +78,7 @@ export async function GET(request: Request) {
 
     for (const sell of sells ?? []) {
       const buyPrice = buyPriceMap.get(sell.buy_trade_id);
-      if (buyPrice) {
+      if (buyPrice !== undefined) {
         completedTrades.push({ buyPrice, sellPrice: Number(sell.price) });
       }
     }
