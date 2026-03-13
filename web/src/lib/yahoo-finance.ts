@@ -18,11 +18,24 @@ export async function getQuote(ticker: string): Promise<QuoteResult | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result: any = await yahooFinance.quote(ticker);
-    if (!result || !result.regularMarketPrice) return null;
+    if (!result) return null;
+
+    // VIX 등 일부 지수는 regularMarketPrice가 null인 경우 있음
+    // regularMarketPreviousClose → regularMarketOpen 순으로 폴백
+    const price =
+      result.regularMarketPrice ??
+      result.regularMarketPreviousClose ??
+      result.regularMarketOpen ??
+      null;
+
+    if (price == null) {
+      console.warn(`[yahoo-finance] ${ticker}: 가격 필드 모두 null`);
+      return null;
+    }
 
     return {
-      price: result.regularMarketPrice,
-      previousClose: result.regularMarketPreviousClose ?? result.regularMarketPrice,
+      price,
+      previousClose: result.regularMarketPreviousClose ?? price,
       changePct: result.regularMarketChangePercent ?? 0,
       name: result.shortName ?? result.longName ?? ticker,
     };
