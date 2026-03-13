@@ -74,17 +74,30 @@ export default function StockActionMenu({
       try {
         const res = await fetch(`/api/v1/user-portfolio/trades?symbol=${encodeURIComponent(symbol)}`);
         const data = await res.json();
-        const trades: Array<{ id: number; side: string; created_at: string }> = data.trades ?? [];
-        const latestBuy = trades
-          .filter((t) => t.side === "BUY")
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
-        if (latestBuy) {
-          const delRes = await fetch(`/api/v1/user-portfolio/trades?trade_id=${latestBuy.id}`, {
-            method: "DELETE",
-          });
-          if (delRes.status === 409) {
-            alert("이미 처리된 거래입니다.");
-          }
+        const allTrades: Array<{ id: number; side: string; created_at: string; buy_trade_id?: number | null }> = data.trades ?? [];
+
+        // SELL 거래가 참조하는 BUY trade id 집합 (= 이미 청산된 포지션)
+        const soldBuyIds = new Set(
+          allTrades
+            .filter((t) => t.side === "SELL" && t.buy_trade_id != null)
+            .map((t) => t.buy_trade_id)
+        );
+
+        // 미청산 BUY 거래만 필터링 (최신순 정렬)
+        const openBuys = allTrades
+          .filter((t) => t.side === "BUY" && !soldBuyIds.has(t.id))
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+        if (openBuys.length === 0) {
+          alert("삭제할 수 있는 보유 종목이 없습니다.");
+          return;
+        }
+
+        const delRes = await fetch(`/api/v1/user-portfolio/trades?trade_id=${openBuys[0].id}`, {
+          method: "DELETE",
+        });
+        if (delRes.status === 409) {
+          alert("이미 처리된 거래입니다.");
         }
       } catch (e) {
         console.error("[StockActionMenu] 포트 삭제 실패:", e);
