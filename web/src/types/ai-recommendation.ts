@@ -38,6 +38,7 @@ export interface AiRecommendation {
   foreign_buying: boolean;
   institution_buying: boolean;
   volume_vs_sector: boolean;
+  low_short_sell: boolean;
 
   // 메타
   total_candidates: number | null;

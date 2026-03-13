@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { getDailyPrices, delay } from '@/lib/kis-api';
+import { fetchKrxShortSell } from '@/lib/krx-shortsell-api';
+import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
 
 /**
  * Vercel Cron: 평일 16:00 KST (UTC 07:00)
@@ -86,7 +88,52 @@ export async function GET(request: Request) {
       await delay(500);
     }
 
-    // === 3. 분할매매 예약 실행 ===
+    // === 3. 공매도 비율 수집 (KRX) → stock_cache 업데이트 ===
+    const symbolsArr = [...symbols];
+    const shortSellMap = await fetchKrxShortSell();
+    let shortSellUpdated = 0;
+    if (shortSellMap.size > 0 && symbolsArr.length > 0) {
+      const now = new Date().toISOString();
+      const shortSellUpdates = symbolsArr
+        .filter((sym) => shortSellMap.has(sym))
+        .map((sym) => ({
+          symbol: sym,
+          short_sell_ratio: shortSellMap.get(sym)!,
+          short_sell_updated_at: now,
+        }));
+      if (shortSellUpdates.length > 0) {
+        // update only (기존 행이 없는 경우 무시 — stock_cache는 별도 프로세스에서 채워짐)
+        for (const row of shortSellUpdates) {
+          await supabase
+            .from('stock_cache')
+            .update({ short_sell_ratio: row.short_sell_ratio, short_sell_updated_at: row.short_sell_updated_at })
+            .eq('symbol', row.symbol);
+        }
+        shortSellUpdated = shortSellUpdates.length;
+        console.log(`[daily-prices] Short-sell updated: ${shortSellUpdated} symbols`);
+      }
+    }
+
+    // === 4. 투자자별 매매동향 (Naver) → stock_cache 업데이트 ===
+    let investorUpdated = 0;
+    if (symbolsArr.length > 0) {
+      const investorMap = await fetchBulkInvestorData(symbolsArr);
+      const now = new Date().toISOString();
+      for (const [sym, d] of investorMap) {
+        await supabase
+          .from('stock_cache')
+          .update({
+            foreign_net_qty: d.foreign_net,
+            institution_net_qty: d.institution_net,
+            investor_updated_at: now,
+          })
+          .eq('symbol', sym);
+      }
+      investorUpdated = investorMap.size;
+      console.log(`[daily-prices] Investor data updated: ${investorUpdated} symbols`);
+    }
+
+    // === 5. 분할매매 예약 실행 ===
     const splitResult = await executePendingSplitTrades(supabase, today);
 
     return NextResponse.json({
@@ -94,6 +141,8 @@ export async function GET(request: Request) {
       date: today,
       symbols: symbols.size,
       prices_saved: savedCount,
+      short_sell_updated: shortSellUpdated,
+      investor_updated: investorUpdated,
       splits_executed: splitResult,
     });
   } catch (e) {

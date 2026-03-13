@@ -140,6 +140,72 @@ export async function fetchAllStockPrices(): Promise<Map<string, StockPriceData>
   return result;
 }
 
+export interface StockInvestorData {
+  foreign_net: number;     // 외국인 순매수 수량 (양수=순매수, 음수=순매도)
+  institution_net: number; // 기관 순매수 수량
+  individual_net: number;  // 개인 순매수 수량
+}
+
+/**
+ * 종목별 당일 투자자별 매매동향 (외국인/기관/개인 순매수)
+ */
+export async function fetchStockInvestorData(symbol: string): Promise<StockInvestorData | null> {
+  try {
+    const res = await fetch(`${NAVER_STOCK_API}/stock/${symbol}/investor`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const list = data.investorList as Array<{
+      investorType: string;
+      tradingVolume: { buy: string; sell: string; net: string };
+    }> | undefined;
+    if (!list || list.length === 0) return null;
+
+    const parseNet = (str: string | undefined): number => {
+      if (!str) return 0;
+      return parseInt(str.replace(/,/g, ''), 10) || 0;
+    };
+
+    const find = (type: string) => list.find((i) => i.investorType === type);
+    const foreign = find('외국인');
+    const institution = find('기관');
+    const individual = find('개인');
+
+    return {
+      foreign_net: parseNet(foreign?.tradingVolume?.net),
+      institution_net: parseNet(institution?.tradingVolume?.net),
+      individual_net: parseNet(individual?.tradingVolume?.net),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 여러 종목 투자자 데이터 배치 조회 (병렬)
+ */
+export async function fetchBulkInvestorData(
+  symbols: string[],
+  concurrency = 20
+): Promise<Map<string, StockInvestorData>> {
+  const result = new Map<string, StockInvestorData>();
+  if (symbols.length === 0) return result;
+
+  for (let i = 0; i < symbols.length; i += concurrency) {
+    const batch = symbols.slice(i, i + concurrency);
+    await Promise.allSettled(
+      batch.map(async (symbol) => {
+        const data = await fetchStockInvestorData(symbol);
+        if (data) result.set(symbol, data);
+      })
+    );
+  }
+
+  return result;
+}
+
 /**
  * 개별 종목 투자지표 조회 (PER, PBR, EPS, BPS, 52주 최고/최저, 배당수익률)
  * 전종목 조회에는 부적합 - 우선순위 종목에만 사용

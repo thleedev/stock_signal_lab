@@ -4,6 +4,7 @@ import { calcSignalScore } from './signal-score';
 import { calcTechnicalScore } from './technical-score';
 import { calcValuationScore } from './valuation-score';
 import { calcSupplyScore } from './supply-score';
+import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
 
 // 오늘 날짜 KST (YYYY-MM-DD)
 export function getTodayKst(): string {
@@ -53,11 +54,11 @@ export async function generateRecommendations(
 
   const symbols = candidates.map((c) => c.symbol);
 
-  // stock_cache와 stock_info 병렬 조회
+  // stock_cache와 stock_info 병렬 조회 (수급 캐시 컬럼 포함)
   const [{ data: cacheData }, { data: sectorData }] = await Promise.all([
     supabase
       .from('stock_cache')
-      .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w')
+      .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, short_sell_updated_at, foreign_net_qty, institution_net_qty, investor_updated_at')
       .in('symbol', symbols),
     supabase.from('stock_info').select('symbol, sector').in('symbol', symbols),
   ]);
@@ -91,6 +92,21 @@ export async function generateRecommendations(
     sectorAvgMap.set(sec, turnovers.reduce((a, b) => a + b, 0) / turnovers.length);
   }
 
+  // 투자자 데이터: stock_cache 캐시 우선, 당일 데이터 없으면 Naver live 배치 호출
+  const todayStr = todayKst; // YYYY-MM-DD
+  const symbolsNeedingLiveFetch = symbols.filter((sym) => {
+    const cache = cacheMap.get(sym);
+    if (!cache?.investor_updated_at) return true;
+    // investor_updated_at이 오늘이 아니면 live fetch
+    const updatedDate = (cache.investor_updated_at as string).slice(0, 10);
+    return updatedDate !== todayStr;
+  });
+
+  let liveInvestorMap = new Map<string, { foreign_net: number; institution_net: number }>();
+  if (symbolsNeedingLiveFetch.length > 0) {
+    liveInvestorMap = await fetchBulkInvestorData(symbolsNeedingLiveFetch);
+  }
+
   // 각 종목 점수 병렬 계산
   const scored = await Promise.all(
     candidates.map(async ({ symbol, name }) => {
@@ -103,10 +119,32 @@ export async function generateRecommendations(
         calcTechnicalScore(supabase, symbol, cache?.high_52w ?? null, cache?.low_52w ?? null),
       ]);
 
+      // 투자자 데이터: 캐시 우선, 없으면 live
+      const cachedInvestorFresh =
+        cache?.investor_updated_at &&
+        (cache.investor_updated_at as string).slice(0, 10) === todayStr;
+      const foreignNet: number | null = cachedInvestorFresh
+        ? (cache!.foreign_net_qty as number | null)
+        : (liveInvestorMap.get(symbol)?.foreign_net ?? null);
+      const institutionNet: number | null = cachedInvestorFresh
+        ? (cache!.institution_net_qty as number | null)
+        : (liveInvestorMap.get(symbol)?.institution_net ?? null);
+
+      // 공매도 비율: 당일 데이터만 사용 (휴장일 stale 방지)
+      const shortSellFresh =
+        cache?.short_sell_updated_at &&
+        (cache.short_sell_updated_at as string).slice(0, 10) === todayStr;
+      const shortSellRatio: number | null = shortSellFresh
+        ? (cache!.short_sell_ratio as number | null)
+        : null;
+
       const supplyResult = calcSupplyScore(
         cache?.volume ?? null,
         cache?.current_price ?? null,
-        sectorAvgTurnover
+        sectorAvgTurnover,
+        foreignNet,
+        institutionNet,
+        shortSellRatio,
       );
       const valuationResult = calcValuationScore(
         cache?.per ?? null,
@@ -144,6 +182,7 @@ export async function generateRecommendations(
         foreign_buying: supplyResult.foreign_buying,
         institution_buying: supplyResult.institution_buying,
         volume_vs_sector: supplyResult.volume_vs_sector,
+        low_short_sell: supplyResult.low_short_sell,
       };
     })
   );

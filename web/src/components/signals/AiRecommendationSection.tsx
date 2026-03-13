@@ -135,8 +135,11 @@ function RecommendationCard({ item }: { item: AiRecommendation }) {
         {item.volume_vs_sector && (
           <Badge label="✅ 섹터 거래대금 급증" variant="green" />
         )}
+        {item.foreign_buying && <Badge label="✅ 외국인 순매수" variant="green" />}
+        {item.institution_buying && <Badge label="✅ 기관 순매수" variant="green" />}
+        {item.low_short_sell && <Badge label="✅ 공매도 낮음" variant="green" />}
         {item.double_top && <Badge label="⚠️ 쌍봉 (-8점)" variant="orange" />}
-        {!item.foreign_buying && !item.institution_buying && !item.volume_vs_sector && (
+        {!item.foreign_buying && !item.institution_buying && !item.volume_vs_sector && !item.low_short_sell && (
           <Badge label="수급 미집계" variant="gray" />
         )}
       </div>
