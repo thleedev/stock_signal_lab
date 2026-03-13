@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
-import { DateSelector } from "@/components/common/date-selector";
 import { getLastNWeekdays, getKstDayRange } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
 import { UnifiedAnalysisSection, type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
-import { SOURCE_LABELS, extractSignalPrice } from "@/lib/signal-constants";
+import { extractSignalPrice } from "@/lib/signal-constants";
+import { SignalFilterBar } from "./signal-filter-bar";
+import type { WatchlistGroup } from "@/types/stock";
 
 export const revalidate = 30;
 
@@ -24,13 +25,21 @@ export default async function SignalsPage({
     : params.date && last7.includes(params.date) ? params.date
     : last7[0];
 
-  // 즐겨찾기 + 보유 → 두 탭 공통 사용
-  const [{ data: favorites }, { data: watchlistItems }] = await Promise.all([
+  // 즐겨찾기 + 보유 + 관심그룹 → 두 탭 공통 사용
+  const [{ data: favorites }, { data: watchlistItems }, { data: groupRows }, { data: groupStockRows }] = await Promise.all([
     supabase.from("favorite_stocks").select("symbol"),
     supabase.from("watchlist").select("symbol"),
+    supabase.from("watchlist_groups").select("*").order("sort_order"),
+    supabase.from("watchlist_group_stocks").select("group_id, symbol"),
   ]);
   const favoriteSymbols = (favorites ?? []).map((f: { symbol: string }) => f.symbol);
   const watchlistSymbols = (watchlistItems ?? []).map((w: { symbol: string }) => w.symbol);
+  const groups: WatchlistGroup[] = groupRows ?? [];
+  const symbolGroups: Record<string, string[]> = {};
+  for (const r of groupStockRows ?? []) {
+    if (!symbolGroups[r.symbol]) symbolGroups[r.symbol] = [];
+    symbolGroups[r.symbol].push(r.group_id);
+  }
 
   // ── AI 신호 탭 ──────────────────────────────────────────
   let buySignals: Record<string, string>[] = [];
@@ -125,8 +134,6 @@ export default async function SignalsPage({
     }
   }
 
-  const sources = ["all", "lassi", "stockbot", "quant"] as const;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -160,33 +167,14 @@ export default async function SignalsPage({
 
       {activeTab === "signals" && (
         <>
-          <DateSelector basePath="/signals" selectedDate={selectedDate} weekdaysOnly includeAll />
-          <div className="flex gap-2">
-            {sources.map((src) => {
-              const p = new URLSearchParams();
-              if (selectedDate !== last7[0]) p.set("date", selectedDate);
-              if (src !== "all") p.set("source", src);
-              const qs = p.toString();
-              return (
-                <Link
-                  key={src}
-                  href={qs ? `/signals?${qs}` : "/signals"}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    activeSource === src
-                      ? "bg-[var(--accent)] text-white border-[var(--accent)]"
-                      : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]"
-                  }`}
-                >
-                  {src === "all" ? "전체" : SOURCE_LABELS[src]}
-                </Link>
-              );
-            })}
-          </div>
+          <SignalFilterBar dates={last7} selectedDate={selectedDate} activeSource={activeSource} />
           <SignalColumns
             buySignals={buySignals}
             sellSignals={sellSignals}
             favoriteSymbols={favoriteSymbols}
             watchlistSymbols={watchlistSymbols}
+            groups={groups}
+            symbolGroups={symbolGroups}
           />
         </>
       )}
@@ -196,6 +184,8 @@ export default async function SignalsPage({
           signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}
+          groups={groups}
+          symbolGroups={symbolGroups}
         />
       )}
     </div>
