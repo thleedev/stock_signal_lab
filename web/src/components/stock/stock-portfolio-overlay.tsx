@@ -30,8 +30,6 @@ interface Props {
   stockName: string;
   currentPrice: number | null;
   onOverlaysChange?: (overlays: PortfolioOverlay[]) => void;
-  showBuyModal?: boolean;
-  onBuyModalClose?: () => void;
 }
 
 export default function StockPortfolioOverlay({
@@ -39,8 +37,6 @@ export default function StockPortfolioOverlay({
   stockName,
   currentPrice,
   onOverlaysChange,
-  showBuyModal = false,
-  onBuyModalClose,
 }: Props) {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -58,11 +54,6 @@ export default function StockPortfolioOverlay({
       .then((r) => r.json())
       .then((d) => setTrades(d.trades ?? []));
   }, [symbol]);
-
-  // showBuyModal prop으로 외부에서 모달 열기
-  useEffect(() => {
-    if (showBuyModal) setTradeModalOpen(true);
-  }, [showBuyModal]);
 
   const togglePortfolio = (id: number) => {
     setCheckedPortIds((prev) => {
@@ -138,7 +129,6 @@ export default function StockPortfolioOverlay({
         isOpen={tradeModalOpen}
         onClose={() => {
           setTradeModalOpen(false);
-          onBuyModalClose?.();
         }}
         onSubmit={() => {
           // 거래 후 trades 재조회

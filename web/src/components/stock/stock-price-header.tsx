@@ -9,7 +9,6 @@ interface Props {
   initialChange: number;
   initialChangePct: string;
   priceDate: string;
-  onBuyClick?: () => void;
 }
 
 export default function StockPriceHeader({
@@ -18,7 +17,6 @@ export default function StockPriceHeader({
   initialChange,
   initialChangePct,
   priceDate,
-  onBuyClick,
 }: Props) {
   const symbols = useMemo(() => [symbol], [symbol]);
   const { prices } = usePriceRefresh(symbols);
@@ -51,14 +49,7 @@ export default function StockPriceHeader({
           {priceDate === "stock_cache" ? "최근 시세" : `${priceDate} 기준`}
         </span>
       )}
-      {onBuyClick && (
-        <button
-          onClick={onBuyClick}
-          className="ml-3 px-3 py-1 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600"
-        >
-          매수
-        </button>
-      )}
+
     </div>
   );
 }

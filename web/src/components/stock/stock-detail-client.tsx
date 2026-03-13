@@ -40,7 +40,6 @@ export default function StockDetailClient({
   signalMarkers,
 }: Props) {
   const [overlays, setOverlays] = useState<PortfolioOverlay[]>([]);
-  const [showBuyModal, setShowBuyModal] = useState(false);
 
   const handleOverlaysChange = useCallback((newOverlays: PortfolioOverlay[]) => {
     setOverlays(newOverlays);
@@ -54,7 +53,6 @@ export default function StockDetailClient({
         initialChange={priceChange}
         initialChangePct={priceChangePct}
         priceDate={priceDate}
-        onBuyClick={() => setShowBuyModal(true)}
       />
 
       <div className="mt-6">
@@ -63,8 +61,6 @@ export default function StockDetailClient({
           stockName={stockName}
           currentPrice={currentPrice}
           onOverlaysChange={handleOverlaysChange}
-          showBuyModal={showBuyModal}
-          onBuyModalClose={() => setShowBuyModal(false)}
         />
         <StockChartSection
           prices={prices}
