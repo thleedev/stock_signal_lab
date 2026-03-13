@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileTabBar } from "@/components/layout/mobile-tab-bar";
+import { ClientProviders } from "@/components/layout/client-providers";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -20,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Sidebar />
           <main className="md:pl-60 pb-20 md:pb-0">
             <div className="max-w-7xl mx-auto px-4 py-6">
-              {children}
+              <ClientProviders>{children}</ClientProviders>
             </div>
           </main>
           <MobileTabBar />
