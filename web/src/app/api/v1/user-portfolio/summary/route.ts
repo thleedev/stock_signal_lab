@@ -10,7 +10,7 @@ export async function GET() {
   // user_portfolios 목록 조회
   const { data: portfolios, error: pErr } = await supabase
     .from("user_portfolios")
-    .select("id, name")
+    .select("id, name, sort_order")
     .order("sort_order", { ascending: true });
 
   if (pErr) {
@@ -28,10 +28,14 @@ export async function GET() {
   }
 
   // 매도 완료된 trade_id 조회
-  const { data: sells } = await supabase
+  const { data: sells, error: sErr } = await supabase
     .from("user_trades")
     .select("buy_trade_id")
     .eq("side", "SELL");
+
+  if (sErr) {
+    return NextResponse.json({ error: sErr.message }, { status: 500 });
+  }
 
   const soldIds = new Set((sells ?? []).map((s) => s.buy_trade_id));
   const openTrades = (openBuys ?? []).filter((t) => !soldIds.has(t.id));
