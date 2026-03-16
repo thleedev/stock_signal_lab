@@ -7,14 +7,13 @@ import { useState } from "react";
 
 const MAIN_TABS = [
   { href: "/", label: "대시보드", icon: LayoutDashboard },
-  { href: "/stocks", label: "종목", icon: BarChart3 },
   { href: "/signals", label: "AI신호", icon: Zap },
   { href: "/my-portfolio", label: "프트종목", icon: Briefcase },
+  { href: "/stocks", label: "종목", icon: BarChart3 },
 ];
 
 const MORE_TABS = [
   { href: "/market", label: "시황", icon: TrendingUp },
-  { href: "/investment", label: "포트종목", icon: Briefcase },
   { href: "/portfolio", label: "AI포트", icon: Briefcase },
   { href: "/compare", label: "비교", icon: BarChart3 },
   { href: "/reports", label: "리포트", icon: Zap },
