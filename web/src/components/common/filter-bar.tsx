@@ -17,16 +17,19 @@ interface FilterBarProps {
     selected: string;
     onChange: (d: string) => void;
     allLabel?: string;
+    extraAll?: { value: string; label: string };
     label?: string;
   };
   source?: {
     options: { key: string; label: string }[];
     selected: string;
     onChange: (s: string) => void;
+    label?: string;
   };
   market?: {
     selected: string;         // 'all' | 'KOSPI' | 'KOSDAQ'
     onChange: (m: string) => void;
+    label?: string;
   };
   search?: {
     value: string;
@@ -39,14 +42,47 @@ interface FilterBarProps {
     onChange: (s: string) => void;
     gapAsc?: boolean;
     onGapToggle?: () => void;
+    label?: string;
   };
   onWeightClick?: () => void;
   onRefresh?: () => void;
   refreshing?: boolean;
 }
 
-const selectCls =
-  'pl-3 pr-7 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-sm text-[var(--foreground)] appearance-none cursor-pointer focus:outline-none focus:border-[var(--accent)]';
+// 레이블 있는 select 박스 — DateDropdown과 시각적으로 통일
+function LabeledSelect({
+  label,
+  value,
+  onChange,
+  options,
+  className = '',
+}: {
+  label?: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { key: string; label: string }[];
+  className?: string;
+}) {
+  return (
+    <div className={`relative flex items-center rounded-lg border border-[var(--border)] bg-[var(--card)] ${className}`}>
+      {label && (
+        <span className="pl-3 text-sm text-[var(--muted)] whitespace-nowrap pointer-events-none shrink-0">
+          {label}
+        </span>
+      )}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${label ? 'pl-1' : 'pl-3'} pr-7 py-1.5 bg-transparent text-sm font-medium text-[var(--foreground)] appearance-none cursor-pointer focus:outline-none`}
+      >
+        {options.map((o) => (
+          <option key={o.key} value={o.key}>{o.label}</option>
+        ))}
+      </select>
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted)] text-xs">▾</span>
+    </div>
+  );
+}
 
 const iconBtnCls =
   'p-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors';
@@ -174,56 +210,40 @@ export function FilterBar({
         selected={date.selected}
         onChange={date.onChange}
         allLabel={date.allLabel}
+        extraAll={date.extraAll}
         label={date.label}
       />
 
       {/* 소스 드롭다운 */}
       {source && (
-        <div className="relative">
-          <select
-            value={source.selected}
-            onChange={(e) => source.onChange(e.target.value)}
-            className={selectCls}
-          >
-            {source.options.map((o) => (
-              <option key={o.key} value={o.key}>{o.label}</option>
-            ))}
-          </select>
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted)] text-xs">▾</span>
-        </div>
+        <LabeledSelect
+          label={source.label}
+          value={source.selected}
+          onChange={source.onChange}
+          options={source.options}
+        />
       )}
 
       {/* 시장 드롭다운 — 데스크탑만 */}
       {market && (
-        <div className="hidden sm:block relative">
-          <select
-            value={market.selected}
-            onChange={(e) => market.onChange(e.target.value)}
-            className={selectCls}
-          >
-            {MARKET_OPTIONS.map((o) => (
-              <option key={o.key} value={o.key}>{o.label}</option>
-            ))}
-          </select>
-          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted)] text-xs">▾</span>
-        </div>
+        <LabeledSelect
+          label={market.label}
+          value={market.selected}
+          onChange={market.onChange}
+          options={MARKET_OPTIONS}
+          className="hidden sm:flex"
+        />
       )}
 
       {/* 정렬 드롭다운 + Gap ↑↓ — 데스크탑만 */}
       {sort && (
         <div className="hidden sm:flex items-center gap-1">
-          <div className="relative">
-            <select
-              value={sort.selected}
-              onChange={(e) => sort.onChange(e.target.value)}
-              className={selectCls}
-            >
-              {sort.options.map((o) => (
-                <option key={o.key} value={o.key}>{o.label}</option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted)] text-xs">▾</span>
-          </div>
+          <LabeledSelect
+            label={sort.label}
+            value={sort.selected}
+            onChange={sort.onChange}
+            options={sort.options}
+          />
           {sort.selected === 'gap' && sort.onGapToggle && (
             <button
               type="button"
@@ -251,35 +271,25 @@ export function FilterBar({
           </button>
 
           {moreOpen && (
-            <div className="absolute top-full mt-1 left-0 z-50 w-48 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg p-3 space-y-2">
+            <div className="absolute top-full mt-1 left-0 z-50 w-52 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg p-3 space-y-2">
               {market && (
-                <div className="relative">
-                  <select
-                    value={market.selected}
-                    onChange={(e) => { market.onChange(e.target.value); setMoreOpen(false); }}
-                    className={`w-full ${selectCls}`}
-                  >
-                    {MARKET_OPTIONS.map((o) => (
-                      <option key={o.key} value={o.key}>{o.label}</option>
-                    ))}
-                  </select>
-                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted)] text-xs">▾</span>
-                </div>
+                <LabeledSelect
+                  label={market.label}
+                  value={market.selected}
+                  onChange={(v) => { market.onChange(v); setMoreOpen(false); }}
+                  options={MARKET_OPTIONS}
+                  className="w-full"
+                />
               )}
               {sort && (
                 <div className="flex items-center gap-1">
-                  <div className="relative flex-1">
-                    <select
-                      value={sort.selected}
-                      onChange={(e) => sort.onChange(e.target.value)}
-                      className={`w-full ${selectCls}`}
-                    >
-                      {sort.options.map((o) => (
-                        <option key={o.key} value={o.key}>{o.label}</option>
-                      ))}
-                    </select>
-                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted)] text-xs">▾</span>
-                  </div>
+                  <LabeledSelect
+                    label={sort.label}
+                    value={sort.selected}
+                    onChange={sort.onChange}
+                    options={sort.options}
+                    className="flex-1"
+                  />
                   {sort.selected === 'gap' && sort.onGapToggle && (
                     <button
                       type="button"

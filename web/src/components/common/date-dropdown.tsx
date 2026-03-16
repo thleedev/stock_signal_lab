@@ -6,22 +6,29 @@ import { formatDateLabel } from '@/lib/date-utils';
 
 interface DateDropdownProps {
   dates: string[];        // 최근 평일 목록 (YYYY-MM-DD) — [0]=오늘, [1]=어제
-  selected: string;       // 선택된 날짜, 'all', 또는 'week'
+  selected: string;       // 선택된 날짜, 'all', 'week', 또는 extraAll.value
   onChange: (date: string) => void;
-  allLabel?: string;      // '전체' 항목 레이블 (기본값: '전체')
+  allLabel?: string;      // 마지막 '전체' 항목 레이블 (기본값: '전체')
+  extraAll?: { value: string; label: string };  // allLabel 앞에 추가 전체 옵션 (예: 신호전체)
   label?: string;         // 필터 타입 레이블 (예: '날짜') — 트리거 버튼 앞에 표시
 }
 
-function getDatePresetLabel(date: string, dates: string[], allLabel = '전체'): string {
+function getDatePresetLabel(
+  date: string,
+  dates: string[],
+  allLabel = '전체',
+  extraAll?: { value: string; label: string },
+): string {
   if (date === 'all') return allLabel;
   if (date === 'week') return '이번주';
+  if (extraAll && date === extraAll.value) return extraAll.label;
   const idx = dates.indexOf(date);
   if (idx === 0) return '오늘';
   if (idx === 1) return '어제';
   return formatDateLabel(date); // 커스텀 날짜 → M/D(요일)
 }
 
-export function DateDropdown({ dates, selected, onChange, allLabel = '전체', label }: DateDropdownProps) {
+export function DateDropdown({ dates, selected, onChange, allLabel = '전체', extraAll, label }: DateDropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -57,7 +64,7 @@ export function DateDropdown({ dates, selected, onChange, allLabel = '전체', l
         {label && (
           <span className="text-[var(--muted)] mr-0.5">{label}</span>
         )}
-        <span className="font-medium">{getDatePresetLabel(selected, dates, allLabel)}</span>
+        <span className="font-medium">{getDatePresetLabel(selected, dates, allLabel, extraAll)}</span>
         <ChevronDown
           size={14}
           className={`text-[var(--muted)] transition-transform ${open ? 'rotate-180' : ''}`}
@@ -98,7 +105,19 @@ export function DateDropdown({ dates, selected, onChange, allLabel = '전체', l
           >
             이번주
           </button>
-          {/* 전체 */}
+          {/* 추가 전체 옵션 (예: 신호전체) */}
+          {extraAll && (
+            <button
+              type="button"
+              onClick={() => handleSelect(extraAll.value)}
+              className={`w-full px-3 py-1.5 text-sm text-left hover:bg-[var(--card-hover)] transition-colors ${
+                selected === extraAll.value ? 'text-[var(--accent)] font-semibold' : 'text-[var(--foreground)]'
+              }`}
+            >
+              {extraAll.label}
+            </button>
+          )}
+          {/* 전체 (allLabel) */}
           <button
             type="button"
             onClick={() => handleSelect('all')}
@@ -113,7 +132,14 @@ export function DateDropdown({ dates, selected, onChange, allLabel = '전체', l
             <label className="text-xs text-[var(--muted)] block mb-1">직접 선택</label>
             <input
               type="date"
-              value={selected !== 'all' && selected !== 'week' && !dates.includes(selected) ? selected : ''}
+              value={
+                selected !== 'all' &&
+                selected !== 'week' &&
+                !(extraAll && selected === extraAll.value) &&
+                !dates.includes(selected)
+                  ? selected
+                  : ''
+              }
               className="w-full text-sm bg-[var(--card)] text-[var(--foreground)] border border-[var(--border)] rounded px-2 py-1 focus:outline-none focus:border-[var(--accent)]"
               onChange={(e) => {
                 if (e.target.value) handleSelect(e.target.value);

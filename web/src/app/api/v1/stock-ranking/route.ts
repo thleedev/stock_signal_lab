@@ -117,6 +117,7 @@ export async function GET(request: NextRequest) {
     const dateParam = searchParams.get('date');
     const showAll = !dateParam || dateParam === 'all';
     const showWeek = dateParam === 'week';
+    const showSignalAll = dateParam === 'signal_all'; // 신호전체: 최근 30일 신호 있는 종목
 
     // 이번주(월~오늘) 범위 계산
     const weekStart = (() => {
@@ -127,11 +128,11 @@ export async function GET(request: NextRequest) {
         .toISOString().slice(0, 10);
     })();
 
-    const dateStr = showAll || showWeek ? todayStr : dateParam;
+    const dateStr = showAll || showWeek || showSignalAll ? todayStr : dateParam;
 
     // ── 날짜 지정 시: 해당 날짜/기간 BUY 신호 심볼 먼저 조회
     let dateSymbols: Set<string> | null = null;
-    if (!showAll) {
+    if (!showAll && !showSignalAll) {
       const start = showWeek ? `${weekStart}T00:00:00+09:00` : kstDayRange(dateStr).start;
       const end = showWeek ? `${todayStr}T23:59:59+09:00` : kstDayRange(dateStr).end;
       const { data: sigRows } = await supabase
@@ -161,6 +162,7 @@ export async function GET(request: NextRequest) {
             .not('current_price', 'is', null)
             .range(from, from + 999);
           if (market !== 'all') query = query.eq('market', market);
+          if (showSignalAll) query = query.gt('signal_count_30d', 0);
           const { data } = await query;
           if (!data || data.length === 0) break;
           allRows.push(...data);

@@ -378,7 +378,7 @@ function WeightPopup({
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: UnifiedAnalysisProps) {
-  const [selectedDate, setSelectedDate] = useState<string>('all');
+  const [selectedDate, setSelectedDate] = useState<string>(LAST7[0]);
   const [data, setData] = useState<RankingResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
@@ -434,7 +434,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     }
   }, []);
 
-  useEffect(() => { doFetch('all', '', 'all', 1); }, [doFetch]);
+  useEffect(() => { doFetch(LAST7[0], '', 'all', 1); }, [doFetch]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
   const handleDate = (date: string) => {
@@ -549,9 +549,9 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       {/* ── 필터 바 ── */}
       <div className="relative">
         <FilterBar
-          date={{ dates: LAST7, selected: selectedDate, onChange: handleDate, allLabel: '종목전체', label: '날짜' }}
-          source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter) }}
-          market={{ selected: market, onChange: handleMarket }}
+          date={{ dates: LAST7, selected: selectedDate, onChange: handleDate, extraAll: { value: 'signal_all', label: '신호전체' }, allLabel: '종목전체', label: '날짜' }}
+          source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter), label: '소스' }}
+          market={{ selected: market, onChange: handleMarket, label: '시장' }}
           search={{ value: q, onChange: handleSearch, placeholder: '종목명 / 코드' }}
           sort={{
             options: SORT_OPTIONS_WITH_GAP,
@@ -559,6 +559,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
             onChange: (s) => setSort(s as SortMode),
             gapAsc,
             onGapToggle: () => setGapAsc((v) => !v),
+            label: '정렬',
           }}
           onWeightClick={() => setShowWeights((v) => !v)}
           onRefresh={refreshPrices}
@@ -589,7 +590,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       )}
       {!loading && sortedItems.length === 0 && (
         <div className="py-16 text-center text-[var(--muted)] text-sm">
-          {selectedDate === 'all' || selectedDate === 'week' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
+          {selectedDate === 'all' || selectedDate === 'signal_all' || selectedDate === 'week' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
         </div>
       )}
 
