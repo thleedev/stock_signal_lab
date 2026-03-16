@@ -9,10 +9,12 @@ export type RiskLevel = 0 | 1 | 2 | 3;
 
 export interface RiskThreshold {
   label: string;
-  /** 높을수록 위험(1) vs 낮을수록 위험(-1) */
-  direction: 1 | -1;
-  /** [주의 하한, 위험 하한, 극위험 하한] — direction=1이면 이 값 이상일 때 해당 레벨 */
+  /** 높을수록 위험(1) vs 낮을수록 위험(-1) vs 양극단 위험(0, center 기준) */
+  direction: 1 | -1 | 0;
+  /** [주의 하한, 위험 하한, 극위험 하한] — direction=0이면 center 기준 거리 */
   thresholds: [number, number, number];
+  /** direction=0일 때 기준 중앙값 (기본 50) */
+  center?: number;
   /** 위험 지수 계산 시 이 지표의 중요도 가중치 */
   weight: number;
 }
@@ -27,13 +29,13 @@ export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
   VKOSPI: {
     label: 'VKOSPI (한국 공포지수)',
     direction: 1,
-    thresholds: [20, 25, 30],
+    thresholds: [22, 28, 35],
     weight: 3,
   },
   USD_KRW: {
     label: '원/달러 환율',
     direction: 1,
-    thresholds: [1350, 1400, 1450],
+    thresholds: [1380, 1430, 1480],
     weight: 3,
   },
   DXY: {
@@ -51,8 +53,8 @@ export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
   WTI: {
     label: 'WTI 원유',
     direction: 1,
-    thresholds: [70, 80, 95],
-    weight: 1,
+    thresholds: [75, 90, 100],
+    weight: 2,
   },
   KOSPI: {
     label: 'KOSPI',
@@ -68,26 +70,33 @@ export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
   },
   CNN_FEAR_GREED: {
     label: 'CNN 공포탐욕지수',
-    direction: -1,
-    thresholds: [60, 40, 20],
+    direction: 0,
+    thresholds: [10, 25, 30],
+    center: 50,
     weight: 2,
   },
   EWY: {
     label: 'EWY (한국 ETF)',
     direction: -1,
-    thresholds: [65, 55, 45],
+    thresholds: [60, 52, 44],
     weight: 1,
   },
   GOLD: {
     label: '금 현물가',
     direction: 1,
-    thresholds: [2200, 2500, 2800],
+    thresholds: [2800, 3100, 3400],
     weight: 1,
   },
-  FEAR_GREED: {
-    label: '공포탐욕지수',
+  HY_SPREAD: {
+    label: 'HY 스프레드 (하이일드)',
+    direction: 1,
+    thresholds: [450, 550, 700],
+    weight: 3,
+  },
+  YIELD_CURVE: {
+    label: '장단기 금리차 (10Y-2Y)',
     direction: -1,
-    thresholds: [60, 40, 20],
+    thresholds: [50, 0, -50],
     weight: 2,
   },
 };
@@ -106,7 +115,14 @@ export function getRiskLevel(type: string, value: number | null | undefined): Ri
 
   const [l1, l2, l3] = t.thresholds;
 
-  if (t.direction === 1) {
+  if (t.direction === 0) {
+    // 양극단 위험: center 기준 거리로 판단 (극공포 & 극탐욕 모두 위험)
+    const dist = Math.abs(value - (t.center ?? 50));
+    if (dist >= l3) return 3;
+    if (dist >= l2) return 2;
+    if (dist >= l1) return 1;
+    return 0;
+  } else if (t.direction === 1) {
     if (value >= l3) return 3;
     if (value >= l2) return 2;
     if (value >= l1) return 1;
@@ -128,7 +144,13 @@ export function getRiskThresholdLabel(type: string, level: RiskLevel): string {
   if (!t) return '';
   const [l1, l2, l3] = t.thresholds;
 
-  if (t.direction === 1) {
+  const c = t.center ?? 50;
+  if (t.direction === 0) {
+    if (level === 3) return `${c - l3} 미만 또는 ${c + l3} 초과`;
+    if (level === 2) return `${c - l2}~${c - l3} 또는 ${c + l2}~${c + l3}`;
+    if (level === 1) return `${c - l1}~${c - l2} 또는 ${c + l1}~${c + l2}`;
+    return `${c - l1}~${c + l1} (중립)`;
+  } else if (t.direction === 1) {
     if (level === 3) return `${l3.toLocaleString()} 이상`;
     if (level === 2) return `${l2.toLocaleString()}~${l3.toLocaleString()}`;
     if (level === 1) return `${l1.toLocaleString()}~${l2.toLocaleString()}`;

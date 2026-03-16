@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Activity, DollarSign, TrendingUp, TrendingDown, BarChart3,
   Gauge, Droplets, Globe, Landmark, Flame, ShieldAlert,
-  ShieldCheck, ShieldX, OctagonAlert,
+  ShieldCheck, ShieldX, OctagonAlert, RefreshCw, GitBranch, LineChart,
 } from "lucide-react";
 import {
   getRiskLevel, getRiskInterpretation, getRiskThresholdLabel,
@@ -47,6 +47,10 @@ const INDICATOR_ICONS: Record<string, React.ReactNode> = {
   KORU: <TrendingUp className="w-5 h-5" />,
   EWY: <TrendingDown className="w-5 h-5" />,
   FEAR_GREED: <Gauge className="w-5 h-5" />,
+  CNN_FEAR_GREED: <Gauge className="w-5 h-5" />,
+  VKOSPI: <Activity className="w-5 h-5" />,
+  HY_SPREAD: <LineChart className="w-5 h-5" />,
+  YIELD_CURVE: <GitBranch className="w-5 h-5" />,
 };
 
 // ─── 값 포맷 ────────────────────────────────────────────
@@ -54,10 +58,13 @@ const INDICATOR_ICONS: Record<string, React.ReactNode> = {
 function formatValue(type: string, value: number): string {
   if (["USD_KRW"].includes(type)) return value.toLocaleString("ko-KR", { maximumFractionDigits: 2 }) + "원";
   if (["US_10Y", "KR_3Y"].includes(type)) return value.toFixed(3) + "%";
-  if (["VIX", "FEAR_GREED", "DXY"].includes(type)) return value.toFixed(2);
+  if (["VIX", "VKOSPI", "FEAR_GREED", "DXY"].includes(type)) return value.toFixed(2);
+  if (["CNN_FEAR_GREED"].includes(type)) return value.toFixed(1) + " / 100";
   if (["WTI", "GOLD"].includes(type)) return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
   if (["KOSPI", "KOSDAQ"].includes(type)) return value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
   if (["KORU", "EWY"].includes(type)) return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (["HY_SPREAD"].includes(type)) return value.toFixed(0) + " bps";
+  if (["YIELD_CURVE"].includes(type)) return (value >= 0 ? "+" : "") + value.toFixed(0) + " bps";
   return value.toFixed(2);
 }
 
@@ -237,7 +244,69 @@ function RiskHistoryChart({ history }: {
 
 // ─── 메인 컴포넌트 ──────────────────────────────────────
 
-export function MarketClient({ indicators, scoreHistory, events }: Props) {
+export function MarketClient({ indicators: initialIndicators, scoreHistory, events }: Props) {
+  const [indicators, setIndicators] = useState(initialIndicators);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  // 실시간 데이터 가져오기
+  const fetchRealtime = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetch("/api/v1/market-indicators/realtime");
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json.success) return;
+
+      const realtimeMap = json.indicators as Record<string, {
+        value: number;
+        prev_value: number | null;
+        change_pct: number;
+      }>;
+
+      // 기존 지표를 실시간 값으로 업데이트
+      setIndicators(prev => {
+        const updated = prev.map(ind => {
+          const rt = realtimeMap[ind.indicator_type];
+          if (!rt) return ind;
+          return {
+            ...ind,
+            value: rt.value,
+            prev_value: rt.prev_value ?? ind.prev_value,
+            change_pct: rt.change_pct ?? ind.change_pct,
+          };
+        });
+
+        // 실시간에만 있는 새 지표 추가 (CNN_FEAR_GREED 등)
+        const existingTypes = new Set(updated.map(i => i.indicator_type));
+        for (const [type, rt] of Object.entries(realtimeMap)) {
+          if (!existingTypes.has(type)) {
+            updated.push({
+              indicator_type: type,
+              value: rt.value,
+              prev_value: rt.prev_value,
+              change_pct: rt.change_pct,
+              date: new Date().toISOString().slice(0, 10),
+            });
+          }
+        }
+
+        return updated;
+      });
+
+      setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
+    } catch (e) {
+      console.error("[market] realtime fetch failed:", e);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  // 페이지 진입 시 자동으로 실시간 데이터 로드
+  useEffect(() => {
+    fetchRealtime();
+  }, [fetchRealtime]);
+
   // 현재 지표값 맵
   const valueMap = useMemo(() => {
     const m: Record<string, number> = {};
@@ -277,9 +346,22 @@ export function MarketClient({ indicators, scoreHistory, events }: Props) {
   return (
     <div className="space-y-6">
       {/* 페이지 제목 */}
-      <div>
-        <h1 className="text-2xl font-bold">투자 시황</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">절대 임계값 기반 위험 경보</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">투자 시황</h1>
+          <p className="text-sm text-[var(--muted)] mt-1">
+            절대 임계값 기반 위험 경보
+            {lastUpdated && <span className="ml-2">· 실시간 {lastUpdated}</span>}
+          </p>
+        </div>
+        <button
+          onClick={fetchRealtime}
+          disabled={isRefreshing}
+          className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors disabled:opacity-50"
+          title="실시간 데이터 새로고침"
+        >
+          <RefreshCw className={`w-5 h-5 ${isRefreshing ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
       {/* 경보 배너 */}

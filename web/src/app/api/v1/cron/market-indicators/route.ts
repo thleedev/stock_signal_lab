@@ -9,6 +9,37 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 /**
+ * FRED API에서 최신값 조회
+ * series: BAMLH0A0HYM2 (HY Spread), T10Y2Y (Yield Curve) 등
+ * 실패 시 null 반환
+ */
+async function fetchFredLatest(seriesId: string): Promise<number | null> {
+  const apiKey = process.env.FRED_API_KEY;
+  if (!apiKey) {
+    console.warn(`[market-indicators] FRED_API_KEY not set, skipping ${seriesId}`);
+    return null;
+  }
+  try {
+    const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${apiKey}&file_type=json&sort_order=desc&limit=5`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const observations = json?.observations;
+    if (!Array.isArray(observations)) return null;
+    // 최신 유효값 (FRED는 "."을 결측으로 표시)
+    for (const obs of observations) {
+      if (obs.value !== '.' && !isNaN(Number(obs.value))) {
+        return Number(obs.value);
+      }
+    }
+    return null;
+  } catch {
+    console.error(`[market-indicators] FRED fetch failed for ${seriesId}`);
+    return null;
+  }
+}
+
+/**
  * CNN Fear & Greed Index 조회 (비공식 API)
  * 실패 시 null 반환
  */
@@ -107,6 +138,35 @@ export async function POST(request: NextRequest) {
     }
   } else {
     console.warn('[market-indicators] CNN Fear & Greed fetch returned null, using fallback');
+  }
+
+  // Step 1e: FRED 데이터 수집 (HY Spread, Yield Curve)
+  const fredSeries: Record<string, string> = {
+    HY_SPREAD: 'BAMLH0A0HYM2',
+    YIELD_CURVE: 'T10Y2Y',
+  };
+
+  const fredResults = await Promise.allSettled(
+    Object.entries(fredSeries).map(async ([type, seriesId]) => {
+      const value = await fetchFredLatest(seriesId);
+      return { type, value };
+    })
+  );
+
+  for (const r of fredResults) {
+    if (r.status !== 'fulfilled' || r.value.value === null) continue;
+    const { type, value } = r.value;
+    // HY Spread는 bps 단위 (FRED 원본이 bps), Yield Curve는 % 단위 → bps 변환
+    const storedValue = type === 'YIELD_CURVE' ? value * 100 : value;
+    results[type] = storedValue;
+    try {
+      await supabase.from('market_indicators').upsert(
+        { date: today, indicator_type: type as IndicatorType, value: storedValue, raw_data: { source: 'fred', series_id: fredSeries[type] } },
+        { onConflict: 'date,indicator_type' }
+      );
+    } catch (error) {
+      console.error(`[market-indicators] Failed to upsert ${type}:`, error);
+    }
   }
 
   // Step 1.5: 히스토리 데이터가 부족하면 Yahoo Finance 90일 백필
@@ -216,24 +276,14 @@ export async function POST(request: NextRequest) {
   const eventRiskScore = calculateEventRiskScore(upcomingEvents || []);
   const combinedScore = calculateCombinedScore(totalScore, eventRiskScore);
 
-  // Step 5: 공포탐욕 지수 계산 및 저장
+  // Step 5: VIX 기반 공포탐욕 폴백 계산 (CNN 실패 시에만 사용)
   const vixData = indicatorData['VIX'];
   let fearGreed: number | null = null;
   if (vixData) {
     const vixNormalized = vixData.max90d !== vixData.min90d
       ? ((vixData.current - vixData.min90d) / (vixData.max90d - vixData.min90d)) * 100
       : 50;
-    fearGreed = 100 - vixNormalized; // 간단 버전
-
-    await supabase.from('market_indicators').upsert(
-      {
-        date: today,
-        indicator_type: 'FEAR_GREED' as IndicatorType,
-        value: fearGreed,
-        raw_data: { method: 'vix_based' },
-      },
-      { onConflict: 'date,indicator_type' }
-    );
+    fearGreed = 100 - vixNormalized;
   }
 
   // risk_index 계산 (Step 5의 fearGreed가 이미 계산된 이후)

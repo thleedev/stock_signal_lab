@@ -14,7 +14,9 @@ export type IndicatorType =
   | 'EWY'
   | 'FEAR_GREED'
   | 'VKOSPI'
-  | 'CNN_FEAR_GREED';
+  | 'CNN_FEAR_GREED'
+  | 'HY_SPREAD'
+  | 'YIELD_CURVE';
 
 // Yahoo Finance 티커 매핑
 export const YAHOO_TICKERS: Record<string, string> = {
