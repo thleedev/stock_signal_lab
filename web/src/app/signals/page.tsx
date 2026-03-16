@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
-import { getLastNWeekdays, getKstDayRange } from "@/lib/date-utils";
+import { getLastNWeekdays, getKstDayRange, getKstWeekRange } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
 import { UnifiedAnalysisSection, type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
 import { extractSignalPrice } from "@/lib/signal-constants";
@@ -22,6 +22,7 @@ export default async function SignalsPage({
   const last7 = getLastNWeekdays(7);
   const selectedDate =
     params.date === "all" ? "all"
+    : params.date === "week" ? "week"
     : params.date && last7.includes(params.date) ? params.date
     : last7[0];
 
@@ -52,6 +53,10 @@ export default async function SignalsPage({
       const newest = last7[0];
       dateStart = `${oldest}T00:00:00+09:00`;
       dateEnd = `${newest}T23:59:59+09:00`;
+    } else if (selectedDate === "week") {
+      const range = getKstWeekRange();
+      dateStart = range.start;
+      dateEnd = range.end;
     } else {
       const range = getKstDayRange(selectedDate);
       dateStart = range.start;
@@ -139,7 +144,7 @@ export default async function SignalsPage({
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">AI 신호</h1>
-          <p className="text-sm text-[var(--muted)] mt-1">{selectedDate === "all" ? "전체 기간" : `${selectedDate} 기준`}</p>
+          <p className="text-sm text-[var(--muted)] mt-1">{selectedDate === "all" ? "전체 기간" : selectedDate === "week" ? "이번주" : `${selectedDate} 기준`}</p>
         </div>
         <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
           <Link

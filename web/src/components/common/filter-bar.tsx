@@ -16,6 +16,8 @@ interface FilterBarProps {
     dates: string[];
     selected: string;
     onChange: (d: string) => void;
+    allLabel?: string;
+    label?: string;
   };
   source?: {
     options: { key: string; label: string }[];
@@ -140,8 +142,40 @@ export function FilterBar({
 
   return (
     <div className="relative flex items-center gap-2 flex-wrap sm:flex-nowrap">
-      {/* DateDropdown — 항상 표시 */}
-      <DateDropdown dates={date.dates} selected={date.selected} onChange={date.onChange} />
+      {/* 검색 — 맨 왼쪽, 데스크탑: inline input / 모바일: 🔍 아이콘 */}
+      {search && (
+        <>
+          {/* 데스크탑 인라인 검색 */}
+          <div className="hidden sm:block relative flex-1 min-w-[8rem] max-w-[16rem]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+            <input
+              type="text"
+              value={search.value}
+              onChange={(e) => search.onChange(e.target.value)}
+              placeholder={search.placeholder}
+              className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+          {/* 모바일 🔍 아이콘 버튼 */}
+          <button
+            type="button"
+            aria-label="검색"
+            className={`sm:hidden ${iconBtnCls}`}
+            onClick={() => setSearchExpanded(true)}
+          >
+            <Search size={15} />
+          </button>
+        </>
+      )}
+
+      {/* DateDropdown */}
+      <DateDropdown
+        dates={date.dates}
+        selected={date.selected}
+        onChange={date.onChange}
+        allLabel={date.allLabel}
+        label={date.label}
+      />
 
       {/* 소스 드롭다운 */}
       {source && (
@@ -173,32 +207,6 @@ export function FilterBar({
           </select>
           <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--muted)] text-xs">▾</span>
         </div>
-      )}
-
-      {/* 검색 — 데스크탑: inline input / 모바일: 🔍 아이콘 */}
-      {search && (
-        <>
-          {/* 데스크탑 인라인 검색 */}
-          <div className="hidden sm:block relative flex-1 min-w-[8rem] max-w-[16rem]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
-            <input
-              type="text"
-              value={search.value}
-              onChange={(e) => search.onChange(e.target.value)}
-              placeholder={search.placeholder}
-              className="w-full pl-8 pr-3 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--card)] focus:outline-none focus:border-[var(--accent)]"
-            />
-          </div>
-          {/* 모바일 🔍 아이콘 버튼 */}
-          <button
-            type="button"
-            aria-label="검색"
-            className={`sm:hidden ${iconBtnCls}`}
-            onClick={() => setSearchExpanded(true)}
-          >
-            <Search size={15} />
-          </button>
-        </>
       )}
 
       {/* 정렬 드롭다운 + Gap ↑↓ — 데스크탑만 */}

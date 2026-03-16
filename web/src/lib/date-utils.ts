@@ -30,6 +30,19 @@ export function getKstDayRange(date: string): { start: string; end: string } {
   };
 }
 
+/** KST 이번주(월~오늘) 범위 반환 */
+export function getKstWeekRange(): { start: string; end: string } {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const day = kst.getDay(); // 0=일, 1=월, ..., 6=토
+  const daysFromMonday = day === 0 ? 6 : day - 1;
+  const monday = new Date(kst.getTime() - daysFromMonday * 86400000);
+  return {
+    start: `${monday.toISOString().slice(0, 10)}T00:00:00+09:00`,
+    end: `${kst.toISOString().slice(0, 10)}T23:59:59+09:00`,
+  };
+}
+
 export function formatDateLabel(dateStr: string): string {
   const [, m, d] = dateStr.split("-");
   const date = new Date(dateStr + "T00:00:00+09:00");

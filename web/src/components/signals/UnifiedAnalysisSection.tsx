@@ -549,7 +549,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       {/* ── 필터 바 ── */}
       <div className="relative">
         <FilterBar
-          date={{ dates: LAST7, selected: selectedDate, onChange: handleDate }}
+          date={{ dates: LAST7, selected: selectedDate, onChange: handleDate, allLabel: '종목전체', label: '날짜' }}
           source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter) }}
           market={{ selected: market, onChange: handleMarket }}
           search={{ value: q, onChange: handleSearch, placeholder: '종목명 / 코드' }}
@@ -589,7 +589,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       )}
       {!loading && sortedItems.length === 0 && (
         <div className="py-16 text-center text-[var(--muted)] text-sm">
-          {selectedDate === 'all' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
+          {selectedDate === 'all' || selectedDate === 'week' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
         </div>
       )}
 

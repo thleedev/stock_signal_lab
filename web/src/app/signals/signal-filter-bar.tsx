@@ -34,6 +34,8 @@ export function SignalFilterBar({ dates, selectedDate, activeSource }: SignalFil
         dates,
         selected: selectedDate,
         onChange: (d) => router.push(buildUrl(d, activeSource)),
+        allLabel: '신호전체',
+        label: '날짜',
       }}
       source={{
         options: SIGNAL_SOURCE_OPTIONS,

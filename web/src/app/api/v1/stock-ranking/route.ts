@@ -116,12 +116,24 @@ export async function GET(request: NextRequest) {
     const todayStr = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const dateParam = searchParams.get('date');
     const showAll = !dateParam || dateParam === 'all';
-    const dateStr = showAll ? todayStr : dateParam;
+    const showWeek = dateParam === 'week';
 
-    // ── 날짜 지정 시: 해당 날짜 BUY 신호 심볼 먼저 조회
+    // 이번주(월~오늘) 범위 계산
+    const weekStart = (() => {
+      const day = now.getUTCDay(); // UTC 기준 요일 (KST +9h 반영된 now)
+      const kstDay = new Date(now.getTime() + 9 * 60 * 60 * 1000).getDay();
+      const daysFromMonday = kstDay === 0 ? 6 : kstDay - 1;
+      return new Date(now.getTime() + 9 * 60 * 60 * 1000 - daysFromMonday * 86400000)
+        .toISOString().slice(0, 10);
+    })();
+
+    const dateStr = showAll || showWeek ? todayStr : dateParam;
+
+    // ── 날짜 지정 시: 해당 날짜/기간 BUY 신호 심볼 먼저 조회
     let dateSymbols: Set<string> | null = null;
     if (!showAll) {
-      const { start, end } = kstDayRange(dateStr);
+      const start = showWeek ? `${weekStart}T00:00:00+09:00` : kstDayRange(dateStr).start;
+      const end = showWeek ? `${todayStr}T23:59:59+09:00` : kstDayRange(dateStr).end;
       const { data: sigRows } = await supabase
         .from('signals')
         .select('symbol')
@@ -131,7 +143,7 @@ export async function GET(request: NextRequest) {
       if (sigRows && sigRows.length > 0) {
         dateSymbols = new Set(sigRows.map((r) => r.symbol as string));
       } else {
-        // 해당 날짜 신호 없음 → 빈 결과 반환
+        // 해당 날짜/기간 신호 없음 → 빈 결과 반환
         return NextResponse.json({ items: [], total: 0, page, limit, today: todayStr });
       }
     }
