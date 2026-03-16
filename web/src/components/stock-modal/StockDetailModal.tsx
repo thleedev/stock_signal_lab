@@ -127,7 +127,8 @@ export function StockDetailModal() {
       setSignals(Array.isArray(signalsData) ? (signalsData as Signal[]) : ((signalsData?.signals ?? []) as Signal[]));
       setTrades(Array.isArray(tradesData) ? tradesData : (tradesData?.trades ?? []));
       setPortfolios(Array.isArray(portfoliosData) ? portfoliosData : (portfoliosData?.portfolios ?? []));
-      setDailyPrices(Array.isArray(dailyPricesData) ? dailyPricesData : []);
+      const rawPrices = Array.isArray(dailyPricesData) ? dailyPricesData : [];
+      setDailyPrices(rawPrices.sort((a: PriceData, b: PriceData) => a.date.localeCompare(b.date)));
 
       const groups: Group[] = Array.isArray(groupsData) ? groupsData : (groupsData?.groups ?? []);
       setAllGroups(groups);
