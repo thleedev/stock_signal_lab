@@ -450,12 +450,12 @@ export default function MyPortfolioPage() {
               <thead>
                 <tr className="border-b border-[var(--border)] text-[var(--muted)] text-xs">
                   <th className="px-3 py-3 text-left">종목명</th>
-                  <th className="px-3 py-3 text-left">코드</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-left">코드</th>
                   <th className="px-3 py-3 text-right">현재가</th>
                   <th className="px-3 py-3 text-right">등락률</th>
-                  <th className="px-3 py-3 text-right">매수가</th>
-                  <th className="px-3 py-3 text-right">손절가</th>
-                  <th className="px-3 py-3 text-right">목표가</th>
+                  <th className="hidden sm:table-cell px-3 py-3 text-right">매수가</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-right">손절가</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-right">목표가</th>
                   <th className="px-3 py-3 text-right">수익률</th>
                   <th className="px-3 py-3 text-center w-10"></th>
                 </tr>
@@ -497,7 +497,7 @@ export default function MyPortfolioPage() {
                           <div className="text-[10px] text-amber-400">AI 매도신호</div>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-[var(--muted)] text-xs">
+                      <td className="hidden md:table-cell px-3 py-2.5 text-[var(--muted)] text-xs">
                         {h.symbol}
                       </td>
                       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(live?.price_change ?? null)}`}>
@@ -506,10 +506,10 @@ export default function MyPortfolioPage() {
                       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(change)}`}>
                         {formatPercent(change)}
                       </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums">
+                      <td className="hidden sm:table-cell px-3 py-2.5 text-right tabular-nums">
                         {formatNumber(h.buy_price)}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-sm">
+                      <td className="hidden md:table-cell px-3 py-2.5 text-right text-sm">
                         {renderEditablePrice(
                           h,
                           "stop_price",
@@ -517,7 +517,7 @@ export default function MyPortfolioPage() {
                           nearStopLoss ? "text-blue-400 font-semibold" : "text-[var(--muted)]"
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-sm">
+                      <td className="hidden md:table-cell px-3 py-2.5 text-right text-sm">
                         {renderEditablePrice(
                           h,
                           "target_price",

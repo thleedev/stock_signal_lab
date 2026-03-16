@@ -605,10 +605,10 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         <th className="px-3 py-3 text-right">등락률</th>
         <th className="hidden md:table-cell px-3 py-3 text-right">거래량</th>
         <th className="hidden md:table-cell px-3 py-3 text-right">PER</th>
-        <th className="px-2 py-3 text-center">퀀트</th>
-        <th className="px-2 py-3 text-center">라씨</th>
-        <th className="px-2 py-3 text-center">스톡봇</th>
-        <th className="px-3 py-3 text-right">Gap</th>
+        <th className="hidden lg:table-cell px-2 py-3 text-center">퀀트</th>
+        <th className="hidden lg:table-cell px-2 py-3 text-center">라씨</th>
+        <th className="hidden lg:table-cell px-2 py-3 text-center">스톡봇</th>
+        <th className="hidden lg:table-cell px-3 py-3 text-right">Gap</th>
       </tr>
     </thead>
   );
@@ -920,8 +920,8 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
           )}
         </div>
       </td>
-      <td className="px-3 py-2.5">
-        <span className="font-medium">{stock.name}</span>
+      <td className="px-3 py-2.5 max-w-[8rem] sm:max-w-[12rem] md:max-w-none">
+        <span className="font-medium block truncate">{stock.name}</span>
       </td>
       <td className="hidden md:table-cell px-3 py-2.5 text-[var(--muted)] text-xs">
         {stock.symbol}
@@ -938,16 +938,16 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
       <td className="hidden md:table-cell px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
         {stock.per != null ? stock.per.toFixed(1) : "-"}
       </td>
-      <td className="px-2 py-2.5 text-center">
+      <td className="hidden lg:table-cell px-2 py-2.5 text-center">
         <SignalBadge sig={signals.quant} source="quant" />
       </td>
-      <td className="px-2 py-2.5 text-center">
+      <td className="hidden lg:table-cell px-2 py-2.5 text-center">
         <SignalBadge sig={signals.lassi} source="lassi" />
       </td>
-      <td className="px-2 py-2.5 text-center">
+      <td className="hidden lg:table-cell px-2 py-2.5 text-center">
         <SignalBadge sig={signals.stockbot} source="stockbot" />
       </td>
-      <td className="px-3 py-2.5 text-right tabular-nums">
+      <td className="hidden lg:table-cell px-3 py-2.5 text-right tabular-nums">
         {gap != null ? (
           <div className="flex flex-col items-end gap-0.5">
             <span className={`text-xs font-medium ${gap >= 0 ? "text-red-400" : "text-blue-400"}`}>

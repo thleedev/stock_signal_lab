@@ -84,7 +84,7 @@ function RecommendationCard({ item }: { item: AiRecommendation }) {
             #{item.rank}
           </span>
           <div>
-            <div className="font-semibold text-sm">{item.name ?? item.symbol}</div>
+            <div className="font-semibold text-sm truncate max-w-[10rem] sm:max-w-[14rem]">{item.name ?? item.symbol}</div>
             <div className="text-xs text-gray-500">{item.symbol}</div>
           </div>
         </div>

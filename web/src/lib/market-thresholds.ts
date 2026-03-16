@@ -78,6 +78,18 @@ export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
     thresholds: [65, 55, 45],
     weight: 1,
   },
+  GOLD: {
+    label: '금 현물가',
+    direction: 1,
+    thresholds: [2200, 2500, 2800],
+    weight: 1,
+  },
+  FEAR_GREED: {
+    label: '공포탐욕지수',
+    direction: -1,
+    thresholds: [60, 40, 20],
+    weight: 2,
+  },
 };
 
 /** 레벨별 가중치 (비선형: 극위험에 민감) */
