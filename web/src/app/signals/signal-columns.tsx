@@ -80,9 +80,9 @@ function SignalCard({
         </span>
       )}
 
-      {/* 시간 */}
+      {/* 시간 (signal_time 우선, 없으면 timestamp 폴백) */}
       <span className="ml-auto text-xs text-[var(--muted)]">
-        {new Date(signal.timestamp).toLocaleTimeString("ko-KR", {
+        {new Date(signal.signal_time || signal.timestamp).toLocaleTimeString("ko-KR", {
           hour: "2-digit",
           minute: "2-digit",
         })}

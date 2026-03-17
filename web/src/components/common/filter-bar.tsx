@@ -26,6 +26,12 @@ interface FilterBarProps {
     onChange: (s: string) => void;
     label?: string;
   };
+  character?: {
+    options: { key: string; label: string }[];
+    selected: string;
+    onChange: (c: string) => void;
+    label?: string;
+  };
   market?: {
     selected: string;         // 'all' | 'KOSPI' | 'KOSDAQ'
     onChange: (m: string) => void;
@@ -90,6 +96,7 @@ const iconBtnCls =
 export function FilterBar({
   date,
   source,
+  character,
   market,
   search,
   sort,
@@ -102,7 +109,7 @@ export function FilterBar({
   const moreRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const hasMore = !!(market || sort);
+  const hasMore = !!(market || sort || character);
 
   // ⋯ 팝업 외부 클릭 시 닫힘
   useEffect(() => {
@@ -224,6 +231,16 @@ export function FilterBar({
         />
       )}
 
+      {/* 투자성격 드롭다운 */}
+      {character && (
+        <LabeledSelect
+          label={character.label}
+          value={character.selected}
+          onChange={character.onChange}
+          options={character.options}
+        />
+      )}
+
       {/* 시장 드롭다운 — 데스크탑만 */}
       {market && (
         <LabeledSelect
@@ -272,6 +289,15 @@ export function FilterBar({
 
           {moreOpen && (
             <div className="absolute top-full mt-1 left-0 z-50 w-52 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg p-3 space-y-2">
+              {character && (
+                <LabeledSelect
+                  label={character.label}
+                  value={character.selected}
+                  onChange={(v) => { character.onChange(v); setMoreOpen(false); }}
+                  options={character.options}
+                  className="w-full"
+                />
+              )}
               {market && (
                 <LabeledSelect
                   label={market.label}

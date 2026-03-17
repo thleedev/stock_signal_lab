@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { getLastNWeekdays } from '@/lib/date-utils';
@@ -82,67 +82,40 @@ const SORT_OPTIONS_WITH_GAP: { key: SortMode; label: string }[] = [
 ];
 
 // ── 배지 정의 ────────────────────────────────────────────────────────────────
-type BadgeVariant = 'green' | 'blue' | 'orange' | 'red';
+type BadgeVariant = 'green' | 'blue' | 'orange' | 'red' | 'purple' | 'gold';
 const BADGE_CLS: Record<BadgeVariant, string> = {
-  green: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
-  blue:  'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
-  orange:'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
-  red:   'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  green:  'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  blue:   'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  orange: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  red:    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  purple: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+  gold:   'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
 };
 
-interface Badge { label: string; hint: string; variant: BadgeVariant; }
+// ── 투자 성격 분류 ────────────────────────────────────────────────────────────
+type InvestmentCharacter = 'short_surge' | 'value' | 'supply_strong' | 'tech_rebound' | 'multi_signal' | 'top_pick';
 
-function getAiBadges(ai: NonNullable<StockRankItem['ai']>): Badge[] {
-  const b: Badge[] = [];
-  if (ai.golden_cross)     b.push({ label: '골든크로스',     hint: 'MA5>MA20 상향돌파',    variant: 'green' });
-  if (ai.bollinger_bottom) b.push({ label: '볼린저하단반등', hint: '과매도→평균회귀',      variant: 'green' });
-  if (ai.phoenix_pattern)  b.push({ label: '불새패턴',        hint: '급락후 V자반등',        variant: 'green' });
-  if (ai.macd_cross)       b.push({ label: 'MACD크로스',      hint: '시그널선 상향돌파',     variant: 'green' });
-  if (ai.volume_surge)     b.push({ label: '거래량급증',       hint: '20일평균 2배↑',         variant: 'green' });
-  if (ai.week52_low_near)  b.push({ label: '52주저점근처',     hint: '±10%이내 지지구간',     variant: 'green' });
-  if (ai.rsi !== null && ai.rsi < 30)
-    b.push({ label: `RSI ${ai.rsi.toFixed(0)} 과매도`, hint: '강한과매도·반등여력',  variant: 'blue' });
-  else if (ai.rsi !== null && ai.rsi <= 50)
-    b.push({ label: `RSI ${ai.rsi.toFixed(0)}`,        hint: '과매도회복구간(30~50)',  variant: 'green' });
-  if (ai.foreign_buying)     b.push({ label: '외국인순매수', hint: '지속매수·중장기호재',   variant: 'blue' });
-  if (ai.institution_buying) b.push({ label: '기관순매수',   hint: '펀더멘털기반매수',      variant: 'blue' });
-  if (ai.volume_vs_sector)   b.push({ label: '섹터거래상위', hint: '업종내주목도↑',         variant: 'blue' });
-  if (ai.low_short_sell)     b.push({ label: '공매도낮음',   hint: '1%미만·하락압력↓',      variant: 'blue' });
-  if (ai.double_top)         b.push({ label: '⚠ 쌍봉패턴', hint: '고점2회→조정가능·주의', variant: 'orange' });
-  return b;
+interface CharacterDef {
+  key: InvestmentCharacter;
+  label: string;
+  icon: string;
+  variant: BadgeVariant;
 }
 
-function getBasicBadges(item: StockRankItem, todayMs: number): Badge[] {
-  const b: Badge[] = [];
-  const days = item.latest_signal_date
-    ? Math.round((todayMs - new Date(item.latest_signal_date).getTime()) / 86400000)
-    : null;
-  if (days !== null && days <= 7 && (item.latest_signal_type === 'BUY' || item.latest_signal_type === 'BUY_FORECAST'))
-    b.push({ label: days <= 1 ? '오늘BUY' : `${days}일전BUY`, hint: 'BUY/BUY_FORECAST 신호', variant: 'green' });
-  const cnt = item.signal_count_30d ?? 0;
-  if (cnt >= 3)
-    b.push({ label: `신호${cnt}회/30일`, hint: '반복추천·지속신호', variant: 'green' });
-  if (item.per !== null && item.per > 0 && item.per < 10)
-    b.push({ label: `PER ${item.per.toFixed(1)}`, hint: '10미만·이익저평가', variant: 'green' });
-  if (item.pbr !== null && item.pbr > 0 && item.pbr < 1)
-    b.push({ label: `PBR ${item.pbr.toFixed(2)}`, hint: '1미만·자산저평가', variant: 'green' });
-  if (item.roe !== null && item.roe > 10)
-    b.push({ label: `ROE ${item.roe.toFixed(1)}%`, hint: '10%↑·우량수익성', variant: 'green' });
-  if (item.foreign_net_qty !== null && item.foreign_net_qty > 0)
-    b.push({ label: '외국인순매수', hint: '누적순매수+', variant: 'blue' });
-  if (item.institution_net_qty !== null && item.institution_net_qty > 0)
-    b.push({ label: '기관순매수',   hint: '누적순매수+', variant: 'blue' });
-  if (item.current_price && item.low_52w && item.low_52w > 0) {
-    const r = item.current_price / item.low_52w;
-    if (r >= 0.95 && r <= 1.1)
-      b.push({ label: `52주저점+${((r - 1) * 100).toFixed(0)}%`, hint: '역사적지지구간', variant: 'green' });
-  }
-  if (item.price_change_pct !== null && item.price_change_pct > 3)
-    b.push({ label: `+${item.price_change_pct.toFixed(1)}%급등`, hint: '3%↑강한모멘텀', variant: 'red' });
-  if (item.short_sell_ratio !== null && item.short_sell_ratio < 1)
-    b.push({ label: `공매도${item.short_sell_ratio.toFixed(2)}%`, hint: '1%미만·하락압력↓', variant: 'blue' });
-  return b;
-}
+const CHARACTER_DEFS: CharacterDef[] = [
+  { key: 'short_surge',   label: '단기급등',  icon: '🔥', variant: 'red' },
+  { key: 'value',         label: '가치주',    icon: '💎', variant: 'purple' },
+  { key: 'supply_strong', label: '수급강세',  icon: '🏦', variant: 'blue' },
+  { key: 'tech_rebound',  label: '기술반등',  icon: '📈', variant: 'green' },
+  { key: 'multi_signal',  label: '다중신호',  icon: '⚡', variant: 'orange' },
+  { key: 'top_pick',      label: '종합추천',  icon: '⭐', variant: 'gold' },
+];
+
+const CHARACTER_FILTER_OPTIONS = [
+  { key: 'all', label: '전체' },
+  ...CHARACTER_DEFS.map(d => ({ key: d.key, label: `${d.icon} ${d.label}` })),
+];
+
 
 // ── 점수 정규화 ───────────────────────────────────────────────────────────────
 function normScores(item: StockRankItem) {
@@ -167,6 +140,73 @@ function computeWeighted(item: StockRankItem, w: Weights): number {
   const total = w.signal + w.technical + w.valuation + w.supply || 1;
   const scores = normScores(item);
   return (scores.sig * w.signal + scores.tech * w.technical + scores.val * w.valuation + scores.sup * w.supply) / total;
+}
+
+function getInvestmentCharacters(item: StockRankItem, weights: Weights): InvestmentCharacter[] {
+  const chars: InvestmentCharacter[] = [];
+  const { sig, tech, val, sup } = normScores(item);
+  const weighted = computeWeighted(item, weights);
+
+  // 단기급등: 기술점수 높고 + 모멘텀 패턴 감지
+  if (item.ai) {
+    if (tech >= 60 && (item.ai.golden_cross || item.ai.macd_cross || item.ai.volume_surge)) {
+      chars.push('short_surge');
+    }
+  } else if (tech >= 60 && item.price_change_pct !== null && item.price_change_pct > 3) {
+    chars.push('short_surge');
+  }
+
+  // 가치주: 밸류점수 70 이상
+  if (val >= 70) chars.push('value');
+
+  // 수급강세: 수급점수 60 이상
+  if (sup >= 60) chars.push('supply_strong');
+
+  // 기술반등: 불새패턴 또는 (볼린저하단 + RSI<40)
+  if (item.ai) {
+    if (item.ai.phoenix_pattern || (item.ai.bollinger_bottom && item.ai.rsi !== null && item.ai.rsi < 40)) {
+      chars.push('tech_rebound');
+    }
+  }
+
+  // 다중신호: 30일내 3회 이상 또는 신호점수 80 이상
+  if ((item.signal_count_30d ?? 0) >= 3 || sig >= 80) chars.push('multi_signal');
+
+  // 종합추천: 가중합 70점 이상
+  if (weighted >= 70) chars.push('top_pick');
+
+  return chars;
+}
+
+// ── 추천 근거 한줄 요약 ───────────────────────────────────────────────────────
+function getRecommendReason(item: StockRankItem): string {
+  const reasons: string[] = [];
+
+  if (item.ai) {
+    if (item.ai.golden_cross) reasons.push('골든크로스');
+    if (item.ai.macd_cross) reasons.push('MACD돌파');
+    if (item.ai.phoenix_pattern) reasons.push('V자반등');
+    if (item.ai.bollinger_bottom) reasons.push('볼린저반등');
+    if (item.ai.volume_surge) reasons.push('거래량급증');
+    if (item.ai.week52_low_near) reasons.push('52주저점');
+    if (item.ai.foreign_buying) reasons.push('외국인매수');
+    if (item.ai.institution_buying) reasons.push('기관매수');
+    if (item.ai.volume_vs_sector) reasons.push('섹터주목');
+    if (item.ai.low_short_sell) reasons.push('공매도↓');
+    if (item.ai.rsi !== null && item.ai.rsi < 30) reasons.push(`RSI${item.ai.rsi.toFixed(0)}과매도`);
+    if (item.ai.double_top) reasons.push('⚠쌍봉주의');
+  }
+
+  if (item.per !== null && item.per > 0 && item.per < 10) reasons.push(`PER${item.per.toFixed(1)}`);
+  if (item.pbr !== null && item.pbr > 0 && item.pbr < 1) reasons.push(`PBR${item.pbr.toFixed(2)}`);
+  if (item.roe !== null && item.roe > 10) reasons.push(`ROE${item.roe.toFixed(0)}%`);
+
+  const cnt = item.signal_count_30d ?? 0;
+  if (cnt >= 3) reasons.push(`신호${cnt}회`);
+
+  if (item.price_change_pct !== null && item.price_change_pct > 3) reasons.push(`+${item.price_change_pct.toFixed(1)}%급등`);
+
+  return reasons.join(' · ') || '분석 데이터 부족';
 }
 
 function fmtNum(v: number | null, d = 1) { return v == null ? '-' : v.toFixed(d); }
@@ -203,9 +243,9 @@ function getGapInfo(
 
 const LAST7 = getLastNWeekdays(7);
 
-// ── RankCard 컴포넌트 ─────────────────────────────────────────────────────────
+// ── RankCard 컴포넌트 (컴팩트 2줄) ──────────────────────────────────────────────
 function RankCard({
-  item, rank, weighted, favs, gapInfo, onClick,
+  item, rank, weighted, favs, gapInfo, onClick, characters,
 }: {
   item: StockRankItem;
   rank: number;
@@ -213,114 +253,109 @@ function RankCard({
   favs: Set<string>;
   gapInfo: GapInfo | null;
   onClick: (e: React.MouseEvent) => void;
+  characters: InvestmentCharacter[];
 }) {
   const hasAi = !!item.ai;
   const isWarning = hasAi && item.ai!.double_top;
   const pct = item.price_change_pct;
-  const badges = hasAi ? getAiBadges(item.ai!) : getBasicBadges(item, Date.now());
   const { sig, tech, val, sup } = normScores(item);
+  const reason = getRecommendReason(item);
 
   return (
     <div
       onClick={onClick}
-      className={`px-3 py-2 cursor-pointer hover:bg-[var(--card-hover)] transition-colors select-none ${
+      className={`px-4 py-2.5 cursor-pointer hover:bg-[var(--card-hover)] transition-colors select-none ${
         isWarning ? 'bg-orange-50/60 dark:bg-orange-950/10' : ''
       }`}
     >
-      {/* ── 줄 1: 순위 · 종목명 · 메타 · 점수 · Gap · 등락 ── */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        <span className={`text-xs font-bold tabular-nums w-6 shrink-0 text-right ${hasAi ? 'text-blue-500' : 'text-[var(--muted)]'}`}>
+      {/* ── 줄 1: 순위 · 종목명 · 성격태그 · 점수 · 등락 ── */}
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={`text-sm font-bold tabular-nums w-6 shrink-0 text-right ${hasAi ? 'text-blue-500' : 'text-[var(--muted)]'}`}>
           {rank}
         </span>
 
-        <div className="flex items-center gap-1 min-w-0 shrink-0 max-w-[9rem] sm:max-w-[14rem]">
-          <span className="font-semibold text-sm truncate">{item.name}</span>
-          {hasAi && <span className="shrink-0 px-0.5 rounded text-[8px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 leading-tight">AI</span>}
-          {isWarning && <AlertTriangle size={9} className="shrink-0 text-orange-500" />}
-          {favs.has(item.symbol) && <span className="shrink-0 text-yellow-400 text-[9px]">★</span>}
+        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
+          <span className="font-semibold text-[15px] leading-snug truncate max-w-[7rem] sm:max-w-[10rem]">{item.name}</span>
+          {favs.has(item.symbol) && <span className="text-yellow-400 text-xs">★</span>}
         </div>
 
-        <div className="hidden sm:flex items-center gap-1 text-[10px] text-[var(--muted)] flex-1 min-w-0 overflow-hidden">
-          <span className="shrink-0">{item.symbol}</span>
-          <span className="opacity-30">·</span>
-          <span className="shrink-0">{item.market}</span>
-          <span className="opacity-30 mx-0.5">|</span>
-          <span className="shrink-0 tabular-nums">신{sig}</span>
-          <span className="opacity-30">·</span>
-          <span className="shrink-0 tabular-nums">기{tech}</span>
-          <span className="opacity-30">·</span>
-          <span className="shrink-0 tabular-nums">밸{val}</span>
-          <span className="opacity-30">·</span>
-          <span className="shrink-0 tabular-nums">수{sup}</span>
-          {item.per != null && <><span className="opacity-30 mx-0.5">|</span><span className="shrink-0">P{fmtNum(item.per, 0)}</span></>}
-          {item.pbr != null && <span className="shrink-0">B{fmtNum(item.pbr, 1)}</span>}
-          {item.roe != null && <span className="shrink-0">R{fmtNum(item.roe, 0)}%</span>}
-        </div>
-        <div className="flex-1 sm:hidden" />
+        {/* 성격 태그 */}
+        {/* 성격 태그 — 데스크탑 최대 3개 */}
+        {characters.length > 0 && (
+          <div className="hidden sm:flex items-center gap-1 shrink-0">
+            {characters.slice(0, 3).map(charKey => {
+              const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
+              return (
+                <span key={charKey} className={`px-1.5 py-0.5 rounded text-[11px] font-bold leading-none ${BADGE_CLS[def.variant]}`}>
+                  {def.icon} {def.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {/* 성격 태그 — 모바일 최대 2개 */}
+        {characters.length > 0 && (
+          <div className="sm:hidden flex items-center gap-1 shrink-0">
+            {characters.slice(0, 2).map(charKey => {
+              const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
+              return (
+                <span key={charKey} className={`px-1.5 py-0.5 rounded text-[11px] font-bold leading-none ${BADGE_CLS[def.variant]}`}>
+                  {def.icon} {def.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
 
-        <span className={`text-sm font-bold tabular-nums shrink-0 ${
+        <div className="flex-1 min-w-0" />
+
+        {/* 점수 */}
+        <span className={`text-base font-bold tabular-nums shrink-0 ${
           weighted >= 60 ? 'text-green-600 dark:text-green-400'
           : weighted >= 40 ? 'text-blue-600 dark:text-blue-400'
           : 'text-[var(--text)]'
-        }`}>{weighted.toFixed(0)}<span className="text-[9px] font-normal text-[var(--muted)]">pt</span></span>
+        }`}>{weighted.toFixed(0)}<span className="text-[10px] font-normal text-[var(--muted)] ml-0.5">pt</span></span>
 
-        {/* Gap 정보 */}
-        {gapInfo ? (
-          <div className="shrink-0 text-right min-w-[4.5rem]">
-            <span className={`text-xs font-bold tabular-nums ${gapInfo.gap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
-              {gapInfo.gap >= 0 ? '+' : ''}{gapInfo.gap.toFixed(1)}%
-            </span>
-            <div className="flex items-center justify-end gap-1 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SOURCE_DOTS[gapInfo.source] ?? 'bg-gray-400'}`} />
-              <span className="text-[9px] text-[var(--muted)]">{SOURCE_LABELS[gapInfo.source] ?? gapInfo.source}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="shrink-0 text-right min-w-[4.5rem]">
-            <span className="text-xs text-[var(--muted)]">-</span>
-          </div>
-        )}
-
-        <div className="shrink-0 text-right min-w-[5.5rem]">
-          {pct != null ? (
-            <span className={`text-xs font-semibold tabular-nums flex items-center gap-0.5 justify-end ${
-              pct > 0 ? 'text-red-500' : pct < 0 ? 'text-blue-500' : 'text-[var(--muted)]'
-            }`}>
-              {pct > 0 ? <TrendingUp size={9} /> : pct < 0 ? <TrendingDown size={9} /> : null}
-              {pct > 0 ? '+' : ''}{fmtNum(pct)}%
-            </span>
-          ) : <span className="text-xs text-[var(--muted)]">-</span>}
-          <div className="text-[10px] text-[var(--muted)] tabular-nums leading-tight">{fmtPrice(item.current_price)}</div>
-        </div>
-      </div>
-
-      {/* ── 줄 1.5 (모바일 전용): 심볼·시장·점수·매수가 ── */}
-      <div className="sm:hidden flex items-center gap-1 text-[10px] text-[var(--muted)] mt-0.5 pl-7">
-        <span>{item.symbol} · {item.market}</span>
-        <span className="opacity-30 mx-0.5">|</span>
-        <span className="tabular-nums">신{sig}·기{tech}·밸{val}·수{sup}</span>
-        {item.per != null && <><span className="opacity-30">|</span><span>P{fmtNum(item.per, 0)}</span></>}
+        {/* Gap */}
         {gapInfo && (
-          <span className="text-[10px] text-[var(--muted)] tabular-nums">
-            매{gapInfo.buyPrice.toLocaleString()}
+          <span className={`text-xs font-bold tabular-nums shrink-0 ${gapInfo.gap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+            {gapInfo.gap >= 0 ? '+' : ''}{gapInfo.gap.toFixed(1)}%
           </span>
         )}
+
+        {/* 등락 + 현재가 */}
+        <div className="shrink-0 text-right">
+          <span className={`text-xs font-semibold tabular-nums ${
+            pct != null && pct > 0 ? 'text-red-500' : pct != null && pct < 0 ? 'text-blue-500' : 'text-[var(--muted)]'
+          }`}>
+            {pct != null ? `${pct > 0 ? '+' : ''}${fmtNum(pct)}%` : '-'}
+          </span>
+          <span className="text-[11px] text-[var(--muted)] tabular-nums ml-1.5">{item.current_price?.toLocaleString() ?? '-'}</span>
+        </div>
       </div>
 
-      {/* ── 줄 2: 분석 배지 ── */}
-      {badges.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1 pl-7">
-          {badges.map((badge, i) => (
-            <span
-              key={i}
-              className={`inline-flex items-baseline gap-1 px-1.5 py-0.5 rounded text-[10px] ${BADGE_CLS[badge.variant]}`}
-            >
-              <b className="font-semibold whitespace-nowrap">{badge.label}</b>
-              <span className="opacity-55 whitespace-nowrap hidden sm:inline">{badge.hint}</span>
-            </span>
+      {/* ── 줄 2: 추천근거 + 미니 점수바 ── */}
+      <div className="flex items-start gap-3 mt-1 pl-8">
+        {/* 추천근거 — 전체 표시 (줄바꿈 허용) */}
+        <p className="text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
+
+        {/* 미니 점수바 (데스크탑) */}
+        <div className="hidden sm:flex items-center gap-2 shrink-0 pt-0.5">
+          {[
+            { label: '신', value: sig, color: 'bg-amber-400' },
+            { label: '기', value: tech, color: 'bg-emerald-400' },
+            { label: '밸', value: val, color: 'bg-violet-400' },
+            { label: '수', value: sup, color: 'bg-sky-400' },
+          ].map(b => (
+            <div key={b.label} className="flex items-center gap-0.5">
+              <span className="text-[10px] text-[var(--muted)]">{b.label}</span>
+              <div className="w-10 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+                <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
+              </div>
+            </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -386,9 +421,10 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [page, setPage] = useState(1);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
-  const [weights, setWeights] = useState<Weights>({ signal: 30, technical: 30, valuation: 20, supply: 20 });
+  const [weights, setWeights] = useState<Weights>({ signal: 20, technical: 40, valuation: 10, supply: 30 });
   const [sort, setSort] = useState<SortMode>('score');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
+  const [charFilter, setCharFilter] = useState<string>('all');
   const [gapAsc, setGapAsc] = useState(true);
   const portSet = useMemo(() => new Set(watchlistSymbols), [watchlistSymbols]);
   const [groups] = useState<WatchlistGroup[]>(initialGroups);
@@ -539,9 +575,20 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     return computeWeighted(b, weights) - computeWeighted(a, weights);
   }), [rawItems, sort, weights, sourceFilter, signalMap, livePrices, gapAsc]);
 
+  // ── 투자성격 필터 ────────────────────────────────────────────────────────────
+  const filteredByChar = useMemo(() => {
+    if (charFilter === 'all') return sortedItems;
+    return sortedItems.filter(item => {
+      const chars = getInvestmentCharacters(item, weights);
+      return chars.includes(charFilter as InvestmentCharacter);
+    });
+  }, [sortedItems, charFilter, weights]);
+
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / LIMIT);
+  const displayTotal = filteredByChar.length;
+  const totalPages = Math.ceil(displayTotal / LIMIT);
   const offset = (page - 1) * LIMIT;
+  const displayItems = filteredByChar.slice(offset, offset + LIMIT);
   const aiCount = rawItems.filter((i) => i.ai).length;
 
   return (
@@ -551,6 +598,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
         <FilterBar
           date={{ dates: LAST7, selected: selectedDate, onChange: handleDate, extraAll: { value: 'signal_all', label: '신호전체' }, allLabel: '종목전체', label: '날짜' }}
           source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter), label: '소스' }}
+          character={{ options: CHARACTER_FILTER_OPTIONS, selected: charFilter, onChange: (c) => { setCharFilter(c); setPage(1); }, label: '성격' }}
           market={{ selected: market, onChange: handleMarket, label: '시장' }}
           search={{ value: q, onChange: handleSearch, placeholder: '종목명 / 코드' }}
           sort={{
@@ -575,38 +623,45 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       </div>
 
       {/* ── 종목수 표시 ── */}
-      <div className="text-xs text-[var(--muted)]">
-        {total.toLocaleString()}종목
+      <div className="text-xs text-[var(--muted)] flex flex-wrap items-center gap-2">
+        <span>{displayTotal.toLocaleString()}종목{charFilter !== 'all' && total !== displayTotal ? ` / ${total.toLocaleString()}전체` : ''}</span>
         {aiCount > 0 && (
-          <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
             AI분석 {aiCount}
+          </span>
+        )}
+        {charFilter !== 'all' && (
+          <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+            {CHARACTER_DEFS.find(d => d.key === charFilter)?.icon} {CHARACTER_DEFS.find(d => d.key === charFilter)?.label} 필터
           </span>
         )}
       </div>
 
       {/* ── 리스트 ── */}
-      {loading && sortedItems.length === 0 && (
+      {loading && displayItems.length === 0 && (
         <div className="py-16 text-center text-[var(--muted)] text-sm">로딩 중...</div>
       )}
-      {!loading && sortedItems.length === 0 && (
+      {!loading && displayItems.length === 0 && (
         <div className="py-16 text-center text-[var(--muted)] text-sm">
           {selectedDate === 'all' || selectedDate === 'signal_all' || selectedDate === 'week' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
         </div>
       )}
 
       <div className={`rounded-xl border border-[var(--border)] bg-[var(--card)] divide-y divide-[var(--border)] overflow-hidden ${loading ? 'opacity-60' : ''}`}>
-        {sortedItems.map((item, idx) => {
-          const weighted = computeWeighted(item, weights);
+        {displayItems.map((item, idx) => {
+          const w = computeWeighted(item, weights);
           const gapInfo = getGapInfo(item, signalMap, sourceFilter, livePrices);
+          const characters = getInvestmentCharacters(item, weights);
           return (
             <RankCard
               key={item.symbol}
               item={item}
               rank={offset + idx + 1}
-              weighted={weighted}
+              weighted={w}
               favs={favs}
               gapInfo={gapInfo}
               onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
+              characters={characters}
             />
           );
         })}

@@ -2,7 +2,9 @@
  * Yahoo Finance API 래퍼
  * yahoo-finance2 패키지를 사용하여 시황 지표 데이터 수집
  */
-import yahooFinance from 'yahoo-finance2';
+import YahooFinance from 'yahoo-finance2';
+
+const yahooFinance = new YahooFinance();
 
 export interface QuoteResult {
   price: number;

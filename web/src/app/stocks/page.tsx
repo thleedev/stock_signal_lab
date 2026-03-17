@@ -48,41 +48,26 @@ export default async function StocksPage() {
     ...(rawStocks ?? []).map((s) => s.symbol as string),
   ])];
 
+  // 이름 보완 + 신호 조회를 병렬 처리
+  const signalMap: Record<string, Record<string, { type: string; price: number | null }>> = {};
+
   if (uniqueSymbols.length > 0) {
-    const { data: stockInfoNames } = await supabase
-      .from("stock_info")
-      .select("symbol, name")
-      .in("symbol", uniqueSymbols);
+    const [{ data: stockInfoNames }, { data: signalRows }] = await Promise.all([
+      supabase.from("stock_info").select("symbol, name").in("symbol", uniqueSymbols),
+      supabase
+        .from("signals")
+        .select("symbol, source, signal_type, raw_data, timestamp")
+        .in("symbol", uniqueSymbols)
+        .in("source", ["lassi", "stockbot", "quant"])
+        .order("timestamp", { ascending: false })
+        .limit(uniqueSymbols.length * 9),
+    ]);
+
     if (stockInfoNames) {
       infoNameMap = Object.fromEntries(
         stockInfoNames.map((s) => [s.symbol as string, s.name as string])
       );
     }
-  }
-
-  const fixName = <T extends { symbol: string; name: string }>(s: T): T =>
-    isCodeLike(s.name, s.symbol) && infoNameMap[s.symbol]
-      ? { ...s, name: infoNameMap[s.symbol] }
-      : s;
-
-  const favorites = (rawFavorites ?? []).map(fixName);
-  const stocks = (rawStocks ?? []).map(fixName);
-
-  // 신호 병합 (기존 로직 유지)
-  const allSymbols = new Set<string>();
-  favorites.forEach((f) => allSymbols.add(f.symbol));
-  stocks.forEach((s) => allSymbols.add(s.symbol));
-
-  let signalMap: Record<string, Record<string, { type: string; price: number | null }>> = {};
-
-  if (allSymbols.size > 0) {
-    const { data: signalRows } = await supabase
-      .from("signals")
-      .select("symbol, source, signal_type, raw_data, timestamp")
-      .in("symbol", Array.from(allSymbols))
-      .in("source", ["lassi", "stockbot", "quant"])
-      .order("timestamp", { ascending: false })
-      .limit(allSymbols.size * 9);
 
     if (signalRows) {
       for (const row of signalRows) {
@@ -99,6 +84,14 @@ export default async function StocksPage() {
       }
     }
   }
+
+  const fixName = <T extends { symbol: string; name: string }>(s: T): T =>
+    isCodeLike(s.name, s.symbol) && infoNameMap[s.symbol]
+      ? { ...s, name: infoNameMap[s.symbol] }
+      : s;
+
+  const favorites = (rawFavorites ?? []).map(fixName);
+  const stocks = (rawStocks ?? []).map(fixName);
 
   const emptySignal = { type: null, price: null };
   const mergeSignals = (list: typeof stocks) =>

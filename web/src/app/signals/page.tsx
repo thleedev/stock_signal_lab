@@ -67,7 +67,7 @@ export default async function SignalsPage({
       .select("*")
       .gte("timestamp", dateStart)
       .lte("timestamp", dateEnd)
-      .order("timestamp", { ascending: false });
+      .order("signal_time", { ascending: false, nullsFirst: false });
     if (activeSource !== "all") query = query.eq("source", activeSource);
 
     const { data: rawSignals } = await query;

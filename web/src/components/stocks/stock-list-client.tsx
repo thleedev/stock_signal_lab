@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Star, Search, ArrowUpDown, Loader2, Briefcase, RefreshCw, Pin, PinOff, GripVertical } from "lucide-react";
+import { Star, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2, Briefcase, RefreshCw, Pin, PinOff, GripVertical } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
 import { SOURCE_LABELS_SHORT, SIGNAL_COLORS, SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
@@ -50,6 +50,14 @@ function priceColor(change: number | null): string {
 
 type SourceKey = "quant" | "lassi" | "stockbot";
 
+const BUY_TYPES = new Set(["BUY", "BUY_FORECAST"]);
+
+function hasBuySignal(stock: StockCache): boolean {
+  if (!stock.signals) return false;
+  const s = stock.signals;
+  return BUY_TYPES.has(s.quant?.type ?? "") || BUY_TYPES.has(s.lassi?.type ?? "") || BUY_TYPES.has(s.stockbot?.type ?? "");
+}
+
 function calcGap(stock: StockCache, prioritySource: SourceKey | "all" = "all"): { gap: number; source: string } | null {
   if (!stock.current_price || !stock.signals) return null;
 
@@ -75,10 +83,11 @@ function calcGap(stock: StockCache, prioritySource: SourceKey | "all" = "all"): 
 
 const SORT_MAP: Record<string, string> = {
   name: "name",
+  market_cap: "market_cap",
   change: "price_change_pct",
   volume: "volume",
   per: "per",
-  gap: "name",
+  gap: "gap",
 };
 
 function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
@@ -128,6 +137,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [market, setMarket] = useState(searchParams.get("market") || "전체");
   const [sortBy, setSortBy] = useState(searchParams.get("sort") || "name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(
+    (searchParams.get("dir") as "asc" | "desc") || "asc"
+  );
   const [favSet, setFavSet] = useState<Set<string>>(
     () => new Set(favorites.map((f) => f.symbol))
   );
@@ -138,7 +150,8 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const sentinelRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [portSet] = useState<Set<string>>(() => new Set(watchlistSymbols));
-  const [gapSource, setGapSource] = useState<SourceKey | "all">("all");
+  const [gapSource] = useState<SourceKey | "all">("all");
+  const [signalFilter, setSignalFilter] = useState<"all" | "signal">("all");
 
   // 그룹 관련 상태
   const [groups, setGroups] = useState<WatchlistGroup[]>(initialGroups);
@@ -156,12 +169,14 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     position: { x: number; y: number };
   } | null>(null);
 
-  const [pinFavorites, setPinFavorites] = useState<boolean>(
-    () =>
-      typeof window !== "undefined"
-        ? localStorage.getItem("pinFavorites") !== "false"
-        : true
-  );
+  const [pinFavorites, setPinFavorites] = useState<boolean>(true);
+  const [pinMounted, setPinMounted] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("pinFavorites");
+    if (stored === "false") setPinFavorites(false);
+    setPinMounted(true);
+  }, []);
 
   const handlePinToggle = useCallback(() => {
     setPinFavorites((prev) => {
@@ -177,10 +192,11 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     if (query) params.set("q", query);
     if (market !== "전체") params.set("market", market);
     if (sortBy !== "name") params.set("sort", sortBy);
+    if (sortDir !== "asc") params.set("dir", sortDir);
     const qs = params.toString();
     const newUrl = qs ? `/stocks?${qs}` : "/stocks";
     router.replace(newUrl, { scroll: false });
-  }, [query, market, sortBy, router]);
+  }, [query, market, sortBy, sortDir, router]);
 
   const fetchStocks = useCallback(
     async (pageNum: number, reset: boolean = false) => {
@@ -190,12 +206,11 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         params.set("page", String(pageNum));
         params.set("limit", "50");
         params.set("withSignals", "true");
-
-        const serverSort = sortBy === "gap" ? "name" : (SORT_MAP[sortBy] || "name");
-        params.set("sortBy", serverSort);
-        if (sortBy === "change" || sortBy === "volume") params.set("sortDir", "desc");
+        params.set("sortBy", SORT_MAP[sortBy] || "name");
+        params.set("sortDir", sortDir);
         if (market !== "전체") params.set("market", market);
         if (query.trim()) params.set("q", query.trim());
+        if (signalFilter === "signal") params.set("hasSignal", "true");
 
         const res = await fetch(`/api/v1/stocks?${params}`);
         if (!res.ok) return;
@@ -204,24 +219,25 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
         if (reset) {
           setStocks(applyLivePrices(newData, livePricesRef.current));
+          setHasMore(pageNum < (json.totalPages ?? 1));
         } else {
           setStocks((prev) => {
             const existingSymbols = new Set(prev.map((s) => s.symbol));
             const dedupedNew = newData.filter((s) => !existingSymbols.has(s.symbol));
             return [...prev, ...applyLivePrices(dedupedNew, livePricesRef.current)];
           });
+          setHasMore(pageNum < (json.totalPages ?? 1));
         }
-        setHasMore(pageNum < (json.totalPages ?? 1));
       } catch (e) {
         console.error("[StockList] 종목 로딩 실패:", e);
       } finally {
         setLoading(false);
       }
     },
-    [market, query, sortBy]
+    [market, query, sortBy, sortDir, signalFilter]
   );
 
-  // 필터/정렬 변경 시 리셋
+  // 검색어 변경 시 디바운스 리셋
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -231,7 +247,26 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [market, query, sortBy, fetchStocks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  // 정렬/필터 변경 시 즉시 리셋 (디바운스 없이)
+  const prevSortRef = useRef({ sortBy, sortDir, market, signalFilter });
+  useEffect(() => {
+    const prev = prevSortRef.current;
+    if (
+      prev.sortBy === sortBy &&
+      prev.sortDir === sortDir &&
+      prev.market === market &&
+      prev.signalFilter === signalFilter
+    ) return;
+    prevSortRef.current = { sortBy, sortDir, market, signalFilter };
+    setStocks([]);
+    setPage(1);
+    setHasMore(true);
+    fetchStocks(1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy, sortDir, market, signalFilter]);
 
   // IntersectionObserver for infinite scroll
   useEffect(() => {
@@ -284,39 +319,44 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     const favSymbols = new Set(filteredFavs.map((f) => f.symbol));
     const nonFavs = stocks.filter((s) => !favSymbols.has(s.symbol));
 
-    return { favs: updatedFavs, nonFavs };
-  }, [stocks, stocksMap, favStocks, query, showSearchMode, activeTab, symGroups]);
+    // 신호 필터: 즐겨찾기도 클라이언트에서 필터 (API는 일반 종목만 필터)
+    if (signalFilter === "signal") {
+      return {
+        favs: updatedFavs.filter(hasBuySignal),
+        nonFavs,
+      };
+    }
 
-  // 2단계: 정렬 + pinFavorites 적용
+    return { favs: updatedFavs, nonFavs };
+  }, [stocks, stocksMap, favStocks, query, showSearchMode, activeTab, symGroups, signalFilter]);
+
+  // 2단계: pinFavorites 적용
+  // 서버가 이미 정렬된 데이터를 반환하므로 클라이언트 재정렬 불필요
   const displayStocks = useMemo(() => {
+    // pinFavorites=false 또는 마운트 전: 즐겨찾기 분리 없이 서버 순서 그대로
+    if (!pinMounted || !pinFavorites) {
+      return { favs: [], nonFavs: stocks };
+    }
+
+    // pinFavorites=true: 즐겨찾기 상단 고정
     const favs = [...mergedStocks.favs];
     const nonFavs = [...mergedStocks.nonFavs];
 
+    // gap 정렬일 때 즐겨찾기 섹션도 gap순으로 정렬
     if (sortBy === "gap") {
-      const sortByGap = (a: StockCache, b: StockCache) => {
+      const dir = sortDir === "desc" ? -1 : 1;
+      favs.sort((a, b) => {
         const gapA = calcGap(a, gapSource);
         const gapB = calcGap(b, gapSource);
         if (gapA == null && gapB == null) return 0;
         if (gapA == null) return 1;
         if (gapB == null) return -1;
-        const aPos = gapA.gap > 0;
-        const bPos = gapB.gap > 0;
-        if (aPos && !bPos) return -1;
-        if (!aPos && bPos) return 1;
-        return gapA.gap - gapB.gap;
-      };
-      favs.sort(sortByGap);
-      nonFavs.sort(sortByGap);
-    }
-
-    // pinFavorites=false이고 전체탭(DB 뷰)일 때: favs/nonFavs 혼합
-    if (!pinFavorites && activeTab === "all") {
-      const combined = [...favs, ...nonFavs];
-      return { favs: [], nonFavs: combined };
+        return (gapA.gap - gapB.gap) * dir;
+      });
     }
 
     return { favs, nonFavs };
-  }, [mergedStocks, sortBy, gapSource, pinFavorites, activeTab]);
+  }, [stocks, mergedStocks, sortBy, sortDir, gapSource, pinFavorites, pinMounted]);
 
   // 전체탭은 항상 전체DB 뷰, 또는 관심종목 없고 query 없을 때
   const showAllStocksMode = activeTab === "all" || (favSet.size === 0 && !showSearchMode);
@@ -671,15 +711,16 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             />
           </div>
 
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1 py-1">
+            <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">시장</span>
             {["전체", "KOSPI", "KOSDAQ", "ETF"].map((m) => (
               <button
                 key={m}
                 onClick={() => setMarket(m)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
                   market === m
                     ? "bg-[var(--accent)] text-white"
-                    : "bg-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                    : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]"
                 }`}
               >
                 {m}
@@ -687,32 +728,45 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             ))}
           </div>
 
-          <div className="relative">
-            <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]" />
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1 py-1">
+            <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">정렬</span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="pl-9 pr-8 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
+              className="px-2 py-1.5 rounded-md text-xs font-medium bg-transparent text-[var(--foreground)] focus:outline-none appearance-none cursor-pointer"
             >
-              <option value="name">이름순</option>
-              <option value="change">등락률순</option>
-              <option value="volume">거래량순</option>
-              <option value="per">PER순</option>
-              <option value="gap">Gap순</option>
+              <option value="name">이름</option>
+              <option value="market_cap">시가총액</option>
+              <option value="change">등락률</option>
+              <option value="volume">거래량</option>
+              <option value="per">PER</option>
+              <option value="gap">Gap</option>
             </select>
+            <button
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              className="p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
+              title={sortDir === "asc" ? "오름차순" : "내림차순"}
+            >
+              {sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+            </button>
           </div>
 
-          <select
-            value={gapSource}
-            onChange={(e) => setGapSource(e.target.value as SourceKey | "all")}
-            className="px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)] appearance-none cursor-pointer"
-            title="Gap 기준 AI"
-          >
-            <option value="all">Gap: 전체AI</option>
-            <option value="quant">Gap: 퀀트</option>
-            <option value="lassi">Gap: 라씨</option>
-            <option value="stockbot">Gap: 스톡봇</option>
-          </select>
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1 py-1">
+            <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">신호</span>
+            {([["all", "전체"], ["signal", "신호"]] as const).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setSignalFilter(value)}
+                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  signalFilter === value
+                    ? "bg-[var(--accent)] text-white"
+                    : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -755,7 +809,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                     <StockRow
                       key={stock.symbol}
                       stock={stock}
-                      isFav={false}
+                      isFav={favSet.has(stock.symbol)}
                       gapSource={gapSource}
                       isInPortfolio={portSet.has(stock.symbol)}
                       onToggleFavorite={(s) => handleStarClick(s)}
