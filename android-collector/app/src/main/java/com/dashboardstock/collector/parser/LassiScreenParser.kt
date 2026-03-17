@@ -3,8 +3,11 @@ package com.dashboardstock.collector.parser
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
 import com.dashboardstock.collector.api.SignalInput
+import java.time.LocalDate
+import java.time.LocalTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
@@ -26,10 +29,52 @@ object LassiScreenParser {
         """([가-힣A-Za-z0-9\s&.]+?)\s*\(([0-9A-Za-z]{6})\)\s*([0-9,]+)\s*원"""
     )
 
-    // 시간 그룹 패턴: "09:20", "22분전", "1시간전" 등
+    // 시간 그룹 패턴: "09:20", "22분전", "1시간전", "방금전" 등
     private val TIME_GROUP_PATTERN = Regex(
-        """(\d{1,2}:\d{2}|\d+분전|\d+시간전)"""
+        """(\d{1,2}:\d{2}|\d+분전|\d+시간전|방금전)"""
     )
+
+    // 역산용 패턴
+    private val ABSOLUTE_TIME_PATTERN = Regex("""(\d{1,2}):(\d{2})""")
+    private val MINUTES_AGO_PATTERN = Regex("""(\d+)분전""")
+    private val HOURS_AGO_PATTERN = Regex("""(\d+)시간전""")
+
+    private val SEOUL_ZONE: ZoneId = ZoneId.of("Asia/Seoul")
+    private val SEOUL_OFFSET: ZoneOffset = ZoneOffset.ofHours(9)
+
+    /**
+     * timeGroup 문자열을 ISO 8601 타임스탬프로 변환
+     * - "09:20" → 당일 09:20:00+09:00 (절대시간 → 정확)
+     * - "22분전", "1시간전", "방금전" → null (상대시간 → 부정확하므로 건너뜀)
+     *
+     * 상대시간 신호는 signal_time = null로 저장되고,
+     * 오후 5시 일괄 업데이트에서 절대시간으로 보정됨
+     */
+    fun resolveSignalTime(timeGroup: String?, now: OffsetDateTime): String? {
+        if (timeGroup == null) return null
+
+        val absoluteMatch = ABSOLUTE_TIME_PATTERN.matchEntire(timeGroup)
+        if (absoluteMatch != null) {
+            val hour = absoluteMatch.groupValues[1].toInt()
+            val minute = absoluteMatch.groupValues[2].toInt()
+            val resolved = LocalDate.now(SEOUL_ZONE)
+                .atTime(LocalTime.of(hour, minute))
+                .atOffset(SEOUL_OFFSET)
+            return resolved.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        }
+
+        // 상대시간("방금전", "N분전", "N시간전")은 부정확하므로 null 반환
+        // timeGroup 원본은 raw_data에 보존됨
+        return null
+    }
+
+    /** timeGroup이 상대시간인지 확인 */
+    fun isRelativeTime(timeGroup: String?): Boolean {
+        if (timeGroup == null) return false
+        return MINUTES_AGO_PATTERN.matches(timeGroup)
+                || HOURS_AGO_PATTERN.matches(timeGroup)
+                || timeGroup == "방금전"
+    }
 
     // 종목코드 6자리 패턴
     private val SYMBOL_PATTERN = Regex("""(\d{6})""")
@@ -80,6 +125,7 @@ object LassiScreenParser {
                         signalPrice = price,
                         source = "lassi",
                         timeGroup = currentTimeGroup,
+                        signalTime = resolveSignalTime(currentTimeGroup, now),
                         isFallback = false
                     )
                 )
@@ -89,7 +135,7 @@ object LassiScreenParser {
 
         // 패턴 매칭 실패 시 분리된 노드에서 조합 시도
         if (signals.isEmpty()) {
-            val combinedSignals = parseFromSeparateNodes(allTexts, signalType, timestamp, currentTimeGroup)
+            val combinedSignals = parseFromSeparateNodes(allTexts, signalType, timestamp, currentTimeGroup, now)
             signals.addAll(combinedSignals)
         }
 
@@ -110,7 +156,8 @@ object LassiScreenParser {
         texts: List<String>,
         signalType: String,
         timestamp: String,
-        defaultTimeGroup: String?
+        defaultTimeGroup: String?,
+        now: OffsetDateTime
     ): List<SignalInput> {
         val signals = mutableListOf<SignalInput>()
         var currentTimeGroup = defaultTimeGroup
@@ -158,6 +205,7 @@ object LassiScreenParser {
                             signalPrice = price,
                             source = "lassi",
                             timeGroup = currentTimeGroup,
+                            signalTime = resolveSignalTime(currentTimeGroup, now),
                             isFallback = false
                         )
                     )

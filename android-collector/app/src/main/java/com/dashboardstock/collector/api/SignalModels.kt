@@ -11,6 +11,7 @@ data class SignalInput(
     @SerializedName("signal_price") val signalPrice: Int? = null,
     val source: String,
     @SerializedName("time_group") val timeGroup: String? = null,
+    @SerializedName("signal_time") val signalTime: String? = null,
     @SerializedName("is_fallback") val isFallback: Boolean = false,
     @SerializedName("raw_data") val rawData: Map<String, Any?>? = null
 )

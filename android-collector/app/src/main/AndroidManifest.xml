@@ -19,6 +19,7 @@
     <!-- 알림 게시 (Foreground Service 알림) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+
     <!-- 키움증권 앱 실행을 위한 패키지 가시성 선언 (Android 11+) -->
     <queries>
         <package android:name="com.kiwoom.heromts" />
@@ -59,6 +60,15 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 오후 5시 signal_time 보정 트리거 -->
+        <receiver
+            android:name=".service.SignalTimeUpdateReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.dashboardstock.collector.UPDATE_SIGNAL_TIMES" />
             </intent-filter>
         </receiver>
 

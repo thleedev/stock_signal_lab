@@ -12,6 +12,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import java.time.OffsetDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -67,6 +68,8 @@ object SignalApiClient {
                 symbol = s.symbol,
                 name = s.name,
                 signalType = s.signalType,
+                signalPrice = s.signalPrice,
+                signalTime = s.signalTime,
                 source = s.source,
                 batchId = batchId,
                 isFallback = s.isFallback,
@@ -75,46 +78,22 @@ object SignalApiClient {
             )
         }
 
-        // symbol이 있는 것 → upsert (같은 종목+소스면 상태/시간/가격만 업데이트)
-        // symbol이 없는 것 → 일반 insert
-        val (withSymbol, withoutSymbol) = rows.partition { it.symbol != null }
+        // 모든 신호를 INSERT (append) — 매수/매도 이력을 쌓아서 쌍 추적 가능
+        // 중복 방지는 앱 SentSignalCache + DB unique constraint로 처리
+        val body = gson.toJson(rows).toRequestBody(JSON_TYPE)
+        val request = supabaseRequest("signals")
+            .header("Prefer", "return=minimal")
+            .post(body)
+            .build()
 
-        if (withSymbol.isNotEmpty()) {
-            val body = gson.toJson(withSymbol).toRequestBody(JSON_TYPE)
-            // on_conflict: symbol+source 조합이 같으면 업데이트
-            val request = supabaseRequest("signals?on_conflict=symbol,source")
-                .header("Prefer", "return=minimal,resolution=merge-duplicates")
-                .post(body)
-                .build()
-
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "unknown error"
-                response.close()
-                throw RuntimeException("Supabase upsert failed (${response.code}): $errorBody")
-            }
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            val errorBody = response.body?.string() ?: "unknown error"
             response.close()
-            Log.i(TAG, "Upserted ${withSymbol.size} signals (with symbol)")
+            throw RuntimeException("Supabase insert failed (${response.code}): $errorBody")
         }
-
-        if (withoutSymbol.isNotEmpty()) {
-            val body = gson.toJson(withoutSymbol).toRequestBody(JSON_TYPE)
-            val request = supabaseRequest("signals")
-                .header("Prefer", "return=minimal")
-                .post(body)
-                .build()
-
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: "unknown error"
-                response.close()
-                throw RuntimeException("Supabase insert failed (${response.code}): $errorBody")
-            }
-            response.close()
-            Log.i(TAG, "Inserted ${withoutSymbol.size} signals (no symbol)")
-        }
-
-        Log.i(TAG, "Sent OK: ${signals.size} signals total")
+        response.close()
+        Log.i(TAG, "Inserted ${rows.size} signals")
 
         // heartbeat 업데이트
         sendHeartbeat()
@@ -172,6 +151,59 @@ object SignalApiClient {
         }
     }
 
+    /**
+     * signal_time이 null인 기존 신호의 시간을 보정 (오후 5시 일괄 업데이트용)
+     *
+     * 매칭 조건: symbol + source + signal_type + signal_time IS NULL
+     *   + timestamp가 보정할 signal_time ±2시간 이내
+     *
+     * 같은 종목이 오전/오후에 각각 신호가 나와도 시간 근접성으로 올바른 행만 PATCH
+     */
+    suspend fun updateSignalTimes(signals: List<SignalInput>) {
+        if (signals.isEmpty()) return
+
+        var updated = 0
+        for (s in signals) {
+            if (s.symbol == null || s.signalTime == null) continue
+
+            // signal_time 기준 ±2시간 범위 계산
+            val signalOdt = OffsetDateTime.parse(s.signalTime)
+            val rangeStart = signalOdt.minusHours(2)
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            val rangeEnd = signalOdt.plusHours(2)
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+
+            // signal_time IS NULL + timestamp가 ±2시간 이내인 행만 PATCH
+            val path = "signals?symbol=eq.${s.symbol}" +
+                    "&source=eq.${s.source}" +
+                    "&signal_type=eq.${s.signalType}" +
+                    "&signal_time=is.null" +
+                    "&timestamp=gte.${rangeStart}" +
+                    "&timestamp=lte.${rangeEnd}"
+
+            val patchBody = gson.toJson(mapOf("signal_time" to s.signalTime))
+                .toRequestBody(JSON_TYPE)
+
+            val request = supabaseRequest(path)
+                .header("Prefer", "return=minimal")
+                .patch(patchBody)
+                .build()
+
+            try {
+                val response = client.newCall(request).execute()
+                if (response.isSuccessful) {
+                    updated++
+                } else {
+                    Log.w(TAG, "PATCH failed for ${s.symbol}: ${response.code}")
+                }
+                response.close()
+            } catch (e: Exception) {
+                Log.w(TAG, "PATCH error for ${s.symbol}", e)
+            }
+        }
+        Log.i(TAG, "Updated signal_time for $updated/${signals.size} signals")
+    }
+
     private fun buildRawData(s: SignalInput): Map<String, Any?>? {
         val map = mutableMapOf<String, Any?>()
         s.rawData?.let { map.putAll(it) }
@@ -187,6 +219,8 @@ data class SignalRow(
     val symbol: String?,
     val name: String,
     @SerializedName("signal_type") val signalType: String,
+    @SerializedName("signal_price") val signalPrice: Int?,
+    @SerializedName("signal_time") val signalTime: String?,
     val source: String,
     @SerializedName("batch_id") val batchId: String,
     @SerializedName("is_fallback") val isFallback: Boolean,

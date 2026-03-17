@@ -19,6 +19,8 @@ class BootReceiver : BroadcastReceiver() {
             } else {
                 context.startService(serviceIntent)
             }
+            // 알람 재등록 (재부팅 시 AlarmManager 초기화되므로)
+            CollectorForegroundService.scheduleSignalTimeUpdate(context)
         }
     }
 }

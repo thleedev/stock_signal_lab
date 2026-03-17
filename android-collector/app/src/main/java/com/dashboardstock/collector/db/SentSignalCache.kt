@@ -47,10 +47,11 @@ object SentSignalCache {
             if (s.symbol == null) {
                 true // symbol 없는 건 항상 전송
             } else {
-                val key = "${s.symbol}:${s.source}"
-                val cachedType = p.getString(key, null)
-                if (cachedType == s.signalType) {
-                    Log.d(TAG, "Skip duplicate: ${s.name}(${s.symbol}) ${s.signalType}")
+                // signalTime 포함하여 같은 종목이라도 다른 시간대 신호는 통과
+                val timeKey = s.signalTime ?: ""
+                val key = "${s.symbol}:${s.source}:${s.signalType}:${timeKey}"
+                if (p.contains(key)) {
+                    Log.d(TAG, "Skip duplicate: ${s.name}(${s.symbol}) ${s.signalType} @${timeKey}")
                     false
                 } else {
                     true
@@ -67,8 +68,9 @@ object SentSignalCache {
         val editor = prefs(context).edit()
         for (s in signals) {
             if (s.symbol != null) {
-                val key = "${s.symbol}:${s.source}"
-                editor.putString(key, s.signalType)
+                val timeKey = s.signalTime ?: ""
+                val key = "${s.symbol}:${s.source}:${s.signalType}:${timeKey}"
+                editor.putString(key, "1")
             }
         }
         editor.apply()

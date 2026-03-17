@@ -76,6 +76,9 @@ class KiwoomAccessibilityService : AccessibilityService() {
     private var debouncing = false // 이벤트 디바운싱용
     private var waiting = false   // 스크롤/전환 대기용 (더 긴 차단)
 
+    /** true이면 INSERT 대신 signal_time PATCH만 수행 (오후 5시 보정용) */
+    private var updateMode = false
+
     private val stepTimeoutRunnable = Runnable { onStepTimeout() }
     private val overallTimeoutRunnable = Runnable { onOverallTimeout() }
     private val scrapingWatchdogRunnable = Runnable { onScrapingWatchdog() }
@@ -111,13 +114,14 @@ class KiwoomAccessibilityService : AccessibilityService() {
         resetState()
     }
 
-    fun startScraping() {
+    fun startScraping(isUpdate: Boolean = false) {
         if (state != State.IDLE) {
             Log.w(TAG, "Already scraping: $state")
             return
         }
 
-        Log.i(TAG, "=== Starting scraping ===")
+        updateMode = isUpdate
+        Log.i(TAG, "=== Starting scraping (updateMode=$updateMode) ===")
         isScrapingActive = true
         buySignals.clear()
         sellSignals.clear()
@@ -1015,6 +1019,40 @@ class KiwoomAccessibilityService : AccessibilityService() {
             return
         }
 
+        val bc = buySignals.size
+        val sc = sellSignals.size
+
+        if (updateMode) {
+            // 오후 5시 보정 모드: signal_time이 있는 신호만 PATCH
+            val withTime = all.filter { it.signalTime != null }
+            Log.i(TAG, "Update mode: ${withTime.size}/${all.size} signals have absolute time")
+
+            if (withTime.isEmpty()) {
+                onScrapingResult?.invoke(bc, sc, true, "No signals with absolute time to update")
+                resetState()
+                return
+            }
+
+            scope.launch {
+                try {
+                    SignalApiClient.updateSignalTimes(withTime)
+                    Log.i(TAG, "Signal times updated: ${withTime.size}")
+                    withContext(Dispatchers.Main) {
+                        onScrapingResult?.invoke(bc, sc, true, "Updated ${withTime.size} signal times")
+                        resetState()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Update signal times failed", e)
+                    withContext(Dispatchers.Main) {
+                        onScrapingResult?.invoke(bc, sc, false, e.message)
+                        resetState()
+                    }
+                }
+            }
+            return
+        }
+
+        // 일반 모드: INSERT
         // 이미 같은 상태로 전송한 종목은 제외
         val filtered = SentSignalCache.filterNew(applicationContext, all)
         Log.i(TAG, "After dedup filter: ${filtered.size}/${all.size} (skipped ${all.size - filtered.size})")
@@ -1025,9 +1063,6 @@ class KiwoomAccessibilityService : AccessibilityService() {
             resetState()
             return
         }
-
-        val bc = buySignals.size
-        val sc = sellSignals.size
 
         scope.launch {
             try {
