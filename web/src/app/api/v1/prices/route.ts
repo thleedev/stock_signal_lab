@@ -150,9 +150,28 @@ export async function POST() {
   // stock_cache 업데이트 (fire-and-forget, 사용자 응답 차단 안 함)
   updateStockCache(data).catch(() => {});
 
+  // 가격 데이터를 직접 반환 (서버리스 인스턴스 간 메모리 캐시 미공유 문제 해결)
+  const prices: Record<string, {
+    current_price: number;
+    price_change: number;
+    price_change_pct: number;
+    volume: number;
+    market_cap: number;
+  }> = {};
+  for (const [sym, price] of data) {
+    prices[sym] = {
+      current_price: price.current_price,
+      price_change: price.price_change,
+      price_change_pct: price.price_change_pct,
+      volume: price.volume,
+      market_cap: price.market_cap,
+    };
+  }
+
   return NextResponse.json({
     success: true,
     count: data.size,
     source: 'naver',
+    data: prices,
   });
 }

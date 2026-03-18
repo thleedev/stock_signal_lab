@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
   const sortBy = searchParams.get('sortBy') || 'name';
   const sortDir = searchParams.get('sortDir') === 'desc';
   const page = parseInt(searchParams.get('page') || '1');
-  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 1000); // 1000으로 늘림 (gap,signal 한 번 로딩용)
   const offset = (page - 1) * limit;
   const withSignals = searchParams.get('withSignals') === 'true';
   const hasSignal = searchParams.get('hasSignal') === 'true';

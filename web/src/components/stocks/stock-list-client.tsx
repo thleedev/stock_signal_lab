@@ -133,13 +133,19 @@ function applyLivePrices(list: StockCache[], prices: LivePriceMap): StockCache[]
 export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, groups: initialGroups, symbolGroups: initialSymbolGroups }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [stocks, setStocks] = useState<StockCache[]>(initialStocks);
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [market, setMarket] = useState(searchParams.get("market") || "전체");
-  const [sortBy, setSortBy] = useState(searchParams.get("sort") || "name");
+  const [sortBy, setSortBy] = useState(searchParams.get("sort") || "gap");
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     (searchParams.get("dir") as "asc" | "desc") || "asc"
   );
+  const [signalFilter, setSignalFilter] = useState<"all" | "signal">(
+    (searchParams.get("hasSignal") ? "signal" : searchParams.get("signal") as "all" | "signal") || "signal"
+  );
+
+  const initialMatchesServer = sortBy === "name" && sortDir === "asc" && market === "전체" && signalFilter === "all" && !query;
+  const [stocks, setStocks] = useState<StockCache[]>(initialMatchesServer ? initialStocks : []);
+
   const [favSet, setFavSet] = useState<Set<string>>(
     () => new Set(favorites.map((f) => f.symbol))
   );
@@ -151,7 +157,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [portSet] = useState<Set<string>>(() => new Set(watchlistSymbols));
   const [gapSource] = useState<SourceKey | "all">("all");
-  const [signalFilter, setSignalFilter] = useState<"all" | "signal">("all");
 
   // 그룹 관련 상태
   const [groups, setGroups] = useState<WatchlistGroup[]>(initialGroups);
@@ -191,20 +196,22 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (market !== "전체") params.set("market", market);
-    if (sortBy !== "name") params.set("sort", sortBy);
+    if (sortBy !== "gap") params.set("sort", sortBy);
     if (sortDir !== "asc") params.set("dir", sortDir);
+    if (signalFilter !== "signal") params.set("signal", signalFilter);
     const qs = params.toString();
     const newUrl = qs ? `/stocks?${qs}` : "/stocks";
     router.replace(newUrl, { scroll: false });
-  }, [query, market, sortBy, sortDir, router]);
+  }, [query, market, sortBy, sortDir, signalFilter, router]);
 
   const fetchStocks = useCallback(
     async (pageNum: number, reset: boolean = false) => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
+        const isAllAtOnce = signalFilter === "signal" || sortBy === "gap";
         params.set("page", String(pageNum));
-        params.set("limit", "50");
+        params.set("limit", isAllAtOnce ? "1000" : "50");
         params.set("withSignals", "true");
         params.set("sortBy", SORT_MAP[sortBy] || "name");
         params.set("sortDir", sortDir);
@@ -251,7 +258,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   }, [query]);
 
   // 정렬/필터 변경 시 즉시 리셋 (디바운스 없이)
-  const prevSortRef = useRef({ sortBy, sortDir, market, signalFilter });
+  const prevSortRef = useRef({ sortBy: "name", sortDir: "asc", market: "전체", signalFilter: "all" });
   useEffect(() => {
     const prev = prevSortRef.current;
     if (
@@ -330,33 +337,52 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return { favs: updatedFavs, nonFavs };
   }, [stocks, stocksMap, favStocks, query, showSearchMode, activeTab, symGroups, signalFilter]);
 
-  // 2단계: pinFavorites 적용
-  // 서버가 이미 정렬된 데이터를 반환하므로 클라이언트 재정렬 불필요
+  // 2단계: pinFavorites 적용 및 정렬
+  // 가격 갱신 후에도 정렬 순서를 유지하기 위해 클라이언트에서 재정렬합니다.
+  const sortFn = useCallback((a: StockCache, b: StockCache) => {
+    let valA: string | number = 0;
+    let valB: string | number = 0;
+    switch (sortBy) {
+      case "name":
+        valA = a.name; valB = b.name; break;
+      case "market_cap":
+        valA = a.market_cap ?? 0; valB = b.market_cap ?? 0; break;
+      case "change":
+        valA = a.price_change_pct ?? 0; valB = b.price_change_pct ?? 0; break;
+      case "volume":
+        valA = a.volume ?? 0; valB = b.volume ?? 0; break;
+      case "per":
+        valA = a.per ?? 0; valB = b.per ?? 0; break;
+      case "gap": {
+        const gA = calcGap(a, gapSource);
+        const gB = calcGap(b, gapSource);
+        valA = gA?.gap ?? (sortDir === "asc" ? Infinity : -Infinity);
+        valB = gB?.gap ?? (sortDir === "asc" ? Infinity : -Infinity);
+        break;
+      }
+    }
+    if (valA < valB) return sortDir === "asc" ? -1 : 1;
+    if (valA > valB) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  }, [sortBy, sortDir, gapSource]);
+
   const displayStocks = useMemo(() => {
-    // pinFavorites=false 또는 마운트 전: 즐겨찾기 분리 없이 서버 순서 그대로
-    if (!pinMounted || !pinFavorites) {
+    if (!pinMounted) {
       return { favs: [], nonFavs: stocks };
     }
 
-    // pinFavorites=true: 즐겨찾기 상단 고정
-    const favs = [...mergedStocks.favs];
-    const nonFavs = [...mergedStocks.nonFavs];
-
-    // gap 정렬일 때 즐겨찾기 섹션도 gap순으로 정렬
-    if (sortBy === "gap") {
-      const dir = sortDir === "desc" ? -1 : 1;
-      favs.sort((a, b) => {
-        const gapA = calcGap(a, gapSource);
-        const gapB = calcGap(b, gapSource);
-        if (gapA == null && gapB == null) return 0;
-        if (gapA == null) return 1;
-        if (gapB == null) return -1;
-        return (gapA.gap - gapB.gap) * dir;
-      });
+    if (!pinFavorites) {
+      // 즐겨찾기 고정 OFF: 전체 stocks를 클라이언트에서 재정렬
+      const sorted = [...stocks].sort(sortFn);
+      return { favs: [], nonFavs: sorted };
     }
 
+    // 즐겨찾기 고정 ON: favs/nonFavs 각각 정렬
+    const favs = [...mergedStocks.favs].sort(sortFn);
+    const nonFavs = [...mergedStocks.nonFavs].sort(sortFn);
+
     return { favs, nonFavs };
-  }, [stocks, mergedStocks, sortBy, sortDir, gapSource, pinFavorites, pinMounted]);
+  }, [stocks, mergedStocks, sortFn, pinFavorites, pinMounted]);
 
   // 전체탭은 항상 전체DB 뷰, 또는 관심종목 없고 query 없을 때
   const showAllStocksMode = activeTab === "all" || (favSet.size === 0 && !showSearchMode);
@@ -598,25 +624,11 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await fetch("/api/v1/prices", { method: "POST" });
-
-      // stocks + favStocks 전체 심볼 수집
-      const allSymbols = [
-        ...stocksRef.current.map((s) => s.symbol),
-        ...favStocksRef.current.map((s) => s.symbol),
-      ];
-      const uniqueSymbols = [...new Set(allSymbols)];
-      const CHUNK = 200;
-      const allPrices: typeof livePricesRef.current = {};
-
-      await Promise.all(
-        Array.from({ length: Math.ceil(uniqueSymbols.length / CHUNK) }, (_, i) => {
-          const chunk = uniqueSymbols.slice(i * CHUNK, (i + 1) * CHUNK);
-          return fetch(`/api/v1/prices?symbols=${chunk.join(",")}&live=true`)
-            .then((r) => r.json())
-            .then(({ data }) => { if (data) Object.assign(allPrices, data); });
-        })
-      );
+      // POST가 네이버에서 조회한 전종목 가격 데이터를 직접 반환
+      const res = await fetch("/api/v1/prices", { method: "POST" });
+      if (!res.ok) return;
+      const json = await res.json();
+      const allPrices: typeof livePricesRef.current = json.data ?? {};
 
       livePricesRef.current = { ...livePricesRef.current, ...allPrices };
       setStocks((prev) => applyLivePrices(prev, allPrices));
@@ -638,17 +650,17 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const tableHeader = (
     <thead>
       <tr className="border-b border-[var(--border)] text-[var(--muted)] text-xs">
-        <th className="px-3 py-3 text-left w-10"></th>
-        <th className="px-3 py-3 text-left">종목명</th>
-        <th className="hidden md:table-cell px-3 py-3 text-left">코드</th>
-        <th className="px-3 py-3 text-right">현재가</th>
-        <th className="px-3 py-3 text-right">등락률</th>
-        <th className="hidden md:table-cell px-3 py-3 text-right">거래량</th>
-        <th className="hidden md:table-cell px-3 py-3 text-right">PER</th>
-        <th className="hidden lg:table-cell px-2 py-3 text-center">퀀트</th>
-        <th className="hidden lg:table-cell px-2 py-3 text-center">라씨</th>
-        <th className="hidden lg:table-cell px-2 py-3 text-center">스톡봇</th>
-        <th className="hidden lg:table-cell px-3 py-3 text-right">Gap</th>
+        <th className="px-2 py-3 text-left w-[52px]"></th>
+        <th className="px-2 py-3 text-left">종목명</th>
+        <th className="px-2 py-3 text-right w-[88px]">현재가</th>
+        <th className="px-2 py-3 text-right w-[72px]">등락률</th>
+        <th className="px-2 py-3 text-right w-[64px]">Gap</th>
+        <th className="hidden md:table-cell px-2 py-3 text-left w-[72px]">코드</th>
+        <th className="hidden md:table-cell px-2 py-3 text-right w-[88px]">거래량</th>
+        <th className="hidden md:table-cell px-2 py-3 text-right w-[56px]">PER</th>
+        <th className="hidden lg:table-cell px-1 py-3 text-center w-[60px]">퀀트</th>
+        <th className="hidden lg:table-cell px-1 py-3 text-center w-[60px]">라씨</th>
+        <th className="hidden lg:table-cell px-1 py-3 text-center w-[68px]">스톡봇</th>
       </tr>
     </thead>
   );
@@ -775,7 +787,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         /* 검색/전체DB 뷰: 기존 무한스크롤 테이블 */
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
               {tableHeader}
               <tbody className="divide-y divide-[var(--border)]">
                 {displayStocks.favs.length > 0 && (
@@ -843,7 +855,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         ) : (
           <div className="card overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm table-fixed">
                 {tableHeader}
                 <tbody className="divide-y divide-[var(--border)]">
                   {mergedStocks.favs.map((stock) => (
@@ -945,7 +957,7 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
         isFav ? "bg-yellow-900/5" : ""
       } ${isDragging ? "opacity-30" : ""}`}
     >
-      <td className="px-3 py-2.5">
+      <td className="px-2 py-2.5 w-[52px]">
         <div className="flex items-center gap-0.5">
           {/* Drag handle */}
           <span
@@ -974,34 +986,16 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
           )}
         </div>
       </td>
-      <td className="px-3 py-2.5 max-w-[8rem] sm:max-w-[12rem] md:max-w-none">
+      <td className="px-2 py-2.5 overflow-hidden">
         <span className="font-medium block truncate">{stock.name}</span>
       </td>
-      <td className="hidden md:table-cell px-3 py-2.5 text-[var(--muted)] text-xs">
-        {stock.symbol}
-      </td>
-      <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change)}`}>
+      <td className={`px-2 py-2.5 text-right font-medium tabular-nums w-[88px] ${priceColor(stock.price_change)}`}>
         {formatNumber(stock.current_price)}
       </td>
-      <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(stock.price_change_pct)}`}>
+      <td className={`px-2 py-2.5 text-right font-medium tabular-nums w-[72px] ${priceColor(stock.price_change_pct)}`}>
         {formatPercent(stock.price_change_pct)}
       </td>
-      <td className="hidden md:table-cell px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
-        {formatNumber(stock.volume)}
-      </td>
-      <td className="hidden md:table-cell px-3 py-2.5 text-right text-[var(--muted)] tabular-nums">
-        {stock.per != null ? stock.per.toFixed(1) : "-"}
-      </td>
-      <td className="hidden lg:table-cell px-2 py-2.5 text-center">
-        <SignalBadge sig={signals.quant} source="quant" />
-      </td>
-      <td className="hidden lg:table-cell px-2 py-2.5 text-center">
-        <SignalBadge sig={signals.lassi} source="lassi" />
-      </td>
-      <td className="hidden lg:table-cell px-2 py-2.5 text-center">
-        <SignalBadge sig={signals.stockbot} source="stockbot" />
-      </td>
-      <td className="hidden lg:table-cell px-3 py-2.5 text-right tabular-nums">
+      <td className="px-2 py-2.5 text-right tabular-nums w-[64px]">
         {gap != null ? (
           <div className="flex flex-col items-end gap-0.5">
             <span className={`text-xs font-medium ${gap >= 0 ? "text-red-400" : "text-blue-400"}`}>
@@ -1016,6 +1010,24 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
         ) : (
           <span className="text-xs text-[var(--border)]">-</span>
         )}
+      </td>
+      <td className="hidden md:table-cell px-2 py-2.5 text-[var(--muted)] text-xs w-[72px]">
+        {stock.symbol}
+      </td>
+      <td className="hidden md:table-cell px-2 py-2.5 text-right text-[var(--muted)] tabular-nums w-[88px]">
+        {formatNumber(stock.volume)}
+      </td>
+      <td className="hidden md:table-cell px-2 py-2.5 text-right text-[var(--muted)] tabular-nums w-[56px]">
+        {stock.per != null ? stock.per.toFixed(1) : "-"}
+      </td>
+      <td className="hidden lg:table-cell px-1 py-2.5 text-center w-[60px]">
+        <SignalBadge sig={signals.quant} source="quant" />
+      </td>
+      <td className="hidden lg:table-cell px-1 py-2.5 text-center w-[60px]">
+        <SignalBadge sig={signals.lassi} source="lassi" />
+      </td>
+      <td className="hidden lg:table-cell px-1 py-2.5 text-center w-[68px]">
+        <SignalBadge sig={signals.stockbot} source="stockbot" />
       </td>
     </tr>
   );
