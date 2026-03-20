@@ -106,17 +106,17 @@ function getBasicBadges(item: StockRankItem, todayMs: number): Badge[] {
 function normScores(item: StockRankItem) {
   if (item.ai) {
     return {
-      sig: Math.round(item.ai.signal_score / 30 * 100),
-      tech: Math.round(item.ai.technical_score / 30 * 100),
-      val: Math.round(item.ai.valuation_score / 20 * 100),
-      sup: Math.round(item.ai.supply_score / 20 * 100),
+      sig: Math.round(Math.min(100, Math.max(0, item.ai.signal_score / 30 * 100))),
+      tech: Math.round(Math.min(100, Math.max(0, item.ai.technical_score / 30 * 100))),
+      val: Math.round(Math.min(100, Math.max(0, item.ai.valuation_score / 20 * 100))),
+      sup: Math.round(Math.min(100, Math.max(0, item.ai.supply_score / 23 * 100))),
     };
   }
   return {
-    sig: Math.round(item.score_signal / 30 * 100),
-    tech: Math.round(item.score_momentum / 30 * 100),
-    val: Math.round(item.score_valuation / 20 * 100),
-    sup: Math.round(item.score_supply / 20 * 100),
+    sig: Math.round(Math.min(100, Math.max(0, item.score_signal / 30 * 100))),
+    tech: Math.round(Math.min(100, Math.max(0, item.score_momentum / 30 * 100))),
+    val: Math.round(Math.min(100, Math.max(0, item.score_valuation / 20 * 100))),
+    sup: Math.round(Math.min(100, Math.max(0, item.score_supply / 20 * 100))),
   };
 }
 

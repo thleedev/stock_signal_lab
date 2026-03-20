@@ -45,13 +45,18 @@ class SmsReceiver : BroadcastReceiver() {
 
         Log.i(TAG, "Kiwoom signal detected: source=$source")
 
+        // 라씨 신호는 MMS 데이터 무시 (스크린 스크래핑으로만 수집)
+        if (source == SmsRouter.Source.LASSI) {
+            Log.i(TAG, "Ignoring LASSI SMS/MMS signal - screen scraping only")
+            return
+        }
+
         // MMS 원문 저장 (dailyReport용)
         CoroutineScope(Dispatchers.IO).launch {
             SignalApiClient.sendRawMms(sender, source.name.lowercase(), fullBody)
         }
 
-        // 모든 소스(라씨/스톡봇/퀀트) → SMS/MMS 본문 직접 파싱 후 전송
-        // (라씨 앱 알림에 의한 영웅문 스크래핑은 NotificationListener에서 처리)
+        // 스톡봇/퀀트 → SMS/MMS 본문 직접 파싱 후 전송
         val signals = SmsRouter.parse(sender, fullBody)
         if (signals.isEmpty()) {
             Log.w(TAG, "Parsed 0 signals from $source SMS")

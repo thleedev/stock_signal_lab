@@ -53,17 +53,39 @@ function calcScore(
   stock: Omit<StockRankItem, 'score_total' | 'score_valuation' | 'score_supply' | 'score_signal' | 'score_momentum' | 'ai'>,
   todayStr: string
 ) {
+  // 밸류에이션: 단계적 점수 (max 20)
   let score_valuation = 0;
-  if (stock.per !== null && stock.per > 0 && stock.per < 10) score_valuation += 7;
-  if (stock.pbr !== null && stock.pbr > 0 && stock.pbr < 1) score_valuation += 7;
-  if (stock.roe !== null && stock.roe > 10) score_valuation += 6;
+  if (stock.per !== null && stock.per > 0) {
+    if (stock.per < 5) score_valuation += 7;
+    else if (stock.per < 8) score_valuation += 5;
+    else if (stock.per < 12) score_valuation += 3;
+    else if (stock.per < 15) score_valuation += 1;
+  }
+  if (stock.pbr !== null && stock.pbr > 0) {
+    if (stock.pbr < 0.5) score_valuation += 7;
+    else if (stock.pbr < 0.8) score_valuation += 5;
+    else if (stock.pbr < 1.0) score_valuation += 3;
+  }
+  if (stock.roe !== null) {
+    if (stock.roe > 20) score_valuation += 6;
+    else if (stock.roe > 15) score_valuation += 5;
+    else if (stock.roe > 10) score_valuation += 3;
+    else if (stock.roe > 5) score_valuation += 1;
+  }
+  score_valuation = Math.min(score_valuation, 20);
 
+  // 수급: 외국인+기관 동반매수 시너지 포함 (max 23)
   let score_supply = 0;
-  if (stock.foreign_net_qty !== null && stock.foreign_net_qty > 0) score_supply += 8;
-  if (stock.institution_net_qty !== null && stock.institution_net_qty > 0) score_supply += 8;
+  const foreignBuying = stock.foreign_net_qty !== null && stock.foreign_net_qty > 0;
+  const instBuying = stock.institution_net_qty !== null && stock.institution_net_qty > 0;
+  if (foreignBuying) score_supply += 8;
+  if (instBuying) score_supply += 8;
+  if (foreignBuying && instBuying) score_supply += 3; // 동반매수 시너지
   const shortSellFresh = stock.short_sell_updated_at?.slice(0, 10) === todayStr;
   if (shortSellFresh && stock.short_sell_ratio !== null && stock.short_sell_ratio >= 0 && stock.short_sell_ratio < 1) score_supply += 4;
+  score_supply = Math.min(score_supply, 23);
 
+  // 신호: 빈도 + 최근성 (max 30)
   let score_signal = 0;
   const cnt = stock.signal_count_30d ?? 0;
   if (cnt >= 3) score_signal += 15;
@@ -79,18 +101,21 @@ function calcScore(
   }
   score_signal = Math.min(score_signal, 30);
 
+  // 모멘텀: 초기 상승에 높은 점수, 과열 감점 (max 30)
   let score_momentum = 0;
   if (stock.current_price && stock.low_52w && stock.low_52w > 0) {
     const ratio = stock.current_price / stock.low_52w;
     if (ratio >= 0.95 && ratio <= 1.1) score_momentum += 10;
   }
   if (stock.price_change_pct !== null) {
-    if (stock.price_change_pct > 5) score_momentum += 20;
-    else if (stock.price_change_pct > 3) score_momentum += 14;
-    else if (stock.price_change_pct > 1) score_momentum += 8;
-    else if (stock.price_change_pct > 0) score_momentum += 4;
+    const pct = stock.price_change_pct;
+    if (pct >= 0 && pct < 3) score_momentum += 8;        // 초기 상승: 진입 적기
+    else if (pct >= 3 && pct < 5) score_momentum += 14;   // 상승 초입
+    else if (pct >= 5 && pct < 10) score_momentum += 10;  // 상승 진행
+    else if (pct >= 10 && pct < 25) score_momentum += 6;  // 강한 상승 (아직 과열 아님)
+    else if (pct >= 25) score_momentum -= 4;               // 극단적 급등: 감점
   }
-  score_momentum = Math.min(score_momentum, 30);
+  score_momentum = Math.max(0, Math.min(score_momentum, 30));
 
   const score_total = score_valuation + score_supply + score_signal + score_momentum;
   return { score_total, score_valuation, score_supply, score_signal, score_momentum };
@@ -106,8 +131,9 @@ function kstDayRange(dateStr: string) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
-    const limit = Math.min(100, Math.max(10, parseInt(searchParams.get('limit') ?? '50')));
+    // 페이지네이션은 클라이언트에서 처리 — 서버는 전체 반환
+    const page = 1;
+    const limit = 99999;
     const q = searchParams.get('q')?.trim().toLowerCase() ?? '';
     const market = searchParams.get('market') ?? 'all';
 
@@ -153,6 +179,7 @@ export async function GET(request: NextRequest) {
     const allRows: Record<string, unknown>[] = [];
     let from = 0;
 
+    const aiSelect = 'symbol, total_score, signal_score, technical_score, valuation_score, supply_score, rsi, golden_cross, bollinger_bottom, phoenix_pattern, macd_cross, volume_surge, week52_low_near, double_top, foreign_buying, institution_buying, volume_vs_sector, low_short_sell';
     const [, aiRecsResult] = await Promise.all([
       (async () => {
         while (true) {
@@ -172,8 +199,8 @@ export async function GET(request: NextRequest) {
       })(),
       supabase
         .from('ai_recommendations')
-        .select('symbol, total_score, signal_score, technical_score, valuation_score, supply_score, rsi, golden_cross, bollinger_bottom, phoenix_pattern, macd_cross, volume_surge, week52_low_near, double_top, foreign_buying, institution_buying, volume_vs_sector, low_short_sell')
-        .eq('date', dateStr),
+        .select(aiSelect)
+        .eq('date', todayStr),
     ]);
 
     const aiRecMap = new Map(

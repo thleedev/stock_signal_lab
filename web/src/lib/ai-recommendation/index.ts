@@ -254,7 +254,7 @@ export async function generateRecommendations(
       (signalResult.score / 30) * weights.signal +
       (Math.max(0, technicalResult.score) / 30) * weights.technical +
       (valuationResult.score / 20) * weights.valuation +
-      (supplyResult.score / 20) * weights.supply;
+      (supplyResult.score / 23) * weights.supply;
 
     return {
       symbol,
@@ -288,7 +288,7 @@ export async function generateRecommendations(
 
   const recommendations: AiRecommendation[] = sorted.map((item, idx) => ({
     ...item,
-    id: '',
+    id: crypto.randomUUID(),
     date: todayKst,
     rank: idx + 1,
     weight_signal: weights.signal,

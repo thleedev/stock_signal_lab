@@ -93,7 +93,7 @@ const BADGE_CLS: Record<BadgeVariant, string> = {
 };
 
 // ── 투자 성격 분류 ────────────────────────────────────────────────────────────
-type InvestmentCharacter = 'short_surge' | 'value' | 'supply_strong' | 'tech_rebound' | 'multi_signal' | 'top_pick';
+type InvestmentCharacter = 'early_rise' | 'value' | 'supply_strong' | 'tech_rebound' | 'multi_signal' | 'top_pick' | 'overheated';
 
 interface CharacterDef {
   key: InvestmentCharacter;
@@ -103,12 +103,13 @@ interface CharacterDef {
 }
 
 const CHARACTER_DEFS: CharacterDef[] = [
-  { key: 'short_surge',   label: '단기급등',  icon: '🔥', variant: 'red' },
+  { key: 'early_rise',    label: '상승초입',  icon: '🚀', variant: 'red' },
   { key: 'value',         label: '가치주',    icon: '💎', variant: 'purple' },
   { key: 'supply_strong', label: '수급강세',  icon: '🏦', variant: 'blue' },
   { key: 'tech_rebound',  label: '기술반등',  icon: '📈', variant: 'green' },
   { key: 'multi_signal',  label: '다중신호',  icon: '⚡', variant: 'orange' },
   { key: 'top_pick',      label: '종합추천',  icon: '⭐', variant: 'gold' },
+  { key: 'overheated',    label: '과열주의',  icon: '⚠️', variant: 'orange' },
 ];
 
 const CHARACTER_FILTER_OPTIONS = [
@@ -121,17 +122,17 @@ const CHARACTER_FILTER_OPTIONS = [
 function normScores(item: StockRankItem) {
   if (item.ai) {
     return {
-      sig: Math.round(item.ai.signal_score / 30 * 100),
-      tech: Math.round(item.ai.technical_score / 30 * 100),
-      val: Math.round(item.ai.valuation_score / 20 * 100),
-      sup: Math.round(item.ai.supply_score / 20 * 100),
+      sig: Math.round(Math.min(100, Math.max(0, item.ai.signal_score / 30 * 100))),
+      tech: Math.round(Math.min(100, Math.max(0, item.ai.technical_score / 30 * 100))),
+      val: Math.round(Math.min(100, Math.max(0, item.ai.valuation_score / 20 * 100))),
+      sup: Math.round(Math.min(100, Math.max(0, item.ai.supply_score / 23 * 100))),
     };
   }
   return {
-    sig: Math.round(item.score_signal / 30 * 100),
-    tech: Math.round(item.score_momentum / 30 * 100),
-    val: Math.round(item.score_valuation / 20 * 100),
-    sup: Math.round(item.score_supply / 20 * 100),
+    sig: Math.round(Math.min(100, Math.max(0, item.score_signal / 30 * 100))),
+    tech: Math.round(Math.min(100, Math.max(0, item.score_momentum / 30 * 100))),
+    val: Math.round(Math.min(100, Math.max(0, item.score_valuation / 20 * 100))),
+    sup: Math.round(Math.min(100, Math.max(0, item.score_supply / 20 * 100))),
   };
 }
 
@@ -146,23 +147,37 @@ function getInvestmentCharacters(item: StockRankItem, weights: Weights): Investm
   const chars: InvestmentCharacter[] = [];
   const { sig, tech, val, sup } = normScores(item);
   const weighted = computeWeighted(item, weights);
+  const pct = item.price_change_pct ?? 0;
 
-  // 단기급등: 기술점수 높고 + 모멘텀 패턴 감지
-  if (item.ai) {
-    if (tech >= 60 && (item.ai.golden_cross || item.ai.macd_cross || item.ai.volume_surge)) {
-      chars.push('short_surge');
-    }
-  } else if (tech >= 60 && item.price_change_pct !== null && item.price_change_pct > 3) {
-    chars.push('short_surge');
+  // 과열주의: 복합 조건 (단순 등락률이 아닌 기술적 과열 신호)
+  // - RSI 70 이상 (과매수) + 등락률 10% 이상
+  // - 또는 쌍봉 패턴 감지
+  // - 또는 등락률 25% 이상 (극단적 급등)
+  const rsi = item.ai?.rsi ?? null;
+  const isOverboughtRsi = rsi !== null && rsi >= 70;
+  const hasDoubleTop = item.ai?.double_top ?? false;
+  if ((isOverboughtRsi && pct >= 10) || hasDoubleTop || pct >= 25) {
+    chars.push('overheated');
   }
 
-  // 가치주: 밸류점수 70 이상
+  // 상승초입: 기술 신호 감지 + 아직 가격 덜 오른 종목 (진입 적기)
+  // 조건: 골든크로스/MACD/거래량급증 + 등락률 5% 미만
+  if (item.ai) {
+    const hasEarlySignal = item.ai.golden_cross || item.ai.macd_cross || item.ai.volume_surge;
+    if (hasEarlySignal && pct < 5) {
+      chars.push('early_rise');
+    }
+  } else if (tech >= 50 && pct >= 0 && pct < 5) {
+    chars.push('early_rise');
+  }
+
+  // 가치주: 밸류점수 70 이상 (PER·PBR·ROE 중 2개 이상 양호)
   if (val >= 70) chars.push('value');
 
-  // 수급강세: 수급점수 60 이상
+  // 수급강세: 수급점수 60 이상 (외국인+기관 매수세)
   if (sup >= 60) chars.push('supply_strong');
 
-  // 기술반등: 불새패턴 또는 (볼린저하단 + RSI<40)
+  // 기술반등: 바닥 패턴 감지 (저점 매수 기회)
   if (item.ai) {
     if (item.ai.phoenix_pattern || (item.ai.bollinger_bottom && item.ai.rsi !== null && item.ai.rsi < 40)) {
       chars.push('tech_rebound');
@@ -181,35 +196,102 @@ function getInvestmentCharacters(item: StockRankItem, weights: Weights): Investm
 // ── 추천 근거 한줄 요약 ───────────────────────────────────────────────────────
 function getRecommendReason(item: StockRankItem): string {
   const reasons: string[] = [];
+  const pct = item.price_change_pct ?? 0;
 
+  // ── 차트 패턴 (타이밍 정보 포함) ──
   if (item.ai) {
-    if (item.ai.golden_cross) reasons.push('골든크로스');
-    if (item.ai.macd_cross) reasons.push('MACD돌파');
+    if (item.ai.golden_cross) {
+      reasons.push(pct < 5 ? '골든크로스 초기' : `골든크로스(+${pct.toFixed(1)}%)`);
+    }
+    if (item.ai.macd_cross) {
+      reasons.push(pct < 5 ? 'MACD돌파 초기' : `MACD돌파(+${pct.toFixed(1)}%)`);
+    }
     if (item.ai.phoenix_pattern) reasons.push('V자반등');
-    if (item.ai.bollinger_bottom) reasons.push('볼린저반등');
+    if (item.ai.bollinger_bottom) reasons.push('볼린저하단 반등');
     if (item.ai.volume_surge) reasons.push('거래량급증');
-    if (item.ai.week52_low_near) reasons.push('52주저점');
-    if (item.ai.foreign_buying) reasons.push('외국인매수');
-    if (item.ai.institution_buying) reasons.push('기관매수');
-    if (item.ai.volume_vs_sector) reasons.push('섹터주목');
-    if (item.ai.low_short_sell) reasons.push('공매도↓');
-    if (item.ai.rsi !== null && item.ai.rsi < 30) reasons.push(`RSI${item.ai.rsi.toFixed(0)}과매도`);
-    if (item.ai.double_top) reasons.push('⚠쌍봉주의');
+    if (item.ai.week52_low_near) reasons.push('52주저점 근접');
+    if (item.ai.rsi !== null && item.ai.rsi < 30) reasons.push(`RSI${item.ai.rsi.toFixed(0)} 과매도`);
+    if (item.ai.double_top) reasons.push('⚠️ 쌍봉 주의');
   }
 
-  if (item.per !== null && item.per > 0 && item.per < 10) reasons.push(`PER${item.per.toFixed(1)}`);
-  if (item.pbr !== null && item.pbr > 0 && item.pbr < 1) reasons.push(`PBR${item.pbr.toFixed(2)}`);
-  if (item.roe !== null && item.roe > 10) reasons.push(`ROE${item.roe.toFixed(0)}%`);
+  // ── 수급 동향 (AI 또는 stock_cache 기반) ──
+  const foreignBuy = item.ai?.foreign_buying ?? (item.foreign_net_qty != null && item.foreign_net_qty > 0);
+  const instBuy = item.ai?.institution_buying ?? (item.institution_net_qty != null && item.institution_net_qty > 0);
+  if (foreignBuy && instBuy) {
+    reasons.push('외국인+기관 동반매수');
+  } else {
+    if (foreignBuy) reasons.push('외국인 순매수');
+    if (instBuy) reasons.push('기관 순매수');
+  }
+  if (item.ai?.volume_vs_sector) reasons.push('섹터대비 거래량↑');
+  if (item.ai?.low_short_sell) reasons.push('공매도↓');
 
+  // ── 밸류에이션 ──
+  const valReasons: string[] = [];
+  if (item.per !== null && item.per > 0 && item.per < 10) valReasons.push(`PER ${item.per.toFixed(1)}`);
+  if (item.pbr !== null && item.pbr > 0 && item.pbr < 1) valReasons.push(`PBR ${item.pbr.toFixed(2)}`);
+  if (item.roe !== null && item.roe > 10) valReasons.push(`ROE ${item.roe.toFixed(0)}%`);
+  if (valReasons.length >= 2) {
+    reasons.push(`저평가(${valReasons.join(', ')})`);
+  } else if (valReasons.length === 1) {
+    reasons.push(valReasons[0]);
+  }
+
+  // ── 신호 빈도 ──
   const cnt = item.signal_count_30d ?? 0;
-  if (cnt >= 3) reasons.push(`신호${cnt}회`);
+  if (cnt >= 5) reasons.push(`30일 ${cnt}회 반복추천`);
+  else if (cnt >= 3) reasons.push(`30일 ${cnt}회 추천`);
 
-  if (item.price_change_pct !== null && item.price_change_pct > 3) reasons.push(`+${item.price_change_pct.toFixed(1)}%급등`);
+  // ── 과열/모멘텀 상태 ──
+  const itemRsi = item.ai?.rsi ?? null;
+  if (itemRsi !== null && itemRsi >= 70 && pct >= 10) {
+    reasons.push(`⚠️ RSI${itemRsi.toFixed(0)} 과매수 + ${pct.toFixed(1)}% 상승`);
+  } else if (pct >= 25) {
+    reasons.push(`⚠️ +${pct.toFixed(1)}% 급등, 추격매수 주의`);
+  } else if (pct >= 5) {
+    reasons.push(`+${pct.toFixed(1)}% 상승 진행중`);
+  }
 
-  return reasons.join(' · ') || '분석 데이터 부족';
+  if (reasons.length === 0) {
+    // 최소한 신호 정보라도 표시
+    const signalDate = item.latest_signal_date;
+    if (signalDate) reasons.push(`최근신호 ${signalDate.slice(5)}`);
+    if (item.signal_count_30d) reasons.push(`${item.signal_count_30d}회 추천`);
+  }
+  return reasons.join(' · ') || 'AI 분석 대기중';
 }
 
 function fmtNum(v: number | null, d = 1) { return v == null ? '-' : v.toFixed(d); }
+
+// ── 점수 → 등급 변환 ──────────────────────────────────────────────────────────
+function getGrade(score: number): { grade: string; label: string; cls: string } {
+  if (score >= 80) return { grade: 'A+', label: '적극매수', cls: 'bg-red-500 text-white' };
+  if (score >= 65) return { grade: 'A', label: '매수', cls: 'bg-red-400 text-white' };
+  if (score >= 50) return { grade: 'B+', label: '관심', cls: 'bg-orange-400 text-white' };
+  if (score >= 35) return { grade: 'B', label: '보통', cls: 'bg-yellow-400 text-gray-900' };
+  if (score >= 20) return { grade: 'C', label: '관망', cls: 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
+  return { grade: 'D', label: '주의', cls: 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400' };
+}
+
+// ── 세부 점수 → 강/중/약 한줄 요약 ──────────────────────────────────────────────
+function getScoreSummary(sig: number, tech: number, val: number, sup: number): string {
+  const describe = (score: number): string => {
+    if (score >= 70) return '강';
+    if (score >= 40) return '중';
+    return '약';
+  };
+  const items = [
+    { name: '기술', score: tech, desc: describe(tech) },
+    { name: '수급', score: sup, desc: describe(sup) },
+    { name: '신호', score: sig, desc: describe(sig) },
+    { name: '밸류', score: val, desc: describe(val) },
+  ];
+  // 강한 것부터 표시, "약"은 생략 (중요한 것만 보여줌)
+  const strong = items.filter(i => i.desc === '강').map(i => `${i.name}◎`);
+  const mid = items.filter(i => i.desc === '중').map(i => `${i.name}○`);
+  const weak = items.filter(i => i.desc === '약').map(i => `${i.name}△`);
+  return [...strong, ...mid, ...weak].join(' ');
+}
 function fmtPrice(v: number | null) { return v == null ? '-' : v.toLocaleString() + '원'; }
 
 // ── Gap 계산 유틸 ─────────────────────────────────────────────────────────────
@@ -277,6 +359,7 @@ function RankCard({
         <div className="flex items-center gap-1.5 min-w-0 shrink-0">
           <span className="font-semibold text-[15px] leading-snug truncate max-w-[7rem] sm:max-w-[10rem]">{item.name}</span>
           {favs.has(item.symbol) && <span className="text-yellow-400 text-xs">★</span>}
+          {hasAi && <span className="px-1 py-px rounded text-[9px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">AI</span>}
         </div>
 
         {/* 성격 태그 */}
@@ -309,28 +392,41 @@ function RankCard({
 
         <div className="flex-1 min-w-0" />
 
-        {/* 점수 */}
-        <span className={`text-base font-bold tabular-nums shrink-0 ${
-          weighted >= 60 ? 'text-green-600 dark:text-green-400'
-          : weighted >= 40 ? 'text-blue-600 dark:text-blue-400'
-          : 'text-[var(--text)]'
-        }`}>{weighted.toFixed(0)}<span className="text-[10px] font-normal text-[var(--muted)] ml-0.5">pt</span></span>
+        {/* 등급 뱃지 */}
+        {(() => {
+          const { grade, label, cls } = getGrade(weighted);
+          return (
+            <span className={`px-1.5 py-0.5 rounded text-xs font-bold leading-none shrink-0 ${cls}`} title={`${weighted.toFixed(0)}pt · ${label}`}>
+              {grade}
+            </span>
+          );
+        })()}
 
-        {/* Gap */}
-        {gapInfo && (
-          <span className={`text-xs font-bold tabular-nums shrink-0 ${gapInfo.gap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
-            {gapInfo.gap >= 0 ? '+' : ''}{gapInfo.gap.toFixed(1)}%
-          </span>
-        )}
-
-        {/* 등락 + 현재가 */}
-        <div className="shrink-0 text-right">
-          <span className={`text-xs font-semibold tabular-nums ${
-            pct != null && pct > 0 ? 'text-red-500' : pct != null && pct < 0 ? 'text-blue-500' : 'text-[var(--muted)]'
-          }`}>
-            {pct != null ? `${pct > 0 ? '+' : ''}${fmtNum(pct)}%` : '-'}
-          </span>
-          <span className="text-[11px] text-[var(--muted)] tabular-nums ml-1.5">{item.current_price?.toLocaleString() ?? '-'}</span>
+        {/* 현재가 · 등락 · Gap — 라벨 포함 */}
+        <div className="shrink-0 flex items-center gap-2 text-right">
+          {/* 현재가 */}
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] text-[var(--muted)] leading-none">현재가</span>
+            <span className="text-xs font-semibold tabular-nums">{item.current_price?.toLocaleString() ?? '-'}</span>
+          </div>
+          {/* 등락률 */}
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] text-[var(--muted)] leading-none">등락</span>
+            <span className={`text-xs font-bold tabular-nums ${
+              pct != null && pct > 0 ? 'text-red-500' : pct != null && pct < 0 ? 'text-blue-500' : 'text-[var(--muted)]'
+            }`}>
+              {pct != null ? `${pct > 0 ? '+' : ''}${fmtNum(pct)}%` : '-'}
+            </span>
+          </div>
+          {/* Gap: 신호가 대비 */}
+          {gapInfo && (
+            <div className="flex flex-col items-end">
+              <span className="text-[9px] text-[var(--muted)] leading-none">Gap</span>
+              <span className={`text-xs font-bold tabular-nums ${gapInfo.gap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                {gapInfo.gap >= 0 ? '+' : ''}{gapInfo.gap.toFixed(1)}%
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -339,22 +435,10 @@ function RankCard({
         {/* 추천근거 — 전체 표시 (줄바꿈 허용) */}
         <p className="text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
 
-        {/* 미니 점수바 (데스크탑) */}
-        <div className="hidden sm:flex items-center gap-2 shrink-0 pt-0.5">
-          {[
-            { label: '신', value: sig, color: 'bg-amber-400' },
-            { label: '기', value: tech, color: 'bg-emerald-400' },
-            { label: '밸', value: val, color: 'bg-violet-400' },
-            { label: '수', value: sup, color: 'bg-sky-400' },
-          ].map(b => (
-            <div key={b.label} className="flex items-center gap-0.5">
-              <span className="text-[10px] text-[var(--muted)]">{b.label}</span>
-              <div className="w-10 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-                <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
+        {/* 세부 점수 요약 (데스크탑) */}
+        <span className="hidden sm:inline text-[11px] text-[var(--muted)] shrink-0 tabular-nums">
+          {getScoreSummary(sig, tech, val, sup)}
+        </span>
       </div>
     </div>
   );
@@ -457,10 +541,10 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   }, [liveLoading, refreshLivePrices]);
 
   // ── 데이터 조회 ───────────────────────────────────────────────────────────────
-  const doFetch = useCallback(async (date: string, searchQ: string, mkt: string, pg: number) => {
+  const doFetch = useCallback(async (date: string, searchQ: string, mkt: string) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ date, page: String(pg), limit: String(LIMIT) });
+      const params = new URLSearchParams({ date });
       if (searchQ) params.set('q', searchQ);
       if (mkt !== 'all') params.set('market', mkt);
       const res = await window.fetch(`/api/v1/stock-ranking?${params}`);
@@ -470,16 +554,16 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     }
   }, []);
 
-  useEffect(() => { doFetch(LAST7[0], '', 'all', 1); }, [doFetch]);
+  useEffect(() => { doFetch(LAST7[0], '', 'all'); }, [doFetch]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
   const handleDate = (date: string) => {
     setSelectedDate(date); setPage(1); setQ(''); setMarket('all');
-    doFetch(date, '', 'all', 1);
+    doFetch(date, '', 'all');
   };
-  const handleSearch = (v: string) => { setQ(v); setPage(1); doFetch(selectedDate, v, market, 1); };
-  const handleMarket = (mkt: string) => { setMarket(mkt); setPage(1); doFetch(selectedDate, q, mkt, 1); };
-  const handlePage = (pg: number) => { setPage(pg); doFetch(selectedDate, q, market, pg); };
+  const handleSearch = (v: string) => { setQ(v); setPage(1); doFetch(selectedDate, v, market); };
+  const handleMarket = (mkt: string) => { setMarket(mkt); setPage(1); doFetch(selectedDate, q, mkt); };
+  const handlePage = (pg: number) => { setPage(pg); };
 
   const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
     e.stopPropagation();
@@ -568,10 +652,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       const db = b.latest_signal_date ?? '';
       if (da !== db) return db.localeCompare(da);
     }
-    // score (default + fallback for updated)
-    const aHasAi = a.ai ? 1 : 0;
-    const bHasAi = b.ai ? 1 : 0;
-    if (aHasAi !== bHasAi) return bHasAi - aHasAi;
+    // score (default + fallback for updated) — 순수 가중합 점수 순위
     return computeWeighted(b, weights) - computeWeighted(a, weights);
   }), [rawItems, sort, weights, sourceFilter, signalMap, livePrices, gapAsc]);
 

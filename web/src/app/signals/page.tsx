@@ -67,7 +67,7 @@ export default async function SignalsPage({
       .select("*")
       .gte("timestamp", dateStart)
       .lte("timestamp", dateEnd)
-      .order("signal_time", { ascending: false, nullsFirst: false });
+      .order("timestamp", { ascending: false });
     if (activeSource !== "all") query = query.eq("source", activeSource);
 
     const { data: rawSignals } = await query;
@@ -103,6 +103,15 @@ export default async function SignalsPage({
         ...(signalPrice !== null ? { signal_price: String(signalPrice) } : {}),
       } as Record<string, string>;
     });
+
+    // signal_time 우선, 없으면 timestamp 기준 내림차순 정렬
+    // signal_time 없는 항목은 timestamp(스크래핑 시간)이 더 늦으므로 자연스럽게 위에 표시
+    signals.sort((a, b) => {
+      const timeA = new Date(a.signal_time || a.timestamp).getTime();
+      const timeB = new Date(b.signal_time || b.timestamp).getTime();
+      return timeB - timeA;
+    });
+
     buySignals = signals.filter((s) => s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST");
     sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
   }

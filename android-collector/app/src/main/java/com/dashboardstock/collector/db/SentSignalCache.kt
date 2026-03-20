@@ -77,6 +77,19 @@ object SentSignalCache {
         Log.d(TAG, "Cached ${signals.count { it.symbol != null }} signals")
     }
 
+    /**
+     * PATCH로 null→절대시간 업데이트 성공 시, null 키를 제거
+     * → 같은 종목의 다음 null 신호(다른 시간대)가 캐시에 걸리지 않도록
+     */
+    fun removeNullTimeKey(context: Context, s: SignalInput) {
+        val nullKey = "${s.symbol}:${s.source}:${s.signalType}:"
+        val p = prefs(context)
+        if (p.contains(nullKey)) {
+            p.edit().remove(nullKey).apply()
+            Log.d(TAG, "Removed null-time cache key: $nullKey")
+        }
+    }
+
     /** 캐시 크기 (디버그용) */
     fun size(context: Context): Int {
         resetIfNewDay(context)

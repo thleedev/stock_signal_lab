@@ -190,6 +190,22 @@ export function calcTechnicalScore(
   }
   if (week52LowNear) score += 3;
 
+  // 애널리스트 관점: RSI + 5일 등락률 복합 타이밍 보정
+  const isRsiOverbought = rsi !== null && rsi >= 70;
+  if (closes.length >= 6) {
+    const pct5d = ((currentPrice - closes[closes.length - 6]) / closes[closes.length - 6]) * 100;
+    if (isRsiOverbought && pct5d >= 10) {
+      // RSI 과매수 + 5일 +10%: 과열 확실 → 큰 감점
+      score -= 6;
+    } else if (pct5d >= 25) {
+      // 극단적 급등 → 감점
+      score -= 4;
+    } else if (pct5d >= 0 && pct5d < 3 && (goldenCross || macdCross || volumeSurge)) {
+      // 신호 발생 + 아직 덜 오름: 초기 진입 기회 → 가산점
+      score += 3;
+    }
+  }
+
   // 쌍봉 패턴: 최근 20거래일 내 두 고점이 ±2% 이내, 사이에 -5% 이상 하락,
   // 현재가가 두 번째 고점의 97%~103% 구간 (매도 경고 구간에서만 페널티)
   let doubleTop = false;

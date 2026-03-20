@@ -52,11 +52,12 @@ export interface AiRecommendationWeights {
   supply: number; // 0~100
 }
 
+// 애널리스트 관점 기본 가중치: 기술(40) > 수급(30) > 신호(20) > 밸류(10)
 export const DEFAULT_WEIGHTS: AiRecommendationWeights = {
-  signal: 30,
-  technical: 30,
-  valuation: 20,
-  supply: 20,
+  signal: 20,
+  technical: 40,
+  valuation: 10,
+  supply: 30,
 };
 
 export interface AiRecommendationResponse {

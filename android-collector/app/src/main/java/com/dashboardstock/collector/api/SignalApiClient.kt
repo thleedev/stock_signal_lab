@@ -3,6 +3,7 @@ package com.dashboardstock.collector.api
 import android.content.Context
 import android.util.Log
 import com.dashboardstock.collector.BuildConfig
+import com.dashboardstock.collector.db.SentSignalCache
 import com.google.gson.GsonBuilder
 import com.google.gson.annotations.SerializedName
 import okhttp3.MediaType.Companion.toMediaType
@@ -53,6 +54,10 @@ object SignalApiClient {
 
     /**
      * 신호 리스트를 Supabase에 직접 전송
+     *
+     * signal_time이 있는 신호는 먼저 기존 null 행을 PATCH 시도 →
+     * 매칭되면 UPDATE만 하고 INSERT 건너뜀 (중복 방지)
+     *
      * @throws Exception 전송 실패 시 (호출부에서 Room 큐잉 처리)
      */
     suspend fun sendSignals(context: Context, signals: List<SignalInput>) {
@@ -61,8 +66,29 @@ object SignalApiClient {
         val batchId = UUID.randomUUID().toString()
         Log.d(TAG, "Sending ${signals.size} signals, batch=$batchId")
 
-        // signals 테이블에 맞는 row 형식으로 변환
-        val rows = signals.map { s ->
+        // signal_time이 있는 신호 → 기존 null 행 PATCH 시도
+        val toInsert = mutableListOf<SignalInput>()
+        for (s in signals) {
+            if (s.signalTime != null && s.symbol != null) {
+                val patched = patchNullSignalTime(s)
+                if (patched) {
+                    // 기존 행 업데이트 성공 → 캐시에서 null 키 제거 (다음 null 신호 허용)
+                    SentSignalCache.removeNullTimeKey(context, s)
+                    Log.d(TAG, "PATCH success: ${s.name}(${s.symbol}) signal_time=${s.signalTime}")
+                    continue
+                }
+            }
+            toInsert.add(s)
+        }
+
+        if (toInsert.isEmpty()) {
+            Log.i(TAG, "All ${signals.size} signals patched, no INSERT needed")
+            sendHeartbeat()
+            return
+        }
+
+        // 나머지 신호 INSERT (append)
+        val rows = toInsert.map { s ->
             SignalRow(
                 timestamp = s.timestamp,
                 symbol = s.symbol,
@@ -78,8 +104,6 @@ object SignalApiClient {
             )
         }
 
-        // 모든 신호를 INSERT (append) — 매수/매도 이력을 쌓아서 쌍 추적 가능
-        // 중복 방지는 앱 SentSignalCache + DB unique constraint로 처리
         val body = gson.toJson(rows).toRequestBody(JSON_TYPE)
         val request = supabaseRequest("signals")
             .header("Prefer", "return=minimal")
@@ -93,10 +117,50 @@ object SignalApiClient {
             throw RuntimeException("Supabase insert failed (${response.code}): $errorBody")
         }
         response.close()
-        Log.i(TAG, "Inserted ${rows.size} signals")
+        Log.i(TAG, "Inserted ${rows.size} signals (${signals.size - rows.size} patched)")
 
-        // heartbeat 업데이트
         sendHeartbeat()
+        triggerAiRecommendations()
+    }
+
+    /**
+     * signal_time IS NULL인 기존 행을 PATCH (timestamp ±2시간 이내 매칭)
+     * @return true면 매칭되어 UPDATE 완료, false면 매칭 없음 (INSERT 필요)
+     */
+    private fun patchNullSignalTime(s: SignalInput): Boolean {
+        try {
+            val signalOdt = OffsetDateTime.parse(s.signalTime)
+            val rangeStart = signalOdt.minusHours(2)
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            val rangeEnd = signalOdt.plusHours(2)
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+
+            val path = "signals?symbol=eq.${s.symbol}" +
+                    "&source=eq.${s.source}" +
+                    "&signal_type=eq.${s.signalType}" +
+                    "&signal_time=is.null" +
+                    "&timestamp=gte.${rangeStart}" +
+                    "&timestamp=lte.${rangeEnd}"
+
+            val patchBody = gson.toJson(mapOf("signal_time" to s.signalTime))
+                .toRequestBody(JSON_TYPE)
+
+            val request = supabaseRequest(path)
+                .header("Prefer", "return=representation")
+                .patch(patchBody)
+                .build()
+
+            val response = client.newCall(request).execute()
+            val isOk = response.isSuccessful
+            val responseBody = response.body?.string() ?: "[]"
+            response.close()
+
+            // 응답이 빈 배열이면 매칭 없음
+            return isOk && responseBody != "[]" && responseBody.isNotBlank()
+        } catch (e: Exception) {
+            Log.w(TAG, "patchNullSignalTime error for ${s.symbol}", e)
+            return false
+        }
     }
 
     /**
@@ -125,6 +189,35 @@ object SignalApiClient {
             response.close()
         } catch (e: Exception) {
             Log.w(TAG, "Raw MMS save error", e)
+        }
+    }
+
+    /**
+     * 웹앱 AI 추천 생성 API 호출 (신호 수집 완료 후)
+     * WEBAPP_URL이 설정되지 않으면 무시
+     */
+    private fun triggerAiRecommendations() {
+        val webappUrl = BuildConfig.WEBAPP_URL
+        if (webappUrl.isBlank()) {
+            Log.d(TAG, "WEBAPP_URL not set, skipping AI recommendations trigger")
+            return
+        }
+        try {
+            val body = """{}""".toRequestBody(JSON_TYPE)
+            val request = Request.Builder()
+                .url("$webappUrl/api/v1/ai-recommendations/generate")
+                .post(body)
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (response.isSuccessful) {
+                Log.i(TAG, "AI recommendations triggered successfully")
+            } else {
+                Log.w(TAG, "AI recommendations trigger failed (${response.code})")
+            }
+            response.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "AI recommendations trigger error", e)
         }
     }
 

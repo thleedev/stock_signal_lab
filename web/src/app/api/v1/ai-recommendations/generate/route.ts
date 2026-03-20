@@ -9,7 +9,9 @@ export const maxDuration = 120;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
-    const limit = Math.min(Math.max(parseInt(body.limit ?? '5'), 3), 10);
+    // limit=0이면 전체 후보 저장 (기본값)
+    const rawLimit = parseInt(body.limit ?? '0');
+    const limit = rawLimit <= 0 ? 999 : Math.max(rawLimit, 3);
 
     // 가중치 검증 (부동소수점 오차 허용)
     const rawWeights: AiRecommendationWeights = {
@@ -36,20 +38,18 @@ export async function POST(request: NextRequest) {
 
     if (recommendations.length > 0) {
       const todayKst = getTodayKst();
-      // upsert 먼저 (insert 실패 시 데이터 손실 방지)
-      const { error: upsertError } = await supabase.from('ai_recommendations').upsert(
-        recommendations.map((r) => ({ ...r, id: undefined })),
-        { onConflict: 'date,symbol' }
-      );
-      if (!upsertError) {
-        // 새 추천에 포함되지 않은 오늘의 이전 데이터 정리 (limit 변경 시)
-        const newSymbols = recommendations.map((r) => r.symbol);
-        await supabase
-          .from('ai_recommendations')
-          .delete()
-          .eq('date', todayKst)
-          .not('symbol', 'in', `(${newSymbols.join(',')})`);
-      }
+      // 오늘 기존 데이터 전부 삭제 후 새로 insert
+      await supabase.from('ai_recommendations').delete().eq('date', todayKst);
+      // id/created_at 제거 → DB default 사용, symbol null 필터
+      const insertData = recommendations
+        .map(({ id: _id, created_at: _ca, ...rest }) => {
+          const clean = { ...rest } as Record<string, unknown>;
+          delete clean.id;
+          delete clean.created_at;
+          return clean;
+        })
+        .filter((r) => r.symbol && r.date);
+      await supabase.from('ai_recommendations').insert(insertData);
     }
 
     return NextResponse.json({

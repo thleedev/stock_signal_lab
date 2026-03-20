@@ -17,6 +17,8 @@ import {
 } from "@/types/market";
 import type { MarketEvent } from "@/types/market-event";
 import { EventCalendar } from "./event-calendar";
+import { EtfSentimentSection } from "./etf-sentiment-section";
+import type { ClassifiedEtf, SectorSentiment, SentimentLabel } from "@/lib/etf-sentiment";
 
 interface IndicatorRow {
   indicator_type: string;
@@ -302,10 +304,36 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
     }
   }, []);
 
+  // ─── ETF 센티먼트 ─────────────────────────────────
+  const [etfData, setEtfData] = useState<{
+    rawEtfs: ClassifiedEtf[];
+    sectors: Record<string, SectorSentiment>;
+    overallSentiment: number;
+    overallLabel: SentimentLabel;
+  } | null>(null);
+
+  const fetchEtfSentiment = useCallback(async () => {
+    try {
+      const res = await fetch("/api/v1/market-indicators/etf-sentiment");
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json.success) return;
+      setEtfData({
+        rawEtfs: json.rawEtfs ?? [],
+        sectors: json.sectors ?? {},
+        overallSentiment: json.overallSentiment ?? 0,
+        overallLabel: json.overallLabel ?? 'neutral',
+      });
+    } catch (e) {
+      console.error("[market] etf-sentiment fetch failed:", e);
+    }
+  }, []);
+
   // 페이지 진입 시 자동으로 실시간 데이터 로드
   useEffect(() => {
     fetchRealtime();
-  }, [fetchRealtime]);
+    fetchEtfSentiment();
+  }, [fetchRealtime, fetchEtfSentiment]);
 
   // 현재 지표값 맵
   const valueMap = useMemo(() => {
@@ -421,6 +449,16 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
           })}
         </div>
       </section>
+
+      {/* ETF 신호 기반 시장 센티먼트 */}
+      {etfData && Object.keys(etfData.sectors).length > 0 && (
+        <EtfSentimentSection
+          rawEtfs={etfData.rawEtfs}
+          sectors={etfData.sectors}
+          overallSentiment={etfData.overallSentiment}
+          overallLabel={etfData.overallLabel}
+        />
+      )}
 
       {/* 최근 30일 위험 지수 추이 */}
       {recentHistory.length > 0 && (

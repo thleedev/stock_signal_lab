@@ -1,7 +1,7 @@
 // N+1 방지: 오케스트레이터에서 사전 집계/조회 후 전달받는다. DB 쿼리 없음.
 
 export interface SupplyScoreResult {
-  score: number;               // 0~20
+  score: number;               // 0~23 (동반매수 시너지 포함)
   foreign_buying: boolean;     // 외국인 순매수 > 0
   institution_buying: boolean; // 기관 순매수 > 0
   volume_vs_sector: boolean;   // 섹터 거래대금 2배 이상
@@ -39,12 +39,15 @@ export function calcSupplyScore(
     }
   }
 
+  // 외국인+기관 동반매수 시너지 보너스 +3 (스마트머니 합류)
+  if (foreignBuying && institutionBuying) score += 3;
+
   // 공매도 비율 낮음 (< 1%) +2
   const lowShortSell = shortSellRatio !== null && shortSellRatio >= 0 && shortSellRatio < 1;
   if (lowShortSell) score += 2;
 
   return {
-    score: Math.min(score, 20),
+    score: Math.min(score, 23),
     foreign_buying: foreignBuying,
     institution_buying: institutionBuying,
     volume_vs_sector: volumeVsSector,

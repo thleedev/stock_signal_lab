@@ -27,6 +27,7 @@ android {
         buildConfigField("String", "SUPABASE_URL", "\"${localProps.getProperty("SUPABASE_URL", "")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProps.getProperty("SUPABASE_ANON_KEY", "")}\"")
         buildConfigField("String", "DEVICE_ID", "\"${localProps.getProperty("DEVICE_ID", "collector-001")}\"")
+        buildConfigField("String", "WEBAPP_URL", "\"${localProps.getProperty("WEBAPP_URL", "")}\"")  // AI 추천 생성용
     }
 
     buildFeatures {
