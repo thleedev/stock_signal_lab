@@ -72,6 +72,8 @@ export function usePriceRefresh(symbols: string[]) {
     if (symbols.length === 0) return;
 
     const interval = setInterval(() => {
+      // 비활성 탭에서는 불필요한 네트워크 요청 방지
+      if (document.hidden) return;
       const now = new Date();
       const kstHour = (now.getUTCHours() + 9) % 24;
       const day = now.getDay(); // 0=Sun, 6=Sat

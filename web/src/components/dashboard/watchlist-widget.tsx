@@ -1,7 +1,7 @@
 "use client";
 
+import React, { useMemo, useCallback } from "react";
 import Link from "next/link";
-import { useMemo } from "react";
 import { usePriceRefresh } from "@/hooks/use-price-refresh";
 import { useStockModal } from "@/contexts/stock-modal-context";
 
@@ -12,9 +12,43 @@ interface FavoriteStock {
   price_change_pct: number | null;
 }
 
+interface PriceData {
+  current_price: number | null;
+  price_change_pct: number | null;
+}
+
 interface Props {
   favorites: FavoriteStock[];
 }
+
+// 개별 관심종목 아이템 (React.memo로 불필요한 리렌더링 방지)
+const WatchlistItem = React.memo(function WatchlistItem({
+  stock,
+  livePrice,
+  onSelect,
+}: {
+  stock: FavoriteStock;
+  livePrice: PriceData | undefined;
+  onSelect: (symbol: string, name: string) => void;
+}) {
+  const price = livePrice?.current_price ?? stock.current_price;
+  const pct = livePrice?.price_change_pct ?? stock.price_change_pct ?? 0;
+
+  return (
+    <button
+      onClick={() => onSelect(stock.symbol, stock.name)}
+      className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors text-left"
+    >
+      <span className="text-sm font-medium truncate flex-1">{stock.name}</span>
+      <div className="text-right shrink-0 ml-2">
+        <div className="text-sm font-bold">{price?.toLocaleString() ?? "-"}</div>
+        <div className={`text-xs font-medium ${pct > 0 ? "price-up" : pct < 0 ? "price-down" : "price-flat"}`}>
+          {pct > 0 ? "+" : ""}{pct.toFixed(2)}%
+        </div>
+      </div>
+    </button>
+  );
+});
 
 export function WatchlistWidget({ favorites }: Props) {
   const { openStockModal } = useStockModal();
@@ -41,27 +75,14 @@ export function WatchlistWidget({ favorites }: Props) {
         </Link>
       </div>
       <div className="space-y-2">
-        {favorites.map((f) => {
-          const live = prices[f.symbol];
-          const price = live?.current_price ?? f.current_price;
-          const pct = live?.price_change_pct ?? f.price_change_pct ?? 0;
-
-          return (
-            <button
-              key={f.symbol}
-              onClick={() => openStockModal(f.symbol, f.name)}
-              className="w-full flex items-center justify-between p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors text-left"
-            >
-              <span className="text-sm font-medium truncate flex-1">{f.name}</span>
-              <div className="text-right shrink-0 ml-2">
-                <div className="text-sm font-bold">{price?.toLocaleString() ?? "-"}</div>
-                <div className={`text-xs font-medium ${pct > 0 ? "price-up" : pct < 0 ? "price-down" : "price-flat"}`}>
-                  {pct > 0 ? "+" : ""}{pct.toFixed(2)}%
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        {favorites.map((f) => (
+          <WatchlistItem
+            key={f.symbol}
+            stock={f}
+            livePrice={prices[f.symbol]}
+            onSelect={openStockModal}
+          />
+        ))}
       </div>
     </div>
   );

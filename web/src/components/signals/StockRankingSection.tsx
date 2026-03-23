@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
@@ -137,8 +137,8 @@ interface StockRankingProps {
 
 const LAST7 = getLastNWeekdays(7);
 
-// ── 카드 행 컴포넌트 ──────────────────────────────────────────────────────────
-function RankCard({
+// ── 카드 행 컴포넌트 (React.memo로 불필요한 리렌더링 방지) ─────────────────────
+const RankCard = React.memo(function RankCard({
   item, rank, weighted, favs, onClick,
 }: {
   item: StockRankItem;
@@ -150,8 +150,12 @@ function RankCard({
   const hasAi = !!item.ai;
   const isWarning = hasAi && item.ai!.double_top;
   const pct = item.price_change_pct;
-  const badges = hasAi ? getAiBadges(item.ai!) : getBasicBadges(item, Date.now());
-  const { sig, tech, val, sup } = normScores(item);
+  // useMemo로 배지 계산 메모이제이션 (item 변경 시에만 재계산)
+  const badges = useMemo(
+    () => hasAi ? getAiBadges(item.ai!) : getBasicBadges(item, Date.now()),
+    [hasAi, item]
+  );
+  const { sig, tech, val, sup } = useMemo(() => normScores(item), [item]);
 
   return (
     <div
@@ -234,7 +238,7 @@ function RankCard({
       )}
     </div>
   );
-}
+});
 
 // ── 가중치 팝업 컴포넌트 ──────────────────────────────────────────────────────
 function WeightPopup({

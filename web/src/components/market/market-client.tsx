@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import {
   Activity, DollarSign, TrendingUp, TrendingDown, BarChart3,
   Gauge, Droplets, Globe, Landmark, Flame, ShieldAlert,
@@ -17,7 +18,11 @@ import {
 } from "@/types/market";
 import type { MarketEvent } from "@/types/market-event";
 import { EventCalendar } from "./event-calendar";
-import { EtfSentimentSection } from "./etf-sentiment-section";
+// 동적 임포트: ETF 센티먼트 섹션은 조건부 렌더링되므로 초기 번들에서 제외
+const EtfSentimentSection = dynamic(
+  () => import("./etf-sentiment-section").then((mod) => mod.EtfSentimentSection),
+  { loading: () => <div className="card animate-pulse h-40" /> }
+);
 import { PageLayout, PageHeader } from "@/components/ui";
 import type { ClassifiedEtf, SectorSentiment, SentimentLabel } from "@/lib/etf-sentiment";
 
@@ -149,9 +154,9 @@ function SummaryCard({
   );
 }
 
-// ─── 지표 카드 ───────────────────────────────────────────
+// ─── 지표 카드 (React.memo로 불필요한 리렌더링 방지) ─────
 
-function IndicatorCard({
+const IndicatorCard = React.memo(function IndicatorCard({
   ind, level,
 }: {
   ind: IndicatorRow;
@@ -194,7 +199,7 @@ function IndicatorCard({
       )}
     </div>
   );
-}
+});
 
 // ─── 위험 지수 히스토리 차트 ─────────────────────────────
 
