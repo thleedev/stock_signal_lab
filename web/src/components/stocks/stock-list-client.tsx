@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Star, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2, Briefcase, RefreshCw, Pin, PinOff, GripVertical } from "lucide-react";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { SOURCE_LABELS_SHORT, SIGNAL_COLORS, SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import WatchlistGroupTabs, { type TabId } from "@/components/stocks/watchlist-group-tabs";
@@ -672,29 +673,29 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       onDragStart={handleStockDragStart}
       onDragEnd={handleStockDragEnd}
     >
-    <div className="space-y-4">
-      {/* 페이지 헤더 — 제목 왼쪽, 갱신 버튼 오른쪽 */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">종목</h1>
-          <p className="text-sm text-[var(--muted)] mt-1">관심종목 그룹 관리 및 전체 종목 조회</p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0 pt-1">
-          {priceUpdateLabel && (
-            <span className={`text-xs ${isStale ? "text-yellow-400" : "text-[var(--muted)]"}`}>
-              {priceUpdateLabel}
-            </span>
-          )}
-          <button
-            onClick={refreshPrices}
-            disabled={refreshing}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
-            갱신
-          </button>
-        </div>
-      </div>
+    <PageLayout>
+      {/* 페이지 헤더 -- 제목 왼쪽, 갱신 버튼 오른쪽 */}
+      <PageHeader
+        title="종목"
+        subtitle="관심종목 그룹 관리 및 전체 종목 조회"
+        action={
+          <div className="flex items-center gap-2 flex-shrink-0 pt-1">
+            {priceUpdateLabel && (
+              <span className={`text-xs ${isStale ? "text-yellow-400" : "text-[var(--muted)]"}`}>
+                {priceUpdateLabel}
+              </span>
+            )}
+            <button
+              onClick={refreshPrices}
+              disabled={refreshing}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
+              갱신
+            </button>
+          </div>
+        }
+      />
 
       {/* 그룹 탭 바 */}
       <WatchlistGroupTabs
@@ -904,9 +905,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           onGroupToggle={(group) => { if (actionMenu) handleGroupToggle(group, actionMenu.stock); }}
         />
       )}
-    </div>
+    </PageLayout>
 
-    {/* DragOverlay — must be inside DndContext */}
+    {/* DragOverlay -- must be inside DndContext */}
     <DragOverlay>
       {draggingStock && (
         <div className="bg-[var(--card)] border border-[#6366f1] rounded-lg px-4 py-2.5 shadow-2xl text-sm font-medium">

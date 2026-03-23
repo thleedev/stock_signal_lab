@@ -18,6 +18,7 @@ import {
 import type { MarketEvent } from "@/types/market-event";
 import { EventCalendar } from "./event-calendar";
 import { EtfSentimentSection } from "./etf-sentiment-section";
+import { PageLayout, PageHeader } from "@/components/ui";
 import type { ClassifiedEtf, SectorSentiment, SentimentLabel } from "@/lib/etf-sentiment";
 
 interface IndicatorRow {
@@ -372,25 +373,22 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
   const recentHistory = scoreHistory.slice(0, 30);
 
   return (
-    <div className="space-y-6">
+    <PageLayout>
       {/* 페이지 제목 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">투자 시황</h1>
-          <p className="text-sm text-[var(--muted)] mt-1">
-            절대 임계값 기반 위험 경보
-            {lastUpdated && <span className="ml-2">· 실시간 {lastUpdated}</span>}
-          </p>
-        </div>
-        <button
-          onClick={fetchRealtime}
-          disabled={isRefreshing}
-          className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors disabled:opacity-50"
-          title="실시간 데이터 새로고침"
-        >
-          <RefreshCw className={`w-5 h-5 ${isRefreshing ? "animate-spin" : ""}`} />
-        </button>
-      </div>
+      <PageHeader
+        title="투자 시황"
+        subtitle={`절대 임계값 기반 위험 경보${lastUpdated ? ` · 실시간 ${lastUpdated}` : ""}`}
+        action={
+          <button
+            onClick={fetchRealtime}
+            disabled={isRefreshing}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover)] transition-colors disabled:opacity-50"
+            title="실시간 데이터 새로고침"
+          >
+            <RefreshCw className={`w-5 h-5 ${isRefreshing ? "animate-spin" : ""}`} />
+          </button>
+        }
+      />
 
       {/* 경보 배너 */}
       <RiskAlertBanner
@@ -470,6 +468,6 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
 
       {/* 예정 이벤트 */}
       {events.length > 0 && <EventCalendar events={events} />}
-    </div>
+    </PageLayout>
   );
 }

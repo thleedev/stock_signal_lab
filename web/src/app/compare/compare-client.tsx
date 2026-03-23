@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { Search, X, Plus, TrendingUp, TrendingDown } from "lucide-react";
+import { PageLayout, PageHeader } from "@/components/ui";
 
 interface StockData {
   symbol: string;
@@ -110,7 +111,9 @@ export default function CompareClient() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <PageLayout>
+      <PageHeader title="종목 비교" subtitle="2~3개 종목의 차트와 투자지표를 비교 분석" />
+
       {errorMsg && (
         <div className="bg-red-900/20 border border-red-800/50 text-red-400 text-sm px-4 py-2 rounded-lg">
           {errorMsg}
@@ -261,6 +264,6 @@ export default function CompareClient() {
           비교할 종목을 1개 더 추가해주세요
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

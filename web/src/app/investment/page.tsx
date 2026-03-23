@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 import InvestmentClient from "@/components/investment/investment-client";
 import type { StockCache } from "@/types/stock";
 
@@ -28,17 +29,12 @@ export default async function InvestmentPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">포트 종목</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">
-          관심 종목 모니터링 및 관리
-        </p>
-      </div>
+    <PageLayout>
+      <PageHeader title="포트 종목" subtitle="관심 종목 모니터링 및 관리" />
       <InvestmentClient
         initialWatchlist={watchlist ?? []}
         stockData={stockData}
       />
-    </div>
+    </PageLayout>
   );
 }

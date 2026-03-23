@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { DateSelector } from "@/components/common/date-selector";
 import { getLastNDays, getKstDayRange } from "@/lib/date-utils";
 import { SOURCE_COLORS, SOURCE_LABELS, SIGNAL_TYPE_LABELS, BUY_SIGNAL_TYPES } from "@/lib/signal-constants";
@@ -74,12 +75,9 @@ export default async function ReportsPage({
   } | null;
 
   return (
-    <div className="space-y-6">
+    <PageLayout>
       {/* 헤더 */}
-      <div>
-        <h1 className="text-2xl font-bold">일간 리포트</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">{selectedDate} 기준</p>
-      </div>
+      <PageHeader title="일간 리포트" subtitle={`${selectedDate} 기준`} />
 
       {/* 날짜 선택 */}
       <DateSelector basePath="/reports" selectedDate={selectedDate} />
@@ -301,7 +299,7 @@ export default async function ReportsPage({
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }
 

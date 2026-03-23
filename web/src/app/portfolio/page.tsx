@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
 import { StockLinkButton } from "./stock-link-button";
 
@@ -103,13 +104,8 @@ export default async function PortfolioPage({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">AI 포트폴리오</h1>
-          <p className="text-sm text-[var(--muted)] mt-1">3개 AI 합산 성과</p>
-        </div>
-      </div>
+    <PageLayout>
+      <PageHeader title="AI 포트폴리오" subtitle="3개 AI 합산 성과" />
 
       {/* 전략 탭 */}
       <div className="flex gap-2">
@@ -244,6 +240,6 @@ export default async function PortfolioPage({
           );
         })}
       </div>
-    </div>
+    </PageLayout>
   );
 }

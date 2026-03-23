@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout } from "@/components/ui";
 import StockDetailClient from "@/components/stock/stock-detail-client";
 import { fetchNaverDailyPrices } from "@/lib/naver-stock-api";
 
@@ -101,7 +102,7 @@ export default async function StockDetailPage({
   })).filter((m) => m.date);
 
   return (
-    <div className="space-y-6">
+    <PageLayout>
       {/* 헤더 */}
       <div className="flex items-center gap-3">
         <Link
@@ -112,7 +113,7 @@ export default async function StockDetailPage({
         </Link>
         <div className="flex-1">
           <div className="flex items-baseline gap-2">
-            <h1 className="text-2xl font-bold">{stockName}</h1>
+            <h1 className="text-xl md:text-2xl font-bold">{stockName}</h1>
             <span className="text-sm text-[var(--muted)]">{symbol}</span>
           </div>
         </div>
@@ -321,6 +322,6 @@ export default async function StockDetailPage({
           신호 목록
         </Link>
       </div>
-    </div>
+    </PageLayout>
   );
 }

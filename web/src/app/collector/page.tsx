@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -44,11 +45,8 @@ export default async function CollectorPage() {
     .limit(10);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">수집기 상태</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">주식 신호 수집기 연결 상태</p>
-      </div>
+    <PageLayout>
+      <PageHeader title="수집기 상태" subtitle="주식 신호 수집기 연결 상태" />
 
       {/* 기기 상태 카드 */}
       {devices.length === 0 ? (
@@ -139,6 +137,6 @@ export default async function CollectorPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageLayout>
   );
 }

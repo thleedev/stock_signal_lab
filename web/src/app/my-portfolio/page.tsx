@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useStockModal } from "@/contexts/stock-modal-context";
 import { Search, X, Plus, Pencil, Check, BarChart3 } from "lucide-react";
 import { usePriceRefresh } from "@/hooks/use-price-refresh";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { PortfolioTabs } from "./components/portfolio-tabs";
 import { TradeModal } from "./components/trade-modal";
 import { PerformanceChart } from "./components/performance-chart";
@@ -341,43 +342,43 @@ export default function MyPortfolioPage() {
   const isTotalPositive = summary.total_return_pct >= 0;
 
   return (
-    <div className="space-y-4">
+    <PageLayout>
       {/* 헤더 + 요약 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">포트 종목</h1>
-          <p className="text-sm text-[var(--muted)] mt-1">포트폴리오 관리</p>
-        </div>
-        <div className="flex items-center gap-5">
-          <div className="text-right">
-            <div className="text-[10px] text-[var(--muted)]">현재수익률</div>
-            <div className={`text-lg font-bold tabular-nums ${isCurrentPositive ? "text-red-400" : "text-blue-400"}`}>
-              {isCurrentPositive ? "+" : ""}{summary.current_return_pct.toFixed(1)}%
+      <PageHeader
+        title="포트 종목"
+        subtitle="포트폴리오 관리"
+        action={
+          <div className="flex items-center gap-5">
+            <div className="text-right">
+              <div className="text-[10px] text-[var(--muted)]">현재수익률</div>
+              <div className={`text-lg font-bold tabular-nums ${isCurrentPositive ? "text-red-400" : "text-blue-400"}`}>
+                {isCurrentPositive ? "+" : ""}{summary.current_return_pct.toFixed(1)}%
+              </div>
             </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] text-[var(--muted)]">총수익률</div>
-            <div className={`text-lg font-bold tabular-nums ${isTotalPositive ? "text-red-400" : "text-blue-400"}`}>
-              {isTotalPositive ? "+" : ""}{summary.total_return_pct.toFixed(1)}%
+            <div className="text-right">
+              <div className="text-[10px] text-[var(--muted)]">총수익률</div>
+              <div className={`text-lg font-bold tabular-nums ${isTotalPositive ? "text-red-400" : "text-blue-400"}`}>
+                {isTotalPositive ? "+" : ""}{summary.total_return_pct.toFixed(1)}%
+              </div>
             </div>
+            <div className="text-right">
+              <div className="text-[10px] text-[var(--muted)]">보유 종목</div>
+              <div className="text-lg font-bold">{summary.holding_count}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] text-[var(--muted)]">완료 거래</div>
+              <div className="text-lg font-bold">{summary.completed_trade_count}</div>
+            </div>
+            <button
+              onClick={() => setShowPerformance(true)}
+              className="p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+              title="포트 성과 비교"
+            >
+              <BarChart3 className="w-4 h-4 text-[var(--muted)]" />
+            </button>
           </div>
-          <div className="text-right">
-            <div className="text-[10px] text-[var(--muted)]">보유 종목</div>
-            <div className="text-lg font-bold">{summary.holding_count}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[10px] text-[var(--muted)]">완료 거래</div>
-            <div className="text-lg font-bold">{summary.completed_trade_count}</div>
-          </div>
-          <button
-            onClick={() => setShowPerformance(true)}
-            className="p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
-            title="포트 성과 비교"
-          >
-            <BarChart3 className="w-4 h-4 text-[var(--muted)]" />
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* 포트 탭 */}
       <div className="card overflow-hidden">
@@ -624,6 +625,6 @@ export default function MyPortfolioPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageLayout>
   );
 }

@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
 import FavoritesManager from "./favorites-manager";
 
@@ -56,11 +57,8 @@ export default async function SettingsPage() {
   });
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">설정</h1>
-        <p className="text-sm text-[var(--muted)] mt-1">시스템 설정 및 정보</p>
-      </div>
+    <PageLayout>
+      <PageHeader title="설정" subtitle="시스템 설정 및 정보" />
 
       {/* 1. 포트폴리오 설정 */}
       <section>
@@ -247,6 +245,6 @@ export default async function SettingsPage() {
           </div>
         </div>
       </section>
-    </div>
+    </PageLayout>
   );
 }

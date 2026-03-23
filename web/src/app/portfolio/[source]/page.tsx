@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
 
 const SOURCE_META: Record<string, { label: string; color: string }> = {
@@ -79,15 +80,13 @@ export default async function SourcePortfolioPage({
   const splitHistory = history?.filter((h) => h.execution_type === "split") ?? [];
 
   return (
-    <div className="space-y-6">
+    <PageLayout>
       <div className="flex items-center gap-3">
         <Link href="/portfolio" className="text-[var(--muted)] hover:text-[var(--foreground)]">&larr;</Link>
-        <div>
-          <h1 className="text-2xl font-bold">{meta.label} 포트폴리오</h1>
-          {source === "lassi" && (
-            <p className="text-xs text-[var(--muted)] mt-1">⭐ 즐겨찾기 종목만 추적</p>
-          )}
-        </div>
+        <PageHeader
+          title={`${meta.label} 포트폴리오`}
+          subtitle={source === "lassi" ? "⭐ 즐겨찾기 종목만 추적" : undefined}
+        />
       </div>
 
       {/* 전략 탭 */}
@@ -213,6 +212,6 @@ export default async function SourcePortfolioPage({
           </div>
         )}
       </div>
-    </div>
+    </PageLayout>
   );
 }

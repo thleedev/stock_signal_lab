@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { DashboardRiskBanner } from "@/components/dashboard/dashboard-risk-banner";
 import { SignalSummaryCard } from "@/components/dashboard/signal-summary-card";
 import { MarketSummaryCard } from "@/components/dashboard/market-summary-card";
@@ -113,7 +114,9 @@ export default async function DashboardPage() {
   const eventRiskScore = latestScore?.event_risk_score ?? 100;
 
   return (
-    <div className="space-y-4">
+    <PageLayout>
+      <PageHeader title="대시보드" subtitle="AI 매매신호 현황" />
+
       {/* 위험 경보 배너 */}
       <DashboardRiskBanner riskIndex={riskIndex} />
 
@@ -159,6 +162,6 @@ export default async function DashboardPage() {
           returnPct={quantData.returnPct}
         />
       </div>
-    </div>
+    </PageLayout>
   );
 }

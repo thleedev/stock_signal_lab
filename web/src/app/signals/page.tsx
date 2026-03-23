@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
+import { PageLayout, PageHeader } from "@/components/ui";
 import { getLastNWeekdays, getKstDayRange, getKstWeekRange } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
 import { UnifiedAnalysisSection, type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
@@ -149,35 +150,35 @@ export default async function SignalsPage({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">AI 신호</h1>
-          <p className="text-sm text-[var(--muted)] mt-1">{selectedDate === "all" ? "전체 기간" : selectedDate === "week" ? "이번주" : `${selectedDate} 기준`}</p>
-        </div>
-        <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
-          <Link
-            href="/signals"
-            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              activeTab === "signals"
-                ? "bg-[var(--accent)] text-white"
-                : "text-[var(--muted)] hover:text-[var(--text)]"
-            }`}
-          >
-            AI 신호
-          </Link>
-          <Link
-            href="/signals?tab=analysis"
-            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-              activeTab === "analysis"
-                ? "bg-[var(--accent)] text-white"
-                : "text-[var(--muted)] hover:text-[var(--text)]"
-            }`}
-          >
-            종목분석
-          </Link>
-        </div>
-      </div>
+    <PageLayout>
+      <PageHeader
+        title="AI 신호"
+        subtitle={selectedDate === "all" ? "전체 기간" : selectedDate === "week" ? "이번주" : `${selectedDate} 기준`}
+        action={
+          <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
+            <Link
+              href="/signals"
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "signals"
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              AI 신호
+            </Link>
+            <Link
+              href="/signals?tab=analysis"
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "analysis"
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              종목분석
+            </Link>
+          </div>
+        }
+      />
 
       {activeTab === "signals" && (
         <>
@@ -202,6 +203,6 @@ export default async function SignalsPage({
           symbolGroups={symbolGroups}
         />
       )}
-    </div>
+    </PageLayout>
   );
 }
