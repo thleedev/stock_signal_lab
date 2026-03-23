@@ -21,6 +21,29 @@
   /* 매수/매도 */
   --buy: #ef4444;
   --sell: #3b82f6;
+
+  /* === Spacing === */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+
+  /* === Card === */
+  --card-padding: 1rem;
+  --card-padding-lg: 2rem;
+  --card-radius: 12px;
+  --card-gap: 1rem;
+
+  /* === Page Layout === */
+  --page-padding-x: 1rem;
+  --page-padding-y: 1.5rem;
+  --section-gap: 1.5rem;
+
+  /* === Typography === */
+  --text-page-title: 1.5rem;
+  --text-section-title: 1.125rem;
+  --text-body: 0.875rem;
 }
 
 @theme inline {
@@ -87,4 +110,29 @@ body {
 
 .animate-slide-up {
   animation: slide-up 0.2s ease-out;
+}
+
+/* === Layout Utilities === */
+.section-gap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--section-gap);
+}
+
+.card-padding {
+  padding: var(--card-padding);
+}
+
+.card-padding-lg {
+  padding: var(--card-padding-lg);
+}
+
+.page-title {
+  font-size: var(--text-page-title);
+  font-weight: 700;
+}
+
+.section-title {
+  font-size: var(--text-section-title);
+  font-weight: 600;
 }
