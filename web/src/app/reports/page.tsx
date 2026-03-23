@@ -262,9 +262,9 @@ export default async function ReportsPage({
               <thead>
                 <tr className="bg-[var(--background)] text-[var(--muted)]">
                   <th className="text-left px-4 py-3 font-medium">소스</th>
-                  <th className="text-left px-4 py-3 font-medium">전략</th>
-                  <th className="text-right px-4 py-3 font-medium">총 신호</th>
-                  <th className="text-right px-4 py-3 font-medium">완결 거래</th>
+                  <th className="hidden md:table-cell text-left px-4 py-3 font-medium">전략</th>
+                  <th className="hidden md:table-cell text-right px-4 py-3 font-medium">총 신호</th>
+                  <th className="hidden md:table-cell text-right px-4 py-3 font-medium">완결 거래</th>
                   <th className="text-right px-4 py-3 font-medium">적중률</th>
                   <th className="text-right px-4 py-3 font-medium">평균 수익률</th>
                 </tr>
@@ -275,13 +275,13 @@ export default async function ReportsPage({
                     <td className="px-4 py-3 font-medium">
                       {SOURCE_LABELS[stat.source as string] ?? (stat.source as string)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="hidden md:table-cell px-4 py-3">
                       {stat.execution_type === "lump" ? "일시매매"
                         : stat.execution_type === "split" ? "분할매매"
                         : (stat.execution_type as string)}
                     </td>
-                    <td className="px-4 py-3 text-right">{stat.total_signals ?? 0}</td>
-                    <td className="px-4 py-3 text-right">{stat.realized_trades ?? 0}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-right">{stat.total_signals ?? 0}</td>
+                    <td className="hidden md:table-cell px-4 py-3 text-right">{stat.realized_trades ?? 0}</td>
                     <td className="px-4 py-3 text-right">
                       {stat.hit_rate != null ? `${Number(stat.hit_rate).toFixed(1)}%` : "-"}
                     </td>

@@ -158,7 +158,7 @@ export default function CompareClient() {
 
       {/* 선택된 종목 헤더 */}
       {stocks.length > 0 && (
-        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${stocks.length}, 1fr)` }}>
+        <div className={`grid gap-4 grid-cols-1 ${stocks.length >= 2 ? "md:grid-cols-2" : ""} ${stocks.length >= 3 ? "lg:grid-cols-3" : ""}`}>
           {stocks.map((stock) => (
             <div key={stock.symbol} className="card p-4">
               <div className="flex items-start justify-between mb-2">

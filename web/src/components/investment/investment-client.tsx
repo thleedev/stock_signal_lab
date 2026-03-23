@@ -322,14 +322,14 @@ export default function InvestmentClient({
               <thead>
                 <tr className="border-b border-[var(--border)] text-[var(--muted)] text-xs">
                   <th className="px-3 py-3 text-left">종목명</th>
-                  <th className="px-3 py-3 text-left">코드</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-left">코드</th>
                   <th className="px-3 py-3 text-right">현재가</th>
                   <th className="px-3 py-3 text-right">등락률</th>
-                  <th className="px-3 py-3 text-right">구매가</th>
-                  <th className="px-3 py-3 text-right">손절가</th>
-                  <th className="px-3 py-3 text-right">목표가</th>
+                  <th className="hidden md:table-cell px-3 py-3 text-right">구매가</th>
+                  <th className="hidden lg:table-cell px-3 py-3 text-right">손절가</th>
+                  <th className="hidden lg:table-cell px-3 py-3 text-right">목표가</th>
                   <th className="px-3 py-3 text-right">수익률</th>
-                  <th className="px-3 py-3 text-center w-10"></th>
+                  <th className="hidden lg:table-cell px-3 py-3 text-center w-10"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
@@ -364,7 +364,7 @@ export default function InvestmentClient({
                           {item.name}
                         </Link>
                       </td>
-                      <td className="px-3 py-2.5 text-[var(--muted)] text-xs">
+                      <td className="hidden md:table-cell px-3 py-2.5 text-[var(--muted)] text-xs">
                         {item.symbol}
                       </td>
                       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(live?.price_change ?? stock?.price_change ?? null)}`}>
@@ -373,10 +373,10 @@ export default function InvestmentClient({
                       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(change ?? null)}`}>
                         {formatPercent(change ?? null)}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-sm">
+                      <td className="hidden md:table-cell px-3 py-2.5 text-right text-sm">
                         {renderEditablePrice(item, "buy_price", "구매가")}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-sm">
+                      <td className="hidden lg:table-cell px-3 py-2.5 text-right text-sm">
                         {renderEditablePrice(
                           item,
                           "stop_loss_price",
@@ -384,7 +384,7 @@ export default function InvestmentClient({
                           nearStopLoss ? "text-blue-400 font-semibold" : "text-[var(--muted)]"
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-right text-sm">
+                      <td className="hidden lg:table-cell px-3 py-2.5 text-right text-sm">
                         {renderEditablePrice(
                           item,
                           "target_price",
@@ -401,7 +401,7 @@ export default function InvestmentClient({
                           <span className="text-xs text-[var(--border)]">-</span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="hidden lg:table-cell px-3 py-2.5 text-center">
                         <button
                           onClick={() => removeFromWatchlist(item.symbol)}
                           className="p-1 rounded-lg text-[var(--muted)] hover:text-red-400 hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100"

@@ -655,7 +655,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         <th className="px-2 py-3 text-left">종목명</th>
         <th className="px-2 py-3 text-right w-[88px]">현재가</th>
         <th className="px-2 py-3 text-right w-[72px]">등락률</th>
-        <th className="px-2 py-3 text-right w-[64px]">Gap</th>
+        <th className="hidden sm:table-cell px-2 py-3 text-right w-[64px]">Gap</th>
         <th className="hidden md:table-cell px-2 py-3 text-left w-[72px]">코드</th>
         <th className="hidden md:table-cell px-2 py-3 text-right w-[88px]">거래량</th>
         <th className="hidden md:table-cell px-2 py-3 text-right w-[56px]">PER</th>
@@ -996,7 +996,7 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
       <td className={`px-2 py-2.5 text-right font-medium tabular-nums w-[72px] ${priceColor(stock.price_change_pct)}`}>
         {formatPercent(stock.price_change_pct)}
       </td>
-      <td className="px-2 py-2.5 text-right tabular-nums w-[64px]">
+      <td className="hidden sm:table-cell px-2 py-2.5 text-right tabular-nums w-[64px]">
         {gap != null ? (
           <div className="flex flex-col items-end gap-0.5">
             <span className={`text-xs font-medium ${gap >= 0 ? "text-red-400" : "text-blue-400"}`}>
