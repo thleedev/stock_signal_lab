@@ -112,7 +112,6 @@ src/components/ui/
 ├── PageLayout.tsx        # 페이지 레이아웃 래퍼
 ├── PageHeader.tsx        # 페이지 타이틀 + 서브타이틀
 ├── Card.tsx              # 통일된 카드 컴포넌트
-├── Badge.tsx             # 범용 뱃지
 ├── SourceBadge.tsx       # 라씨/스톡봇/퀀트 전용 뱃지
 ├── SignalBadge.tsx       # BUY/SELL 시그널 뱃지
 ├── PriceText.tsx         # 가격 표시 (등락 색상 자동)
@@ -367,7 +366,6 @@ stock/[symbol]/page.tsx: 60 → 3600 (기본 데이터는 느리게 변함)
 - `src/components/ui/PageLayout.tsx`
 - `src/components/ui/PageHeader.tsx`
 - `src/components/ui/Card.tsx`
-- `src/components/ui/Badge.tsx`
 - `src/components/ui/SourceBadge.tsx`
 - `src/components/ui/SignalBadge.tsx`
 - `src/components/ui/PriceText.tsx`
