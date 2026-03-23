@@ -5,26 +5,7 @@ import { useRouter } from "next/navigation";
 import { LayoutList, Grid3X3, Layers, Briefcase } from "lucide-react";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import type { WatchlistGroup } from "@/types/stock";
-
-const SOURCE_COLORS: Record<string, string> = {
-  lassi: "bg-red-900/30 text-red-400 border-red-800/50",
-  stockbot: "bg-green-900/30 text-green-400 border-green-800/50",
-  quant: "bg-blue-900/30 text-blue-400 border-blue-800/50",
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  lassi: "라씨매매",
-  stockbot: "스톡봇",
-  quant: "퀀트",
-};
-
-const SIGNAL_TYPE_LABELS: Record<string, string> = {
-  BUY: "매수",
-  BUY_FORECAST: "매수예고",
-  SELL: "매도",
-  SELL_COMPLETE: "매도완료",
-  HOLD: "보유중",
-};
+import { SourceBadge, SignalBadge } from "@/components/ui";
 
 type Signal = Record<string, string>;
 
@@ -47,22 +28,10 @@ function SignalCard({
       className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors flex-wrap cursor-pointer"
     >
       {/* 신호 타입 */}
-      <span
-        className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${
-          isBuy
-            ? "bg-red-900/30 text-red-400"
-            : "bg-blue-900/30 text-blue-400"
-        }`}
-      >
-        {SIGNAL_TYPE_LABELS[signal.signal_type] || signal.signal_type}
-      </span>
+      <SignalBadge type={signal.signal_type} />
 
       {/* 소스 배지 */}
-      <span
-        className={`text-xs px-1.5 py-0.5 rounded border whitespace-nowrap ${SOURCE_COLORS[signal.source]}`}
-      >
-        {SOURCE_LABELS[signal.source] || signal.source}
-      </span>
+      <SourceBadge source={signal.source as "lassi" | "stockbot" | "quant"} />
 
       {/* 즐겨찾기/포트 표시 */}
       {isFavorite && <span className="text-yellow-500 text-sm">★</span>}
@@ -199,9 +168,7 @@ function SectorSummaryView({
               source === "stockbot" ? "bg-green-900/10" :
               source === "quant" ? "bg-blue-900/10" : ""
             }`}>
-              <span className={`text-xs px-2 py-0.5 rounded border font-medium ${SOURCE_COLORS[source] ?? ""}`}>
-                {SOURCE_LABELS[source] || source}
-              </span>
+              <SourceBadge source={source as "lassi" | "stockbot" | "quant"} />
               <span className="text-xs text-[var(--muted)]">
                 매수 {buyCount} / 매도 {sellCount}
               </span>

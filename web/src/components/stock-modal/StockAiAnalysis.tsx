@@ -1,5 +1,7 @@
 "use client";
 
+import { SOURCE_LABELS } from "@/lib/signal-constants";
+
 export interface Signal {
   id: string;
   symbol: string;
@@ -20,12 +22,6 @@ const BADGE_LABELS: Record<string, string> = {
   bollinger_bottom: "볼린저하단",
   phoenix_pattern: "피닉스패턴",
   volume_surge: "거래량급등",
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  lassi: "라씨매매",
-  stockbot: "스톡봇",
-  quant: "퀀트",
 };
 
 export function StockAiAnalysis({ signals, currentPrice }: Props) {

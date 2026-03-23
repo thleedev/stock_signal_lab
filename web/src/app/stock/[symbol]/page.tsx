@@ -1,28 +1,8 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
-import { PageLayout } from "@/components/ui";
+import { PageLayout, SourceBadge, SignalBadge } from "@/components/ui";
 import StockDetailClient from "@/components/stock/stock-detail-client";
 import { fetchNaverDailyPrices } from "@/lib/naver-stock-api";
-
-const SOURCE_COLORS: Record<string, string> = {
-  lassi: "bg-red-900/30 text-red-400 border-red-800/50",
-  stockbot: "bg-green-900/30 text-green-400 border-green-800/50",
-  quant: "bg-blue-900/30 text-blue-400 border-blue-800/50",
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  lassi: "라씨매매",
-  stockbot: "스톡봇",
-  quant: "퀀트",
-};
-
-const SIGNAL_TYPE_LABELS: Record<string, string> = {
-  BUY: "매수",
-  BUY_FORECAST: "매수예고",
-  SELL: "매도",
-  SELL_COMPLETE: "매도완료",
-  HOLD: "보유중",
-};
 
 export const revalidate = 60;
 
@@ -197,24 +177,10 @@ export default async function StockDetailPage({
                   className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors"
                 >
                   {/* 신호 타입 */}
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${
-                      ["BUY", "BUY_FORECAST"].includes(s.signal_type as string)
-                        ? "bg-red-900/30 text-red-400"
-                        : "bg-blue-900/30 text-blue-400"
-                    }`}
-                  >
-                    {SIGNAL_TYPE_LABELS[s.signal_type as string] || String(s.signal_type)}
-                  </span>
+                  <SignalBadge type={s.signal_type as string} />
 
                   {/* 소스 배지 */}
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded border whitespace-nowrap ${
-                      SOURCE_COLORS[s.source as string] ?? ""
-                    }`}
-                  >
-                    {SOURCE_LABELS[s.source as string] || String(s.source)}
-                  </span>
+                  <SourceBadge source={s.source as "lassi" | "stockbot" | "quant"} />
 
                   {/* 가격 */}
                   {sigPrice && (
@@ -270,13 +236,7 @@ export default async function StockDetailPage({
                   </span>
 
                   {/* 소스 배지 */}
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded border whitespace-nowrap ${
-                      SOURCE_COLORS[t.source as string] ?? ""
-                    }`}
-                  >
-                    {SOURCE_LABELS[t.source as string] || t.source}
-                  </span>
+                  <SourceBadge source={t.source as "lassi" | "stockbot" | "quant"} />
 
                   {/* 분할 회차 */}
                   {t.split_seq && (

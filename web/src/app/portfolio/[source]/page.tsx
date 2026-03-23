@@ -2,12 +2,12 @@ import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
+import { SOURCE_LABELS_EMOJI, SOURCE_CARD_COLORS } from "@/lib/signal-constants";
 
-const SOURCE_META: Record<string, { label: string; color: string }> = {
-  lassi: { label: "🔴 라씨매매", color: "text-red-400" },
-  stockbot: { label: "🟢 스톡봇", color: "text-green-400" },
-  quant: { label: "🔵 퀀트", color: "text-blue-400" },
-};
+/** signal-constants의 공통 상수를 기존 SOURCE_META 형태로 매핑 */
+const SOURCE_META = Object.fromEntries(
+  Object.entries(SOURCE_LABELS_EMOJI).map(([k, label]) => [k, { label, color: SOURCE_CARD_COLORS[k]?.text ?? "" }])
+) as Record<string, { label: string; color: string }>;
 
 export const revalidate = 300;
 

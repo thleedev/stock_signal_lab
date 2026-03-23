@@ -12,6 +12,20 @@ export const SOURCE_LABELS_SHORT: Record<string, string> = {
   quant: "퀀트",
 };
 
+/** 소스별 도트 색상 클래스 (포트폴리오 등 작은 인디케이터) */
+export const SOURCE_DOTS: Record<string, string> = {
+  lassi: "bg-red-400",
+  stockbot: "bg-green-400",
+  quant: "bg-blue-400",
+};
+
+/** 소스별 카드 배경 색상 클래스 (카드/영역 배경용) */
+export const SOURCE_CARD_COLORS: Record<string, { card: string; text: string; borderColor: string }> = {
+  lassi: { card: "border-red-800/50 bg-red-900/30", text: "text-red-400", borderColor: "border-red-700" },
+  stockbot: { card: "border-green-800/50 bg-green-900/30", text: "text-green-400", borderColor: "border-green-700" },
+  quant: { card: "border-blue-800/50 bg-blue-900/30", text: "text-blue-400", borderColor: "border-blue-700" },
+};
+
 /** 소스별 배지 색상 클래스 */
 export const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",

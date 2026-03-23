@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { getLastNWeekdays } from '@/lib/date-utils';
@@ -55,18 +54,6 @@ interface Weights {
 }
 
 // ── 상수 ──────────────────────────────────────────────────────────────────────
-const SOURCE_LABELS: Record<string, string> = {
-  quant: '퀀트',
-  lassi: '라씨',
-  stockbot: '스톡봇',
-};
-
-const SOURCE_DOTS: Record<string, string> = {
-  quant: 'bg-blue-400',
-  lassi: 'bg-red-400',
-  stockbot: 'bg-green-400',
-};
-
 const SOURCE_OPTIONS = [
   { key: 'all',      label: '전체'   },
   { key: 'lassi',    label: '라씨'   },
@@ -323,8 +310,6 @@ function getGapInfo(
   return { source: sourceFilter, buyPrice: sig.buyPrice, gap, date: sig.date };
 }
 
-const LAST7 = getLastNWeekdays(7);
-
 // ── RankCard 컴포넌트 (컴팩트 2줄) ──────────────────────────────────────────────
 function RankCard({
   item, rank, weighted, favs, gapInfo, onClick, characters,
@@ -430,15 +415,27 @@ function RankCard({
         </div>
       </div>
 
-      {/* ── 줄 2: 추천근거 + 미니 점수바 ── */}
-      <div className="flex items-start gap-3 mt-1 pl-8">
-        {/* 추천근거 — 전체 표시 (줄바꿈 허용) */}
-        <p className="text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
+      {/* ── 줄 2: 추천근거 ── */}
+      <div className="mt-1 pl-8">
+        <p className="text-xs text-[var(--muted)] leading-relaxed">{reason}</p>
+      </div>
 
-        {/* 세부 점수 요약 (데스크탑) */}
-        <span className="hidden sm:inline text-[11px] text-[var(--muted)] shrink-0 tabular-nums">
-          {getScoreSummary(sig, tech, val, sup)}
-        </span>
+      {/* ── 줄 3: 세부 점수 미니바 ── */}
+      <div className="flex items-center gap-3 mt-1 pl-8 flex-wrap">
+        {[
+          { label: '기술', value: tech, color: 'bg-emerald-500' },
+          { label: '수급', value: sup, color: 'bg-sky-500' },
+          { label: '신호', value: sig, color: 'bg-amber-500' },
+          { label: '밸류', value: val, color: 'bg-violet-500' },
+        ].map(b => (
+          <div key={b.label} className="flex items-center gap-1">
+            <span className="text-[10px] text-[var(--muted)] w-5">{b.label}</span>
+            <div className="w-12 sm:w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+              <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
+            </div>
+            <span className="text-[10px] tabular-nums text-[var(--muted)] w-5">{b.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -497,12 +494,14 @@ function WeightPopup({
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: UnifiedAnalysisProps) {
-  const [selectedDate, setSelectedDate] = useState<string>(LAST7[0]);
+  // 마운트 시마다 날짜 재계산 (모듈 레벨 const는 SPA 내비게이션 시 갱신 안 됨)
+  const LAST7 = useMemo(() => getLastNWeekdays(7), []);
+  const [selectedDate, setSelectedDate] = useState<string>(() => getLastNWeekdays(7)[0]);
   const [data, setData] = useState<RankingResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
   const [market, setMarket] = useState<string>('all');
-  const [page, setPage] = useState(1);
+  const [visibleCount, setVisibleCount] = useState(50);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
   const [weights, setWeights] = useState<Weights>({ signal: 20, technical: 40, valuation: 10, supply: 30 });
@@ -517,7 +516,8 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     isOpen: false, symbol: '', name: '', currentPrice: null, isFavorite: false,
     position: { x: 0, y: 0 },
   });
-  const LIMIT = 100;
+  const PAGE_SIZE = 50;
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   // ── 실시간 가격 ──────────────────────────────────────────────────────────────
   const allSymbols = useMemo(() => (data?.items ?? []).map((s) => s.symbol), [data]);
@@ -557,13 +557,13 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   useEffect(() => { doFetch(LAST7[0], '', 'all'); }, [doFetch]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
+  const resetScroll = () => setVisibleCount(PAGE_SIZE);
   const handleDate = (date: string) => {
-    setSelectedDate(date); setPage(1); setQ(''); setMarket('all');
+    setSelectedDate(date); resetScroll(); setQ(''); setMarket('all');
     doFetch(date, '', 'all');
   };
-  const handleSearch = (v: string) => { setQ(v); setPage(1); doFetch(selectedDate, v, market); };
-  const handleMarket = (mkt: string) => { setMarket(mkt); setPage(1); doFetch(selectedDate, q, mkt); };
-  const handlePage = (pg: number) => { setPage(pg); };
+  const handleSearch = (v: string) => { setQ(v); resetScroll(); doFetch(selectedDate, v, market); };
+  const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(selectedDate, q, mkt); };
 
   const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
     e.stopPropagation();
@@ -639,8 +639,38 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
 
   const rawItems = data?.items ?? [];
 
+  // ── 실시간 가격 반영 + 모멘텀 점수 재계산 ─────────────────────────────────────
+  const liveItems = useMemo(() => {
+    if (Object.keys(livePrices).length === 0) return rawItems;
+    return rawItems.map(item => {
+      const live = livePrices[item.symbol];
+      if (!live?.current_price) return item;
+
+      const pct = live.price_change_pct ?? item.price_change_pct;
+      const cp = live.current_price;
+
+      // score_momentum 재계산 (stock-ranking/route.ts calcScore 로직 동일)
+      let score_momentum = 0;
+      if (cp && item.low_52w && item.low_52w > 0) {
+        const ratio = cp / item.low_52w;
+        if (ratio >= 0.95 && ratio <= 1.1) score_momentum += 10;
+      }
+      if (pct !== null && pct !== undefined) {
+        if (pct >= 0 && pct < 3) score_momentum += 8;
+        else if (pct >= 3 && pct < 5) score_momentum += 14;
+        else if (pct >= 5 && pct < 10) score_momentum += 10;
+        else if (pct >= 10 && pct < 25) score_momentum += 6;
+        else if (pct >= 25) score_momentum -= 4;
+      }
+      score_momentum = Math.max(0, Math.min(score_momentum, 30));
+
+      const score_total = item.score_valuation + item.score_supply + item.score_signal + score_momentum;
+      return { ...item, current_price: cp, price_change_pct: pct, score_momentum, score_total };
+    });
+  }, [rawItems, livePrices]);
+
   // ── 정렬 ──────────────────────────────────────────────────────────────────────
-  const sortedItems = useMemo(() => [...rawItems].sort((a, b) => {
+  const sortedItems = useMemo(() => [...liveItems].sort((a, b) => {
     if (sort === 'gap') {
       const ga = getGapInfo(a, signalMap, sourceFilter, livePrices)?.gap ?? (gapAsc ? Infinity : -Infinity);
       const gb = getGapInfo(b, signalMap, sourceFilter, livePrices)?.gap ?? (gapAsc ? Infinity : -Infinity);
@@ -654,7 +684,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     }
     // score (default + fallback for updated) — 순수 가중합 점수 순위
     return computeWeighted(b, weights) - computeWeighted(a, weights);
-  }), [rawItems, sort, weights, sourceFilter, signalMap, livePrices, gapAsc]);
+  }), [liveItems, sort, weights, sourceFilter, signalMap, livePrices, gapAsc]);
 
   // ── 투자성격 필터 ────────────────────────────────────────────────────────────
   const filteredByChar = useMemo(() => {
@@ -667,10 +697,25 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
 
   const total = data?.total ?? 0;
   const displayTotal = filteredByChar.length;
-  const totalPages = Math.ceil(displayTotal / LIMIT);
-  const offset = (page - 1) * LIMIT;
-  const displayItems = filteredByChar.slice(offset, offset + LIMIT);
+  const displayItems = filteredByChar.slice(0, visibleCount);
+  const hasMore = visibleCount < displayTotal;
   const aiCount = rawItems.filter((i) => i.ai).length;
+
+  // ── 무한스크롤: IntersectionObserver ──
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !loading) {
+          setVisibleCount(prev => prev + PAGE_SIZE);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loading]);
 
   return (
     <div className="space-y-3">
@@ -679,7 +724,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
         <FilterBar
           date={{ dates: LAST7, selected: selectedDate, onChange: handleDate, extraAll: { value: 'signal_all', label: '신호전체' }, allLabel: '종목전체', label: '날짜' }}
           source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter), label: '소스' }}
-          character={{ options: CHARACTER_FILTER_OPTIONS, selected: charFilter, onChange: (c) => { setCharFilter(c); setPage(1); }, label: '성격' }}
+          character={{ options: CHARACTER_FILTER_OPTIONS, selected: charFilter, onChange: (c) => { setCharFilter(c); resetScroll(); }, label: '성격' }}
           market={{ selected: market, onChange: handleMarket, label: '시장' }}
           search={{ value: q, onChange: handleSearch, placeholder: '종목명 / 코드' }}
           sort={{
@@ -737,7 +782,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
             <RankCard
               key={item.symbol}
               item={item}
-              rank={offset + idx + 1}
+              rank={idx + 1}
               weighted={w}
               favs={favs}
               gapInfo={gapInfo}
@@ -748,20 +793,10 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
         })}
       </div>
 
-      {/* ── 페이지네이션 ── */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 pt-2">
-          <button onClick={() => handlePage(Math.max(1, page - 1))} disabled={page === 1 || loading}
-            className="p-1.5 rounded-lg border border-[var(--border)] disabled:opacity-30 hover:bg-[var(--card-hover)]">
-            <ChevronLeft size={16} />
-          </button>
-          <span className="text-sm text-[var(--muted)] tabular-nums">{page} / {totalPages}</span>
-          <button onClick={() => handlePage(Math.min(totalPages, page + 1))} disabled={page === totalPages || loading}
-            className="p-1.5 rounded-lg border border-[var(--border)] disabled:opacity-30 hover:bg-[var(--card-hover)]">
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
+      {/* ── 무한스크롤 sentinel ── */}
+      <div ref={sentinelRef} className="py-4 text-center text-xs text-[var(--muted)]">
+        {hasMore ? `${displayItems.length} / ${displayTotal}종목 표시 중...` : displayTotal > 0 ? `전체 ${displayTotal}종목` : ''}
+      </div>
 
       <StockActionMenu
         symbol={menu.symbol}

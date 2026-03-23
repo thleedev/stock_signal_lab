@@ -3,18 +3,14 @@ import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
 import { StockLinkButton } from "./stock-link-button";
+import { SOURCE_CARD_COLORS, SOURCE_DOTS, SOURCE_LABELS } from "@/lib/signal-constants";
 
-const SOURCE_META: Record<string, { label: string; color: string; borderColor: string }> = {
-  lassi: { label: "라씨매매", color: "border-red-800/50 bg-red-900/30", borderColor: "border-red-700" },
-  stockbot: { label: "스톡봇", color: "border-green-800/50 bg-green-900/30", borderColor: "border-green-700" },
-  quant: { label: "퀀트", color: "border-blue-800/50 bg-blue-900/30", borderColor: "border-blue-700" },
-};
+/** SOURCE_CARD_COLORS를 기존 SOURCE_META 형태로 매핑 */
+const SOURCE_META = Object.fromEntries(
+  Object.entries(SOURCE_CARD_COLORS).map(([k, v]) => [k, { label: SOURCE_LABELS[k] ?? k, color: v.card, borderColor: v.borderColor }])
+) as Record<string, { label: string; color: string; borderColor: string }>;
 
-const SOURCE_DOT: Record<string, string> = {
-  lassi: "bg-red-400",
-  stockbot: "bg-green-400",
-  quant: "bg-blue-400",
-};
+const SOURCE_DOT = SOURCE_DOTS;
 
 interface HoldingStock {
   symbol: string;

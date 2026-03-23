@@ -1,16 +1,5 @@
 import Link from "next/link";
-
-const SOURCE_COLORS: Record<string, { card: string; text: string }> = {
-  lassi: { card: "bg-red-900/30 border-red-800/50", text: "text-red-400" },
-  stockbot: { card: "bg-green-900/30 border-green-800/50", text: "text-green-400" },
-  quant: { card: "bg-blue-900/30 border-blue-800/50", text: "text-blue-400" },
-};
-
-const SOURCE_LABELS: Record<string, string> = {
-  lassi: "라씨매매",
-  stockbot: "스톡봇",
-  quant: "퀀트",
-};
+import { SOURCE_CARD_COLORS, SOURCE_LABELS } from "@/lib/signal-constants";
 
 interface Props {
   source: "lassi" | "stockbot" | "quant";
@@ -20,7 +9,7 @@ interface Props {
 }
 
 export function SignalSummaryCard({ source, buy, sell, total }: Props) {
-  const colors = SOURCE_COLORS[source];
+  const colors = SOURCE_CARD_COLORS[source];
 
   return (
     <Link
