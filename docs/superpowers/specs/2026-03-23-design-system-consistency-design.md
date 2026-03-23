@@ -57,10 +57,10 @@
   --danger: #ef4444;
   --warning: #f59e0b;
 
-  /* Source Colors (통일 명칭) */
-  --source-lassi: #ef4444;
-  --source-stockbot: #22c55e;
-  --source-quant: #3b82f6;
+  /* Source Colors (기존 --lassi 등 유지, 별칭 추가) */
+  --lassi: #ef4444;
+  --stockbot: #22c55e;
+  --quant: #3b82f6;
 
   /* Trading Direction */
   --buy: #ef4444;
@@ -177,6 +177,8 @@ interface ResponsiveTableProps<T> {
   emptyMessage?: string;
 }
 // priority에 따라 hidden sm:table-cell, hidden md:table-cell 등 자동 적용
+// 구현: 순수 HTML table + Tailwind 반응형 클래스로 구현 (경량)
+// 참고: @tanstack/react-table이 package.json에 있으나 실제 사용처 없음 → 의존성 제거 대상
 ```
 
 #### SourceBadge
@@ -185,8 +187,10 @@ interface SourceBadgeProps {
   source: "lassi" | "stockbot" | "quant";
   size?: "sm" | "md";
 }
-// signal-constants.ts의 SOURCE_COLORS, SOURCE_LABELS를 내부에서 참조
-// 인라인 색상 중복 제거
+// 구현 방식: signal-constants.ts의 SOURCE_COLORS (Tailwind 클래스 문자열)를 그대로 활용
+// SourceBadge 내부에서 SOURCE_COLORS[source]와 SOURCE_LABELS[source]를 참조
+// CSS 변수 방식이 아닌 기존 Tailwind 클래스 방식 유지 (SOURCE_COLORS가 이미 완전한 클래스 반환)
+// 각 파일에서 인라인으로 재정의한 색상/라벨만 제거하고 이 컴포넌트로 대체
 ```
 
 #### SignalBadge
@@ -284,7 +288,7 @@ priority: "lg"      → 1024px 이상에서 표시
 ### 4.3 레이아웃 수정
 
 ```
-탭바 패딩: pb-20 → pb-16 (64px = 탭바 56px + 여백 8px)
+탭바 패딩: pb-20 유지 (iOS Safari safe-area-inset-bottom 대응 필요, 현재 값이 안전)
 타이틀 반응형: text-2xl → text-xl md:text-2xl
 ```
 
@@ -301,23 +305,26 @@ priority: "lg"      → 1024px 이상에서 표시
 개선: 시그널 조회 → 심볼 추출 → Promise.all([stock_cache, stock_info]) (병렬)
 ```
 
-#### useMemo 추가
+#### React.memo() + useMemo 추가
 **파일:** `src/components/signals/StockRankingSection.tsx`
-- `getAiBadges()`, `getBasicBadges()` 호출을 useMemo로 래핑
+- `RankCard` 컴포넌트를 먼저 `React.memo()`로 래핑 (부모 재렌더 시 불필요한 재호출 방지)
+- 그 내부에서 `getAiBadges()`, `getBasicBadges()` 호출을 `useMemo`로 래핑
+- 주의: memo() 없이 useMemo만 적용하면 효과 없음
 
 **파일:** `src/components/dashboard/watchlist-widget.tsx`
 - 목록 아이템을 memo() 컴포넌트로 래핑
 
-#### 비활성 탭 폴링 중단
-**파일:** `src/hooks/use-price-refresh.ts`
-```tsx
-// 폴링 콜백 내부에 추가
-if (document.hidden) return;
-```
-
 #### memo() 래핑
 **파일:** `src/components/market/market-client.tsx`
 - IndicatorCard를 `React.memo()`로 래핑
+
+#### 비활성 탭 폴링 중단
+**파일:** `src/hooks/use-price-refresh.ts`
+- 우선순위: P1으로 하향 (현재 5분 간격 + 장중에만 실행으로 실질 영향 제한적)
+```tsx
+// 폴링 콜백 내부에 추가 (무해하지만 효과 미미)
+if (document.hidden) return;
+```
 
 ### 5.2 P1 - 중요 개선
 
@@ -394,8 +401,11 @@ stock/[symbol]/page.tsx: 60 → 3600 (기본 데이터는 느리게 변함)
 - `src/components/signals/StockRankingSection.tsx`
 - `src/components/signals/AiRecommendationSection.tsx`
 - `src/components/dashboard/watchlist-widget.tsx`
+- `src/components/dashboard/signal-summary-card.tsx` (SOURCE_COLORS/LABELS 중복 제거)
 - `src/components/investment/investment-client.tsx`
 - `src/components/stock-modal/StockDetailModal.tsx`
+- `src/components/stock-modal/StockAiAnalysis.tsx` (SOURCE_LABELS 중복 제거)
+- `src/app/signals/signal-columns.tsx` (SOURCE_COLORS/LABELS/SIGNAL_TYPE_LABELS 중복 제거)
 
 ### 수정 (레이아웃)
 - `src/app/layout.tsx` (탭바 패딩)
