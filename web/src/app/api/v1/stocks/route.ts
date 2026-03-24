@@ -178,6 +178,8 @@ export async function GET(request: NextRequest) {
       page,
       limit,
       totalPages: Math.ceil((hasSignal ? gapCount : total) / limit),
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   }
 

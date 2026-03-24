@@ -35,33 +35,6 @@ class StatusActivity : AppCompatActivity() {
         private const val KIWOOM_SENDER = "15449000"
         private const val SMS_PERMISSION_REQUEST = 100
 
-        private val SAMPLE_STOCKBOT = """
-[키움] 스톡봇 추천주
-▷ 종목명: 원익QnC
-- 기업 개요: 반도체 제조공정용 석영 제품(쿼츠 웨어) 제조
-- 투자포인트: 호실적+외국인&기관 동반 매수
-- 추천가: 34,200원
-(매수가 범위: 33,600원 ~ 34,700원)
-- 목표가: 38,400원
-- 손절가: 31,400원
-        """.trimIndent()
-
-        private val SAMPLE_QUANT = """
-[키움]퀀트 - 매수완료
-◆성장추구 ============
-◇KG케미칼(001390)
- - 매수가 5,080원
- - 손절가 4,575원
-◆가치추구 ============
-◇경방(000050)
- - 매수가 8,680원
- - 손절가 7,820원
-        """.trimIndent()
-
-        private val SAMPLE_LASSI = """
-[키움][라씨매매신호] 주요 종목신호
-펄어비스(263750) 보유중, 한화시스템(272210) 오늘 매도, 한화에어로스페이스(012450) 보유중
-        """.trimIndent()
     }
 
     private lateinit var tvResult: TextView
@@ -89,10 +62,6 @@ class StatusActivity : AppCompatActivity() {
             collectToday()
         }
 
-        // 테스트 전송 버튼
-        findViewById<Button>(R.id.btnTestSend).setOnClickListener {
-            testSendToSupabase()
-        }
 
         updateStatus()
     }
@@ -289,42 +258,6 @@ class StatusActivity : AppCompatActivity() {
         return body
     }
 
-    /**
-     * 샘플 데이터로 Supabase 연결 테스트
-     */
-    private fun testSendToSupabase() {
-        val tvTest = findViewById<TextView>(R.id.tvTestResult)
-        tvTest.text = "샘플 데이터 전송 중..."
-
-        val sampleBodies = listOf(SAMPLE_STOCKBOT, SAMPLE_QUANT, SAMPLE_LASSI)
-        val allSignals = sampleBodies.flatMap { SmsRouter.parse(KIWOOM_SENDER, it) }
-
-        if (allSignals.isEmpty()) {
-            tvTest.text = "파싱 실패"
-            return
-        }
-
-        tvTest.text = "파싱 ${allSignals.size}건 → Supabase 전송 중..."
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                SignalApiClient.sendSignals(applicationContext, allSignals)
-                withContext(Dispatchers.Main) {
-                    tvTest.text = buildString {
-                        appendLine("전송 성공! (${allSignals.size}건)")
-                        appendLine()
-                        for (s in allSignals) {
-                            appendLine("${s.source} ${s.signalType} ${s.name} (${s.symbol ?: "?"})")
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    tvTest.text = "전송 실패: ${e.message}"
-                }
-            }
-        }
-    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,

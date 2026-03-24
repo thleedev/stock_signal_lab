@@ -142,14 +142,19 @@ export async function fetchAllStockPrices(): Promise<Map<string, StockPriceData>
 }
 
 export interface StockInvestorData {
-  foreign_net: number;     // 외국인 순매수 수량 (양수=순매수, 음수=순매도)
-  institution_net: number; // 기관 순매수 수량
-  individual_net: number;  // 개인 순매수 수량
+  foreign_net: number;     // 외국인 순매수 수량 (가장 최근 1일)
+  institution_net: number; // 기관 순매수 수량 (가장 최근 1일)
+  individual_net: number;  // 개인 순매수 수량 (가장 최근 1일)
+  // 5일 누적 데이터
+  foreign_net_5d: number;      // 외국인 5일 누적 순매수
+  institution_net_5d: number;  // 기관 5일 누적 순매수
+  foreign_streak: number;      // 외국인 연속 순매수 일수 (음수면 연속 순매도)
+  institution_streak: number;  // 기관 연속 순매수 일수
 }
 
 /**
- * 종목별 최근 거래일 투자자별 매매동향 (외국인/기관/개인 순매수)
- * integration API의 dealTrendInfos[0] (가장 최근 영업일) 사용
+ * 종목별 최근 5영업일 투자자별 매매동향
+ * integration API의 dealTrendInfos (최근 5일) 사용
  */
 export async function fetchStockInvestorData(symbol: string): Promise<StockInvestorData | null> {
   try {
@@ -167,19 +172,45 @@ export async function fetchStockInvestorData(symbol: string): Promise<StockInves
     }> | undefined;
     if (!trends || trends.length === 0) return null;
 
-    // 가장 최근 영업일 데이터
-    const latest = trends[0];
-
     const parseNet = (str: string | undefined): number => {
       if (!str) return 0;
-      // "+406,662" → 406662, "-4,868,716" → -4868716
       return parseInt(str.replace(/,/g, ''), 10) || 0;
+    };
+
+    // 최근 5일 (또는 가용한 만큼)
+    const days = trends.slice(0, 5);
+    const latest = days[0];
+
+    // 5일 누적
+    let foreign5d = 0, inst5d = 0;
+    for (const d of days) {
+      foreign5d += parseNet(d.foreignerPureBuyQuant);
+      inst5d += parseNet(d.organPureBuyQuant);
+    }
+
+    // 연속 매수/매도 일수 계산 (최근일부터)
+    const calcStreak = (getter: (d: typeof days[0]) => number): number => {
+      if (days.length === 0) return 0;
+      const first = getter(days[0]);
+      if (first === 0) return 0;
+      const isPositive = first > 0;
+      let streak = 0;
+      for (const d of days) {
+        const v = getter(d);
+        if ((isPositive && v > 0) || (!isPositive && v < 0)) streak++;
+        else break;
+      }
+      return isPositive ? streak : -streak;
     };
 
     return {
       foreign_net: parseNet(latest.foreignerPureBuyQuant),
       institution_net: parseNet(latest.organPureBuyQuant),
       individual_net: parseNet(latest.individualPureBuyQuant),
+      foreign_net_5d: foreign5d,
+      institution_net_5d: inst5d,
+      foreign_streak: calcStreak(d => parseNet(d.foreignerPureBuyQuant)),
+      institution_streak: calcStreak(d => parseNet(d.organPureBuyQuant)),
     };
   } catch {
     return null;

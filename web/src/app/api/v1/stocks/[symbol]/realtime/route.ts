@@ -46,5 +46,7 @@ export async function GET(
     low_52w: cache.low_52w ?? null,
     dividend_yield: cache.dividend_yield ?? null,
     volume: cache.volume ?? null,
+  }, {
+    headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
   });
 }

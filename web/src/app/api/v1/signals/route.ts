@@ -40,5 +40,7 @@ export async function GET(request: NextRequest) {
     total: count,
     limit,
     offset,
+  }, {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
   });
 }

@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("user_trades")
-    .select("*")
+    .select("id, portfolio_id, symbol, name, side, price, target_price, stop_price, buy_trade_id, note, created_at")
     .order("created_at", { ascending: false })
     .limit(100);
 

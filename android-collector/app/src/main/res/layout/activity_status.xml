@@ -74,21 +74,6 @@
             android:textColor="#00796B"
             android:layout_marginBottom="24dp" />
 
-        <Button
-            android:id="@+id/btnTestSend"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="샘플 신호 Supabase 전송"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:id="@+id/tvTestResult"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="13sp"
-            android:fontFamily="monospace"
-            android:textColor="#1565C0" />
 
     </LinearLayout>
 </ScrollView>

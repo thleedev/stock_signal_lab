@@ -204,14 +204,27 @@ function getRecommendReason(item: StockRankItem): string {
     if (item.ai.double_top) reasons.push('⚠️ 쌍봉 주의');
   }
 
-  // ── 수급 동향 (AI 또는 stock_cache 기반) ──
+  // ── 수급 동향 (5일 누적 + 연속성 기반) ──
   const foreignBuy = item.ai?.foreign_buying ?? (item.foreign_net_qty != null && item.foreign_net_qty > 0);
   const instBuy = item.ai?.institution_buying ?? (item.institution_net_qty != null && item.institution_net_qty > 0);
-  if (foreignBuy && instBuy) {
-    reasons.push('외국인+기관 동반매수');
+  const fStreak = item.foreign_streak ?? 0;
+  const iStreak = item.institution_streak ?? 0;
+  const f5d = item.foreign_net_5d ?? 0;
+  const i5d = item.institution_net_5d ?? 0;
+
+  // 동반매수 (5일 누적 기준)
+  if (f5d > 0 && i5d > 0) {
+    const streakInfo = [];
+    if (fStreak >= 2) streakInfo.push(`외국인${fStreak}일연속`);
+    if (iStreak >= 2) streakInfo.push(`기관${iStreak}일연속`);
+    reasons.push(streakInfo.length > 0 ? `외국인+기관 동반매수(${streakInfo.join(', ')})` : '외국인+기관 동반매수');
   } else {
-    if (foreignBuy) reasons.push('외국인 순매수');
-    if (instBuy) reasons.push('기관 순매수');
+    if (foreignBuy) {
+      reasons.push(fStreak >= 3 ? `외국인 ${fStreak}일 연속매수` : fStreak >= 2 ? `외국인 ${fStreak}일연속 순매수` : '외국인 순매수');
+    }
+    if (instBuy) {
+      reasons.push(iStreak >= 3 ? `기관 ${iStreak}일 연속매수` : iStreak >= 2 ? `기관 ${iStreak}일연속 순매수` : '기관 순매수');
+    }
   }
   if (item.ai?.volume_vs_sector) reasons.push('섹터대비 거래량↑');
   if (item.ai?.low_short_sell) reasons.push('공매도↓');

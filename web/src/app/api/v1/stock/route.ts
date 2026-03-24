@@ -46,6 +46,8 @@ export async function GET(request: NextRequest) {
       prices: pricesRes.data ?? [],
       signals: signalsRes.data ?? [],
       trades: tradesRes.data ?? [],
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

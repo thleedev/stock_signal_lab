@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
       generated_at: existing?.[0]?.created_at ?? null,
       total_candidates: currentCount,
       needs_refresh,
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
     });
   } catch (error) {
     console.error('[ai-recommendations GET]', error);

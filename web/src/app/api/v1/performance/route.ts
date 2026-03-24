@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     // 일간 통계
     let statsQuery = supabase
       .from('daily_signal_stats')
-      .select('*')
+      .select('date, source, execution_type, total_signals, buy_count, sell_count, realized_trades, hit_rate, avg_return')
       .order('date', { ascending: false });
 
     if (source) statsQuery = statsQuery.eq('source', source);
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     // 통합 스냅샷
     let combinedQuery = supabase
       .from('combined_portfolio_snapshots')
-      .select('*')
+      .select('date, execution_type, total_value, daily_return_pct, cumulative_return_pct, breakdown')
       .order('date', { ascending: true });
 
     if (dateFrom) combinedQuery = combinedQuery.gte('date', dateFrom);
@@ -71,6 +71,8 @@ export async function GET(request: NextRequest) {
       snapshots: snapshots ?? [],
       combined_snapshots: combinedSnapshots ?? [],
       signal_stats: stats ?? [],
+    }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });

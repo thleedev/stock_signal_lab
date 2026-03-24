@@ -66,20 +66,23 @@ object SignalApiClient {
         Log.d(TAG, "Sending ${signals.size} signals, batch=$batchId")
 
         // signal_time이 있는 신호 → 기존 null 행 PATCH 시도
+        // PATCH 실패 시에도 INSERT하지 않음 (이미 NULL 행이 존재하므로 중복 방지)
         val toInsert = mutableListOf<SignalInput>()
         for (s in signals) {
             if (s.signalTime != null && s.symbol != null) {
                 val patched = patchNullSignalTime(s)
                 if (patched) {
                     Log.d(TAG, "PATCH success: ${s.name}(${s.symbol}) signal_time=${s.signalTime}")
-                    continue
+                } else {
+                    Log.d(TAG, "PATCH failed, skip INSERT: ${s.name}(${s.symbol}) signal_time=${s.signalTime}")
                 }
+                continue // PATCH 성공/실패 모두 INSERT 안 함
             }
             toInsert.add(s)
         }
 
         if (toInsert.isEmpty()) {
-            Log.i(TAG, "All ${signals.size} signals patched, no INSERT needed")
+            Log.i(TAG, "All ${signals.size} signals patched or skipped, no INSERT needed")
             sendHeartbeat()
             return
         }

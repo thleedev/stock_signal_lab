@@ -47,5 +47,7 @@ export async function GET() {
     signals: grouped,
     counts,
     total: data?.length ?? 0,
+  }, {
+    headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
   });
 }

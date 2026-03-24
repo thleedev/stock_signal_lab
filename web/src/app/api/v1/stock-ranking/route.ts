@@ -14,6 +14,10 @@ export interface StockRankItem {
   roe: number | null;
   foreign_net_qty: number | null;
   institution_net_qty: number | null;
+  foreign_net_5d: number | null;
+  institution_net_5d: number | null;
+  foreign_streak: number | null;
+  institution_streak: number | null;
   short_sell_ratio: number | null;
   short_sell_updated_at: string | null;
   signal_count_30d: number | null;
@@ -88,18 +92,42 @@ function calcScore(
   const score_valuation = Math.min(100, vPer + vPbr + vRoe);
 
   // ── 수급 (0~100) ──
-  // 외국인/기관 순매수는 가장 강력한 상승 시그널
+  // 1일 순매수 + 5일 누적 + 연속성 복합 판단
   let score_supply = 0;
   const foreignBuying = stock.foreign_net_qty !== null && stock.foreign_net_qty > 0;
   const instBuying = stock.institution_net_qty !== null && stock.institution_net_qty > 0;
-  if (foreignBuying) score_supply += 30;
-  if (instBuying) score_supply += 30;
-  if (foreignBuying && instBuying) score_supply += 20; // 동반매수: 매우 강력한 시그널
+  const foreign5d = stock.foreign_net_5d ?? 0;
+  const inst5d = stock.institution_net_5d ?? 0;
+  const foreignStreak = stock.foreign_streak ?? 0;
+  const instStreak = stock.institution_streak ?? 0;
+
+  // 오늘 순매수 (기본 시그널)
+  if (foreignBuying) score_supply += 15;
+  if (instBuying) score_supply += 15;
+
+  // 5일 누적 순매수 (추세 확인)
+  if (foreign5d > 0) score_supply += 10;
+  if (inst5d > 0) score_supply += 10;
+
+  // 연속 매수 (강한 의지 = 높은 가산점)
+  if (foreignStreak >= 5) score_supply += 15;
+  else if (foreignStreak >= 3) score_supply += 10;
+  else if (foreignStreak >= 2) score_supply += 5;
+
+  if (instStreak >= 5) score_supply += 15;
+  else if (instStreak >= 3) score_supply += 10;
+  else if (instStreak >= 2) score_supply += 5;
+
+  // 동반매수 시너지 (외국인+기관 동시 5일 순매수)
+  if (foreign5d > 0 && inst5d > 0) score_supply += 10;
+
+  // 공매도
   const shortSellFresh = stock.short_sell_updated_at?.slice(0, 10) === todayStr;
   if (shortSellFresh && stock.short_sell_ratio !== null && stock.short_sell_ratio >= 0) {
-    if (stock.short_sell_ratio < 0.5) score_supply += 20;
-    else if (stock.short_sell_ratio < 1) score_supply += 10;
+    if (stock.short_sell_ratio < 0.5) score_supply += 10;
+    else if (stock.short_sell_ratio < 1) score_supply += 5;
   }
+  score_supply = Math.min(100, score_supply);
 
   // ── 신호 신뢰도 (0~100) ──
   // 반복 추천 + 최근일수록 신뢰도 높음
@@ -232,7 +260,7 @@ export async function GET(request: NextRequest) {
         while (true) {
           let query = supabase
             .from('stock_cache')
-            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, short_sell_ratio, short_sell_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, high_52w, low_52w')
+            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, high_52w, low_52w')
             .not('current_price', 'is', null)
             .range(from, from + 999);
           if (market !== 'all') query = query.eq('market', market);
@@ -310,7 +338,9 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const items = filtered.slice(offset, offset + limit);
 
-    return NextResponse.json({ items, total, page, limit, today: todayStr });
+    return NextResponse.json({ items, total, page, limit, today: todayStr }, {
+      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+    });
   } catch (e) {
     console.error('[stock-ranking]', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

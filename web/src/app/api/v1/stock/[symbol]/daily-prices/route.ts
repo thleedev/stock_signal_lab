@@ -27,11 +27,13 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const cacheHeaders = { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=1200' };
+
   if (prices && prices.length > 0) {
-    return NextResponse.json(prices);
+    return NextResponse.json(prices, { headers: cacheHeaders });
   }
 
   // Naver fallback only when Supabase returned no rows
   const naverPrices = await fetchNaverDailyPrices(symbol, 90);
-  return NextResponse.json(naverPrices ?? []);
+  return NextResponse.json(naverPrices ?? [], { headers: cacheHeaders });
 }

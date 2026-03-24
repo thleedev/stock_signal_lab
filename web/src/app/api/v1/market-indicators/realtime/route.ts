@@ -80,5 +80,7 @@ export async function GET() {
     success: true,
     timestamp: new Date().toISOString(),
     indicators: results,
+  }, {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
   });
 }

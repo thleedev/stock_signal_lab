@@ -228,17 +228,23 @@ export default async function SettingsPage() {
           </div>
           <div>
             <div className="text-xs text-[var(--muted)] mb-2">Cron 스케줄</div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="rounded border border-[var(--border)] p-3">
                 <div className="text-sm font-medium">daily-prices</div>
                 <div className="text-xs text-[var(--muted)] mt-1">
-                  평일 16:00 KST (장 마감 후 가격 수집)
+                  평일 16:00 KST (가격 수집 + 리포트)
                 </div>
               </div>
               <div className="rounded border border-[var(--border)] p-3">
-                <div className="text-sm font-medium">daily-stats</div>
+                <div className="text-sm font-medium">stock-cache</div>
                 <div className="text-xs text-[var(--muted)] mt-1">
-                  평일 18:00 KST (일일 통계 집계)
+                  평일 20:00 KST (시세 + 지표 캐시)
+                </div>
+              </div>
+              <div className="rounded border border-[var(--border)] p-3">
+                <div className="text-sm font-medium">market-indicators</div>
+                <div className="text-xs text-[var(--muted)] mt-1">
+                  매일 07:00 KST (시장지표 + 통계)
                 </div>
               </div>
             </div>

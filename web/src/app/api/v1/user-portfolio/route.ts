@@ -7,7 +7,7 @@ export async function GET() {
   const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("user_portfolios")
-    .select("*")
+    .select("id, name, sort_order, is_default, created_at")
     .is("deleted_at", null)
     .order("sort_order", { ascending: true });
 
