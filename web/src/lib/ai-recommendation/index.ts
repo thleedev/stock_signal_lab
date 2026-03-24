@@ -2,7 +2,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { AiRecommendation, AiRecommendationWeights, DEFAULT_WEIGHTS } from '@/types/ai-recommendation';
 import { calcSignalScore } from './signal-score';
 import { calcTechnicalScore, DailyPrice } from './technical-score';
-import { calcValuationScore } from './valuation-score';
+import { calcValuationScore, ForwardData } from './valuation-score';
 import { calcSupplyScore } from './supply-score';
 import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
 import { getDailyPrices, delay } from '@/lib/kis-api';
@@ -73,7 +73,7 @@ export async function generateRecommendations(
     // 종목별 재무/가격 캐시
     supabase
       .from('stock_cache')
-      .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, short_sell_updated_at, foreign_net_qty, institution_net_qty, investor_updated_at')
+      .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, short_sell_updated_at, foreign_net_qty, institution_net_qty, investor_updated_at, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, market_cap, dividend_yield, forward_per, target_price, invest_opinion')
       .in('symbol', symbols),
     // 종목별 섹터
     supabase.from('stock_info').select('symbol, sector').in('symbol', symbols),
@@ -253,19 +253,37 @@ export async function generateRecommendations(
       foreignNet,
       institutionNet,
       shortSellRatio,
+      cache?.foreign_net_5d ?? null,
+      cache?.institution_net_5d ?? null,
+      cache?.foreign_streak ?? null,
+      cache?.institution_streak ?? null,
+      cache?.market_cap ?? null,
     );
+    const forwardData: ForwardData | null =
+      (cache?.forward_per || cache?.target_price || cache?.invest_opinion)
+        ? {
+            forwardPer: cache?.forward_per ?? null,
+            targetPrice: cache?.target_price ?? null,
+            investOpinion: cache?.invest_opinion ?? null,
+            currentPrice: cache?.current_price ?? null,
+          }
+        : null;
     const valuationResult = calcValuationScore(
       cache?.per ?? null,
       cache?.pbr ?? null,
-      cache?.roe ?? null
+      cache?.roe ?? null,
+      cache?.dividend_yield ?? null,
+      forwardData,
     );
 
-    // 가중치 적용 총점
+    // 가중치 적용 총점 (기술 점수 음수도 반영 — 과열/쌍봉 경고가 총점에 영향)
     const total_score =
       (signalResult.score / 30) * weights.signal +
-      (Math.max(0, technicalResult.score) / 30) * weights.technical +
-      (valuationResult.score / 20) * weights.valuation +
-      (supplyResult.score / 23) * weights.supply;
+      (Math.max(0, technicalResult.score) / 34) * weights.technical +
+      (valuationResult.score / 25) * weights.valuation +
+      (supplyResult.score / 45) * weights.supply +
+      // 기술 음수 감점: 과열/쌍봉 패턴 시 총점 직접 차감
+      (technicalResult.score < 0 ? technicalResult.score / 12 * weights.technical : 0);
 
     return {
       symbol,

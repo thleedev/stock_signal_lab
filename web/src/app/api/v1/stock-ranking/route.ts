@@ -20,6 +20,11 @@ export interface StockRankItem {
   institution_streak: number | null;
   short_sell_ratio: number | null;
   short_sell_updated_at: string | null;
+  dividend_yield: number | null;
+  market_cap: number | null;
+  forward_per: number | null;
+  target_price: number | null;
+  invest_opinion: number | null;
   signal_count_30d: number | null;
   latest_signal_type: string | null;
   latest_signal_date: string | null;
@@ -66,21 +71,55 @@ function calcScore(
   todayStr: string
 ) {
   // ── 밸류에이션 (0~100) ──
-  // PER: 업종 평균 대비 저평가 여부, PBR: 자산가치 대비, ROE: 수익성
-  let vPer = 0, vPbr = 0, vRoe = 0;
-  if (stock.per !== null && stock.per > 0) {
-    if (stock.per < 5) vPer = 35;
-    else if (stock.per < 8) vPer = 28;
-    else if (stock.per < 12) vPer = 18;
-    else if (stock.per < 15) vPer = 8;
-    else if (stock.per < 20) vPer = 3;
-  }
-  if (stock.pbr !== null && stock.pbr > 0) {
-    if (stock.pbr < 0.3) vPbr = 35;
-    else if (stock.pbr < 0.5) vPbr = 30;
-    else if (stock.pbr < 0.8) vPbr = 20;
-    else if (stock.pbr < 1.0) vPbr = 10;
-    else if (stock.pbr < 1.5) vPbr = 3;
+  const hasForward = stock.forward_per !== null || stock.target_price !== null || stock.invest_opinion !== null;
+  let vPer = 0, vPbr = 0, vRoe = 0, vUpside = 0, vOpinion = 0;
+
+  if (hasForward) {
+    // Forward PER (0~35)
+    if (stock.forward_per !== null && stock.forward_per > 0) {
+      if (stock.forward_per < 5) vPer = 35;
+      else if (stock.forward_per < 8) vPer = 28;
+      else if (stock.forward_per < 12) vPer = 18;
+      else if (stock.forward_per < 15) vPer = 8;
+      else if (stock.forward_per < 20) vPer = 3;
+    } else if (stock.per !== null && stock.per > 0) {
+      // forward PER 없으면 trailing 폴백
+      if (stock.per < 5) vPer = 35;
+      else if (stock.per < 8) vPer = 28;
+      else if (stock.per < 12) vPer = 18;
+      else if (stock.per < 15) vPer = 8;
+      else if (stock.per < 20) vPer = 3;
+    }
+    // 목표주가 상승여력 (0~25)
+    if (stock.target_price && stock.current_price && stock.current_price > 0) {
+      const upside = ((stock.target_price - stock.current_price) / stock.current_price) * 100;
+      if (upside >= 50) vUpside = 25;
+      else if (upside >= 30) vUpside = 20;
+      else if (upside >= 15) vUpside = 12;
+      else if (upside >= 5) vUpside = 5;
+    }
+    // 투자의견 (0~15)
+    if (stock.invest_opinion !== null && stock.invest_opinion > 0) {
+      if (stock.invest_opinion >= 4.5) vOpinion = 15;
+      else if (stock.invest_opinion >= 3.5) vOpinion = 10;
+      else if (stock.invest_opinion >= 2.5) vOpinion = 3;
+    }
+  } else {
+    // Forward 없으면 trailing 기준
+    if (stock.per !== null && stock.per > 0) {
+      if (stock.per < 5) vPer = 35;
+      else if (stock.per < 8) vPer = 28;
+      else if (stock.per < 12) vPer = 18;
+      else if (stock.per < 15) vPer = 8;
+      else if (stock.per < 20) vPer = 3;
+    }
+    if (stock.pbr !== null && stock.pbr > 0) {
+      if (stock.pbr < 0.3) vPbr = 35;
+      else if (stock.pbr < 0.5) vPbr = 30;
+      else if (stock.pbr < 0.8) vPbr = 20;
+      else if (stock.pbr < 1.0) vPbr = 10;
+      else if (stock.pbr < 1.5) vPbr = 3;
+    }
   }
   if (stock.roe !== null) {
     if (stock.roe > 25) vRoe = 30;
@@ -89,7 +128,14 @@ function calcScore(
     else if (stock.roe > 10) vRoe = 12;
     else if (stock.roe > 5) vRoe = 5;
   }
-  const score_valuation = Math.min(100, vPer + vPbr + vRoe);
+  // 배당수익률 가산 (0~15)
+  let vDiv = 0;
+  if (stock.dividend_yield !== null && stock.dividend_yield > 0) {
+    if (stock.dividend_yield >= 5) vDiv = 15;
+    else if (stock.dividend_yield >= 3) vDiv = 10;
+    else if (stock.dividend_yield >= 1.5) vDiv = 5;
+  }
+  const score_valuation = Math.min(100, vPer + vPbr + vRoe + vDiv + vUpside + vOpinion);
 
   // ── 수급 (0~100) ──
   // 1일 순매수 + 5일 누적 + 연속성 복합 판단
@@ -102,24 +148,32 @@ function calcScore(
   const instStreak = stock.institution_streak ?? 0;
 
   // 오늘 순매수 (기본 시그널)
-  if (foreignBuying) score_supply += 15;
-  if (instBuying) score_supply += 15;
+  if (foreignBuying) score_supply += 20;
+  if (instBuying) score_supply += 20;
 
   // 5일 누적 순매수 (추세 확인)
-  if (foreign5d > 0) score_supply += 10;
-  if (inst5d > 0) score_supply += 10;
+  if (foreign5d > 0) score_supply += 12;
+  if (inst5d > 0) score_supply += 12;
 
   // 연속 매수 (강한 의지 = 높은 가산점)
-  if (foreignStreak >= 5) score_supply += 15;
-  else if (foreignStreak >= 3) score_supply += 10;
-  else if (foreignStreak >= 2) score_supply += 5;
+  if (foreignStreak >= 5) score_supply += 20;
+  else if (foreignStreak >= 3) score_supply += 15;
+  else if (foreignStreak >= 2) score_supply += 8;
 
-  if (instStreak >= 5) score_supply += 15;
-  else if (instStreak >= 3) score_supply += 10;
-  else if (instStreak >= 2) score_supply += 5;
+  if (instStreak >= 5) score_supply += 20;
+  else if (instStreak >= 3) score_supply += 15;
+  else if (instStreak >= 2) score_supply += 8;
 
   // 동반매수 시너지 (외국인+기관 동시 5일 순매수)
   if (foreign5d > 0 && inst5d > 0) score_supply += 10;
+
+  // 시총 대비 순매수 비율 (유의미한 규모인지)
+  if (stock.market_cap && stock.market_cap > 0 && stock.current_price && stock.current_price > 0) {
+    const totalNetAmount = ((stock.foreign_net_qty ?? 0) + (stock.institution_net_qty ?? 0)) * stock.current_price;
+    const ratio = totalNetAmount / stock.market_cap;
+    if (ratio > 0.001) score_supply += 8;        // 시총 대비 0.1% 이상
+    else if (ratio > 0.0005) score_supply += 4;  // 0.05% 이상
+  }
 
   // 공매도
   const shortSellFresh = stock.short_sell_updated_at?.slice(0, 10) === todayStr;
@@ -148,22 +202,20 @@ function calcScore(
   score_signal = Math.min(100, score_signal);
 
   // ── 기술/모멘텀 (0~100) ──
-  // 52주 저점 대비 위치(반등 초기 유리) + 단기 등락률(과열 감점)
+  // 52주 범위 내 상대 위치(하단일수록 유리) + 단기 등락률(과열 감점)
   let score_momentum = 0;
 
-  // 52주 저점 대비 위치: 저점 근처일수록 반등 기대
-  if (stock.current_price && stock.low_52w && stock.low_52w > 0) {
-    const ratio = stock.current_price / stock.low_52w;
-    if (ratio >= 0.95 && ratio <= 1.05) score_momentum += 40;       // 52주 저점 근접: 반등 기대
-    else if (ratio > 1.05 && ratio <= 1.15) score_momentum += 30;   // 저점 이탈 초기
-    else if (ratio > 1.15 && ratio <= 1.3) score_momentum += 20;    // 상승 추세 진입
-    else if (ratio > 1.3 && ratio <= 1.5) score_momentum += 10;     // 상승 중반
-  }
-
-  // 52주 고점 대비: 고점 근처는 저항 예상
-  if (stock.current_price && stock.high_52w && stock.high_52w > 0) {
-    const highRatio = stock.current_price / stock.high_52w;
-    if (highRatio > 0.95) score_momentum -= 10;   // 52주 고점 근접: 저항 감점
+  // 52주 범위 내 상대 위치: 하단일수록 상승 여력
+  if (stock.current_price && stock.high_52w && stock.low_52w &&
+      stock.high_52w > stock.low_52w) {
+    const range = stock.high_52w - stock.low_52w;
+    const position = (stock.current_price - stock.low_52w) / range; // 0=저점, 1=고점
+    if (position <= 0.15) score_momentum += 40;       // 바닥권: 강한 반등 기대
+    else if (position <= 0.30) score_momentum += 35;  // 저점 이탈 초기
+    else if (position <= 0.50) score_momentum += 25;  // 중간 하단: 상승 여력
+    else if (position <= 0.70) score_momentum += 15;  // 중간 상단
+    else if (position <= 0.85) score_momentum += 8;   // 고점 접근
+    else score_momentum += 3;                          // 52주 고점 근접 (상승 추세 유지)
   }
 
   // 단기 등락률: 상승 초입에 가점, 과열에 감점
@@ -260,7 +312,7 @@ export async function GET(request: NextRequest) {
         while (true) {
           let query = supabase
             .from('stock_cache')
-            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, high_52w, low_52w')
+            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, high_52w, low_52w, dividend_yield, market_cap, forward_per, target_price, invest_opinion')
             .not('current_price', 'is', null)
             .range(from, from + 999);
           if (market !== 'all') query = query.eq('market', market);

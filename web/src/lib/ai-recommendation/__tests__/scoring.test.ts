@@ -348,8 +348,9 @@ describe('calcValuationScore', () => {
 // calcSupplyScore
 // ===========================================================================
 describe('calcSupplyScore', () => {
+  // 새 시그니처: (volume, price, sectorAvg, foreignNet, instNet, shortSell, foreign5d, inst5d, fStreak, iStreak, marketCap)
   it('returns 0 for all null inputs', () => {
-    const result = calcSupplyScore(null, null, null, null, null, null);
+    const result = calcSupplyScore(null, null, null, null, null, null, null, null, null, null, null);
     expect(result.score).toBe(0);
     expect(result.foreign_buying).toBe(false);
     expect(result.institution_buying).toBe(false);
@@ -357,72 +358,70 @@ describe('calcSupplyScore', () => {
     expect(result.low_short_sell).toBe(false);
   });
 
-  it('scores foreign buying (+7)', () => {
-    const result = calcSupplyScore(null, null, null, 1000, null, null);
+  it('scores foreign buying (+9)', () => {
+    const result = calcSupplyScore(null, null, null, 1000, null, null, null, null, null, null, null);
     expect(result.foreign_buying).toBe(true);
-    expect(result.score).toBe(7);
+    expect(result.score).toBe(9);
   });
 
   it('does not score foreign selling', () => {
-    const result = calcSupplyScore(null, null, null, -500, null, null);
+    const result = calcSupplyScore(null, null, null, -500, null, null, null, null, null, null, null);
     expect(result.foreign_buying).toBe(false);
     expect(result.score).toBe(0);
   });
 
-  it('scores institution buying (+7)', () => {
-    const result = calcSupplyScore(null, null, null, null, 2000, null);
+  it('scores institution buying (+9)', () => {
+    const result = calcSupplyScore(null, null, null, null, 2000, null, null, null, null, null, null);
     expect(result.institution_buying).toBe(true);
-    expect(result.score).toBe(7);
+    expect(result.score).toBe(9);
   });
 
   it('scores both foreign and institution buying with synergy bonus', () => {
-    // foreign +7, institution +7, synergy +3 = 17
-    const result = calcSupplyScore(null, null, null, 1000, 2000, null);
+    // foreign +9, institution +9, synergy +3 = 21
+    const result = calcSupplyScore(null, null, null, 1000, 2000, null, null, null, null, null, null);
     expect(result.foreign_buying).toBe(true);
     expect(result.institution_buying).toBe(true);
-    expect(result.score).toBe(17);
+    expect(result.score).toBe(21);
   });
 
   it('scores volume vs sector when turnover >= 2x sector average', () => {
-    // turnover = 1000 * 50000 = 50,000,000; sectorAvg = 20,000,000
-    const result = calcSupplyScore(1000, 50000, 20000000, null, null, null);
+    const result = calcSupplyScore(1000, 50000, 20000000, null, null, null, null, null, null, null, null);
     expect(result.volume_vs_sector).toBe(true);
     expect(result.score).toBe(4);
   });
 
   it('does not score volume vs sector when turnover < 2x', () => {
-    // turnover = 1000 * 50000 = 50,000,000; sectorAvg = 30,000,000
-    const result = calcSupplyScore(1000, 50000, 30000000, null, null, null);
+    const result = calcSupplyScore(1000, 50000, 30000000, null, null, null, null, null, null, null, null);
     expect(result.volume_vs_sector).toBe(false);
     expect(result.score).toBe(0);
   });
 
   it('scores low short sell ratio (< 1%)', () => {
-    const result = calcSupplyScore(null, null, null, null, null, 0.5);
+    const result = calcSupplyScore(null, null, null, null, null, 0.5, null, null, null, null, null);
     expect(result.low_short_sell).toBe(true);
     expect(result.score).toBe(2);
   });
 
   it('does not score short sell ratio >= 1%', () => {
-    const result = calcSupplyScore(null, null, null, null, null, 1.5);
+    const result = calcSupplyScore(null, null, null, null, null, 1.5, null, null, null, null, null);
     expect(result.low_short_sell).toBe(false);
     expect(result.score).toBe(0);
   });
 
   it('scores 0% short sell ratio as low', () => {
-    const result = calcSupplyScore(null, null, null, null, null, 0);
+    const result = calcSupplyScore(null, null, null, null, null, 0, null, null, null, null, null);
     expect(result.low_short_sell).toBe(true);
     expect(result.score).toBe(2);
   });
 
   it('combines all positive factors', () => {
-    // foreign +7, institution +7, synergy +3, volume +4, shortSell +2 = 23
-    const result = calcSupplyScore(5000, 10000, 20000000, 1000, 2000, 0.3);
-    expect(result.score).toBe(23);
+    // foreign +9, institution +9, synergy +3, volume +4, shortSell +2 = 27
+    const result = calcSupplyScore(5000, 10000, 20000000, 1000, 2000, 0.3, null, null, null, null, null);
+    expect(result.score).toBe(27);
   });
 
-  it('caps score at 23', () => {
-    const result = calcSupplyScore(5000, 10000, 20000000, 1000, 2000, 0.3);
-    expect(result.score).toBeLessThanOrEqual(23);
+  it('caps score at 45', () => {
+    const result = calcSupplyScore(5000, 10000, 20000000, 1000, 2000, 0.3, 5000, 5000, 5, 5, 100000000);
+    expect(result.score).toBeLessThanOrEqual(45);
   });
 });

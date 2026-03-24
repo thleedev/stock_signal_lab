@@ -1,5 +1,5 @@
 export interface TechnicalScoreResult {
-  score: number; // -8~30
+  score: number; // -12~34
   rsi: number | null;
   macd_cross: boolean;
   golden_cross: boolean;
@@ -8,6 +8,7 @@ export interface TechnicalScoreResult {
   double_top: boolean;
   volume_surge: boolean;
   week52_low_near: boolean;
+  ma_aligned: boolean;
   data_insufficient: boolean;
 }
 
@@ -77,6 +78,7 @@ export function calcTechnicalScore(
     double_top: false,
     volume_surge: false,
     week52_low_near: false,
+    ma_aligned: false,
     data_insufficient: true,
   };
 
@@ -182,6 +184,19 @@ export function calcTechnicalScore(
   }
   if (volumeSurge) score += 4;
 
+  // 이동평균 정배열: 5일선 > 20일선 > 60일선 (확실한 상승 추세)
+  let maAligned = false;
+  if (closes.length >= 60) {
+    const sma60 = calcSMA(closes, 60);
+    const latest5 = sma5[sma5.length - 1];
+    const latest20 = sma20[sma20.length - 1];
+    const latest60 = sma60[sma60.length - 1];
+    if (latest5 > latest20 && latest20 > latest60) {
+      maAligned = true;
+    }
+  }
+  if (maAligned) score += 4;
+
   // 52주 저점 근처 (±5%)
   let week52LowNear = false;
   if (low52w && low52w > 0 && currentPrice > 0) {
@@ -233,7 +248,7 @@ export function calcTechnicalScore(
   if (doubleTop) score -= 8;
 
   return {
-    score: Math.max(-8, Math.min(score, 30)),
+    score: Math.max(-12, Math.min(score, 34)),
     rsi,
     macd_cross: macdCross,
     golden_cross: goldenCross,
@@ -242,6 +257,7 @@ export function calcTechnicalScore(
     double_top: doubleTop,
     volume_surge: volumeSurge,
     week52_low_near: week52LowNear,
+    ma_aligned: maAligned,
     data_insufficient: false,
   };
 }

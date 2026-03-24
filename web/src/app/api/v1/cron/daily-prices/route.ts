@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { getDailyPrices, delay } from '@/lib/kis-api';
 import { fetchKrxShortSell } from '@/lib/krx-shortsell-api';
+import { fetchAllStockPrices } from '@/lib/naver-stock-api';
 import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
+import { fetchBulkIndicators } from '@/lib/krx-api';
 import { createAiProvider } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const SOURCE_LABELS: Record<string, string> = {
   lassi: '라씨매매',
@@ -32,11 +34,9 @@ const INDICATOR_LABELS: Record<string, string> = {
 /**
  * Vercel Cron: 평일 16:00 KST (UTC 07:00)
  *
- * 1) 오늘 신호 종목 + 보유 종목의 일봉 수집 (KIS)
- * 2) 공매도 비율 수집 (KRX) — 배치 upsert
- * 3) 투자자별 매매동향 (Naver) — 배치 upsert
- * 4) 분할매매 예약 실행
- * 5) AI 일간 리포트 생성 (기존 daily-report 통합)
+ * [stock-cache 통합] 전종목 시세 + 우선순위 지표/forward + 신호 집계
+ * [daily-prices] 신호/보유 종목 일봉 + 공매도 + 투자자 수급
+ * [daily-prices] 분할매매 + AI 리포트
  */
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -45,33 +45,139 @@ export async function GET(request: Request) {
   }
 
   const supabase = createServiceClient();
+  const startTime = Date.now();
+  const lap = (label: string) => console.log(`[daily-sync] ${label} (${((Date.now() - startTime) / 1000).toFixed(1)}초)`);
+
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const today = kst.toISOString().slice(0, 10);
   const todayCompact = today.replace(/-/g, '');
   const d30 = new Date(Date.now() - 30 * 86400000);
   const startDate = d30.toISOString().slice(0, 10).replace(/-/g, '');
+  const ts = new Date().toISOString();
 
   try {
-    // === 1. 수집 대상 종목 추출 (병렬) ===
-    const [{ data: todaySignals }, { data: openTrades }, { data: pendingSchedule }] = await Promise.all([
+    // ═══ Step 1: 대상 종목 수집 (병렬) ═══
+    const [
+      { data: todaySignals },
+      { data: openTrades },
+      { data: pendingSchedule },
+      { data: favs },
+      { data: watchlist },
+      { data: recentSignals },
+    ] = await Promise.all([
       supabase.from('signals').select('symbol').gte('timestamp', `${today}T00:00:00+09:00`).not('symbol', 'is', null),
       supabase.from('virtual_trades').select('symbol').eq('side', 'BUY'),
       supabase.from('split_trade_schedule').select('symbol').eq('status', 'pending'),
+      supabase.from('favorite_stocks').select('symbol'),
+      supabase.from('watchlist').select('symbol'),
+      supabase.from('signals').select('symbol').gte('timestamp', new Date(Date.now() - 7 * 86400000).toISOString()),
     ]);
 
-    const symbols = new Set<string>();
-    todaySignals?.forEach((s) => s.symbol && symbols.add(s.symbol));
-    openTrades?.forEach((t) => symbols.add(t.symbol));
-    pendingSchedule?.forEach((s) => symbols.add(s.symbol));
+    // daily-prices 대상 (일봉 + 수급 수집)
+    const dpSymbols = new Set<string>();
+    todaySignals?.forEach((s) => s.symbol && dpSymbols.add(s.symbol));
+    openTrades?.forEach((t) => dpSymbols.add(t.symbol));
+    pendingSchedule?.forEach((s) => dpSymbols.add(s.symbol));
 
-    // === 2. KIS API 일봉 수집 (5병렬 + 1초 딜레이) ===
+    // stock-cache 우선순위 (지표 + forward 수집)
+    const prioritySet = new Set<string>();
+    for (const f of favs ?? []) prioritySet.add(f.symbol);
+    for (const w of watchlist ?? []) prioritySet.add(w.symbol);
+    for (const s of recentSignals ?? []) if (s.symbol) prioritySet.add(s.symbol);
+    const prioritySymbols = Array.from(prioritySet);
+
+    // 수급 수집 대상 = 둘의 합집합
+    const investorSymbols = [...new Set([...dpSymbols, ...prioritySet])];
+
+    lap(`대상: 일봉 ${dpSymbols.size}개, 지표 ${prioritySymbols.length}개, 수급 ${investorSymbols.length}개`);
+
+    // ═══ Step 2: 전종목 시세 + 지표 + 투자자 + 공매도 (병렬) ═══
+    const [priceMap, indicatorMap, investorMap, shortSellMap] = await Promise.all([
+      fetchAllStockPrices(),
+      prioritySymbols.length > 0 ? fetchBulkIndicators(prioritySymbols, 30) : Promise.resolve(new Map()),
+      investorSymbols.length > 0 ? fetchBulkInvestorData(investorSymbols) : Promise.resolve(new Map()),
+      fetchKrxShortSell(),
+    ]);
+    lap(`시세 ${priceMap.size} + 지표 ${indicatorMap.size} + 수급 ${investorMap.size} + 공매도 ${shortSellMap.size} 조회`);
+
+    // ═══ Step 3: stock_cache 일괄 업데이트 ═══
+    const stocks: { symbol: string }[] = [];
+    let from = 0;
+    while (true) {
+      const { data: page } = await supabase.from('stock_cache').select('symbol').range(from, from + 999);
+      if (!page || page.length === 0) break;
+      stocks.push(...page);
+      if (page.length < 1000) break;
+      from += 1000;
+    }
+
+    let updated = 0;
+    const targets = stocks.filter(({ symbol }) =>
+      priceMap.has(symbol) || indicatorMap.has(symbol) || investorMap.has(symbol) || shortSellMap.has(symbol)
+    );
+
+    for (let i = 0; i < targets.length; i += 500) {
+      const batch = targets.slice(i, i + 500);
+      const rows = batch.map(({ symbol }) => {
+        const price = priceMap.get(symbol);
+        const indicator = indicatorMap.get(symbol);
+        const investor = investorMap.get(symbol);
+        const row: Record<string, unknown> = { symbol, updated_at: ts };
+
+        if (price) {
+          row.current_price = price.current_price;
+          row.market_cap = price.market_cap;
+          if (price.volume > 0) {
+            row.volume = price.volume;
+            row.price_change = price.price_change;
+            row.price_change_pct = price.price_change_pct;
+          }
+        }
+        if (indicator) {
+          row.per = indicator.per || null;
+          row.pbr = indicator.pbr || null;
+          row.eps = indicator.eps || null;
+          row.bps = indicator.bps || null;
+          row.roe = indicator.roe || null;
+          row.high_52w = indicator.high_52w || null;
+          row.low_52w = indicator.low_52w || null;
+          row.dividend_yield = indicator.dividend_yield || null;
+          row.forward_per = indicator.forward_per;
+          row.forward_eps = indicator.forward_eps;
+          row.target_price = indicator.target_price;
+          row.invest_opinion = indicator.invest_opinion;
+          row.consensus_updated_at = ts;
+        }
+        if (investor) {
+          row.foreign_net_qty = investor.foreign_net;
+          row.institution_net_qty = investor.institution_net;
+          row.foreign_net_5d = investor.foreign_net_5d;
+          row.institution_net_5d = investor.institution_net_5d;
+          row.foreign_streak = investor.foreign_streak;
+          row.institution_streak = investor.institution_streak;
+          row.investor_updated_at = ts;
+        }
+        if (shortSellMap.has(symbol)) {
+          row.short_sell_ratio = shortSellMap.get(symbol)!;
+          row.short_sell_updated_at = ts;
+        }
+        return row;
+      });
+
+      const { error: e } = await supabase
+        .from('stock_cache')
+        .upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
+      if (!e) updated += batch.length;
+      else console.error(`[daily-sync] Batch upsert error:`, e.message);
+    }
+    lap(`stock_cache 업데이트: ${updated}종목`);
+
+    // ═══ Step 4: KIS API 일봉 수집 ═══
     let savedCount = 0;
-    const symbolsArr = [...symbols];
-    const KIS_CONCURRENCY = 5;
-
-    for (let i = 0; i < symbolsArr.length; i += KIS_CONCURRENCY) {
-      const chunk = symbolsArr.slice(i, i + KIS_CONCURRENCY);
+    const dpArr = [...dpSymbols];
+    for (let i = 0; i < dpArr.length; i += 5) {
+      const chunk = dpArr.slice(i, i + 5);
       const results = await Promise.allSettled(
         chunk.map(async (symbol) => {
           const prices = await getDailyPrices(symbol, startDate, todayCompact);
@@ -83,81 +189,69 @@ export async function GET(request: Request) {
           const { error } = await supabase
             .from('daily_prices')
             .upsert(rows, { onConflict: 'symbol,date' });
-          if (error) {
-            console.error(`[daily-prices] Upsert failed for ${symbol}:`, error);
-            return 0;
-          }
-          return rows.length;
+          return error ? 0 : rows.length;
         })
       );
-      for (const r of results) {
-        if (r.status === 'fulfilled') savedCount += r.value;
-      }
-      if (i + KIS_CONCURRENCY < symbolsArr.length) await delay(1000);
+      for (const r of results) if (r.status === 'fulfilled') savedCount += r.value;
+      if (i + 5 < dpArr.length) await delay(1000);
     }
+    lap(`일봉 저장: ${savedCount}건`);
 
-    // === 3. 공매도 + 투자자 동향 (병렬 수집, 배치 upsert) ===
-    const [shortSellMap, investorMap] = await Promise.all([
-      fetchKrxShortSell(),
-      symbolsArr.length > 0 ? fetchBulkInvestorData(symbolsArr) : Promise.resolve(new Map()),
-    ]);
+    // ═══ Step 5: 신호 집계 (30일) ═══
+    const { data: signalCounts } = await supabase
+      .from('signals')
+      .select('symbol, signal_type, timestamp')
+      .in('signal_type', ['BUY', 'BUY_FORECAST'])
+      .gte('timestamp', d30.toISOString())
+      .order('timestamp', { ascending: false });
 
-    let shortSellUpdated = 0;
-    if (shortSellMap.size > 0 && symbolsArr.length > 0) {
-      const ts = new Date().toISOString();
-      const shortSellRows = symbolsArr
-        .filter((sym) => shortSellMap.has(sym))
-        .map((sym) => ({
-          symbol: sym,
-          short_sell_ratio: shortSellMap.get(sym)!,
-          short_sell_updated_at: ts,
+    if (signalCounts && signalCounts.length > 0) {
+      const symbolSignals: Record<string, { count: number; latestType: string; latestDate: string }> = {};
+      for (const s of signalCounts) {
+        if (!s.symbol) continue;
+        if (!symbolSignals[s.symbol]) {
+          symbolSignals[s.symbol] = { count: 0, latestType: s.signal_type, latestDate: s.timestamp };
+        }
+        symbolSignals[s.symbol].count++;
+      }
+      const entries = Object.entries(symbolSignals);
+      for (let i = 0; i < entries.length; i += 500) {
+        const rows = entries.slice(i, i + 500).map(([symbol, info]) => ({
+          symbol,
+          signal_count_30d: info.count,
+          latest_signal_type: info.latestType,
+          latest_signal_date: info.latestDate,
         }));
-      // 배치 upsert (500건씩)
-      for (let i = 0; i < shortSellRows.length; i += 500) {
-        const batch = shortSellRows.slice(i, i + 500);
-        await supabase.from('stock_cache').upsert(batch, { onConflict: 'symbol', ignoreDuplicates: false });
+        await supabase.from('stock_cache').upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
       }
-      shortSellUpdated = shortSellRows.length;
+      lap(`신호 집계: ${entries.length}종목`);
     }
 
-    let investorUpdated = 0;
-    if (investorMap.size > 0) {
-      const ts = new Date().toISOString();
-      const investorRows = Array.from(investorMap.entries()).map(([sym, d]) => ({
-        symbol: sym,
-        foreign_net_qty: d.foreign_net,
-        institution_net_qty: d.institution_net,
-        foreign_net_5d: d.foreign_net_5d,
-        institution_net_5d: d.institution_net_5d,
-        foreign_streak: d.foreign_streak,
-        institution_streak: d.institution_streak,
-        investor_updated_at: ts,
-      }));
-      for (let i = 0; i < investorRows.length; i += 500) {
-        const batch = investorRows.slice(i, i + 500);
-        await supabase.from('stock_cache').upsert(batch, { onConflict: 'symbol', ignoreDuplicates: false });
+    // ═══ Step 6: 즐겨찾기 동기화 ═══
+    if (favs && favs.length > 0) {
+      const favSymbols = favs.map((f) => f.symbol);
+      for (let i = 0; i < favSymbols.length; i += 500) {
+        await supabase.from('stock_cache').update({ is_favorite: true }).in('symbol', favSymbols.slice(i, i + 500));
       }
-      investorUpdated = investorRows.length;
     }
 
-    // === 4. 분할매매 예약 실행 ===
+    // ═══ Step 7: 분할매매 + AI 리포트 ═══
     const splitResult = await executePendingSplitTrades(supabase, today);
-
-    // === 5. AI 일간 리포트 생성 (기존 daily-report 통합) ===
     const reportResult = await generateDailyReport(supabase, today, todayCompact);
+    lap('완료');
 
     return NextResponse.json({
       success: true,
       date: today,
-      symbols: symbols.size,
-      prices_saved: savedCount,
-      short_sell_updated: shortSellUpdated,
-      investor_updated: investorUpdated,
-      splits_executed: splitResult,
+      stock_cache: { updated, prices: priceMap.size, indicators: indicatorMap.size, investors: investorMap.size },
+      daily_prices: { symbols: dpSymbols.size, saved: savedCount },
+      short_sell: shortSellMap.size,
+      splits: splitResult,
       report: reportResult,
+      elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}초`,
     });
   } catch (e) {
-    console.error('[daily-prices] Cron error:', e);
+    console.error('[daily-sync] Cron error:', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -218,7 +312,7 @@ async function executePendingSplitTrades(
   return executed;
 }
 
-// ─── AI 일간 리포트 (기존 daily-report 통합) ──────────────
+// ─── AI 일간 리포트 ──────────────────────────────────────
 
 async function generateDailyReport(
   supabase: ReturnType<typeof createServiceClient>,
@@ -228,7 +322,6 @@ async function generateDailyReport(
   const dateStart = `${today}T00:00:00+09:00`;
   const dateEnd = `${today}T23:59:59+09:00`;
 
-  // 데이터 병렬 수집 (stock_cache의 투자자 동향 활용 — KIS 직접 호출 제거)
   const [
     { data: signals },
     { data: indicators },
@@ -248,7 +341,6 @@ async function generateDailyReport(
     supabase.from('market_score_history')
       .select('date, total_score, combined_score')
       .order('date', { ascending: false }).limit(5),
-    // stock_cache에서 투자자 동향 재활용 (KIS API 호출 제거)
     supabase.from('stock_cache')
       .select('symbol, foreign_net_qty, institution_net_qty')
       .not('investor_updated_at', 'is', null)
@@ -260,7 +352,6 @@ async function generateDailyReport(
     return { generated: false };
   }
 
-  // 신호 집계
   const sourceBreakdown: Record<string, { buy: number; sell: number }> = {};
   const buyStocks: Record<string, { name: string; count: number; price?: number }> = {};
   const sellStocks: Record<string, { name: string; count: number; price?: number }> = {};
@@ -293,7 +384,6 @@ async function generateDailyReport(
     .sort(([, a], [, b]) => b.count - a.count).slice(0, 10)
     .map(([symbol, info]) => ({ symbol, ...info }));
 
-  // 투자자 동향 집계 (stock_cache 데이터 활용)
   let investorTrends: { foreign_total: number; institution_total: number } | null = null;
   if (investorData && investorData.length > 0) {
     let foreignTotal = 0;
@@ -305,7 +395,6 @@ async function generateDailyReport(
     investorTrends = { foreign_total: foreignTotal, institution_total: institutionTotal };
   }
 
-  // AI 리포트 생성
   let aiSummary: string | null = null;
   try {
     const ai = createAiProvider();
@@ -328,7 +417,6 @@ async function generateDailyReport(
     console.error('[daily-report] AI 리포트 생성 실패:', e);
   }
 
-  // DB 저장
   const upsertData: Record<string, unknown> = {
     date: today,
     total_signals: signals.length,

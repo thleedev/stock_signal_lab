@@ -109,12 +109,12 @@ const CHARACTER_FILTER_OPTIONS = [
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
-    // AI 점수는 이전 max 기준(signal:30, tech:30, val:20, supply:23)으로 저장됨 → 0~100 변환
+    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, tech:34, val:25, supply:45)
     return {
       sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp(item.ai.technical_score / 30 * 100),
-      val: clamp(item.ai.valuation_score / 20 * 100),
-      sup: clamp(item.ai.supply_score / 23 * 100),
+      tech: clamp(item.ai.technical_score / 34 * 100),
+      val: clamp(item.ai.valuation_score / 25 * 100),
+      sup: clamp(item.ai.supply_score / 45 * 100),
     };
   }
   // 서버 calcScore가 이제 0~100 정규화 점수를 반환
@@ -268,11 +268,11 @@ function fmtNum(v: number | null, d = 1) { return v == null ? '-' : v.toFixed(d)
 
 // ── 점수 → 등급 변환 ──────────────────────────────────────────────────────────
 function getGrade(score: number): { grade: string; label: string; cls: string } {
-  if (score >= 80) return { grade: 'A+', label: '적극매수', cls: 'bg-red-500 text-white' };
-  if (score >= 65) return { grade: 'A', label: '매수', cls: 'bg-red-400 text-white' };
-  if (score >= 50) return { grade: 'B+', label: '관심', cls: 'bg-orange-400 text-white' };
-  if (score >= 35) return { grade: 'B', label: '보통', cls: 'bg-yellow-400 text-gray-900' };
-  if (score >= 20) return { grade: 'C', label: '관망', cls: 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
+  if (score >= 90) return { grade: 'A+', label: '적극매수', cls: 'bg-red-600 text-white' };
+  if (score >= 80) return { grade: 'A', label: '매수', cls: 'bg-red-500 text-white' };
+  if (score >= 65) return { grade: 'B+', label: '관심', cls: 'bg-orange-400 text-white' };
+  if (score >= 50) return { grade: 'B', label: '보통', cls: 'bg-yellow-400 text-gray-900' };
+  if (score >= 35) return { grade: 'C', label: '관망', cls: 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
   return { grade: 'D', label: '주의', cls: 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400' };
 }
 
@@ -503,7 +503,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [visibleCount, setVisibleCount] = useState(50);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
-  const [weights, setWeights] = useState<Weights>({ signal: 20, technical: 40, valuation: 10, supply: 30 });
+  const [weights, setWeights] = useState<Weights>({ signal: 10, technical: 40, valuation: 10, supply: 40 });
   const [sort, setSort] = useState<SortMode>('score');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [charFilter, setCharFilter] = useState<string>('all');
@@ -648,20 +648,30 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       const pct = live.price_change_pct ?? item.price_change_pct;
       const cp = live.current_price;
 
-      // score_momentum 재계산 (stock-ranking/route.ts calcScore 로직 동일)
+      // score_momentum 재계산 (stock-ranking/route.ts calcScore 로직과 동일한 0~100 스케일)
       let score_momentum = 0;
-      if (cp && item.low_52w && item.low_52w > 0) {
-        const ratio = cp / item.low_52w;
-        if (ratio >= 0.95 && ratio <= 1.1) score_momentum += 10;
+      if (cp && item.high_52w && item.low_52w &&
+          item.high_52w > item.low_52w) {
+        const range = item.high_52w - item.low_52w;
+        const position = (cp - item.low_52w) / range;
+        if (position <= 0.15) score_momentum += 40;
+        else if (position <= 0.30) score_momentum += 35;
+        else if (position <= 0.50) score_momentum += 25;
+        else if (position <= 0.70) score_momentum += 15;
+        else if (position <= 0.85) score_momentum += 8;
+        else score_momentum += 3;
       }
       if (pct !== null && pct !== undefined) {
-        if (pct >= 0 && pct < 3) score_momentum += 8;
-        else if (pct >= 3 && pct < 5) score_momentum += 14;
-        else if (pct >= 5 && pct < 10) score_momentum += 10;
-        else if (pct >= 10 && pct < 25) score_momentum += 6;
-        else if (pct >= 25) score_momentum -= 4;
+        if (pct >= 1 && pct < 3) score_momentum += 30;
+        else if (pct >= 3 && pct < 5) score_momentum += 40;
+        else if (pct >= 5 && pct < 10) score_momentum += 25;
+        else if (pct >= 10 && pct < 15) score_momentum += 10;
+        else if (pct >= 15 && pct < 25) score_momentum -= 5;
+        else if (pct >= 25) score_momentum -= 20;
+        else if (pct >= 0 && pct < 1) score_momentum += 15;
+        else if (pct < 0 && pct > -3) score_momentum += 5;
       }
-      score_momentum = Math.max(0, Math.min(score_momentum, 30));
+      score_momentum = Math.max(0, Math.min(100, score_momentum));
 
       const score_total = item.score_valuation + item.score_supply + item.score_signal + score_momentum;
       return { ...item, current_price: cp, price_change_pct: pct, score_momentum, score_total };

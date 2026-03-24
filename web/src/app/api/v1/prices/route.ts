@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { fetchAllStockPrices, StockPriceData } from '@/lib/naver-stock-api';
+import { fetchAllStockPrices, StockPriceData, fetchBulkInvestorData } from '@/lib/naver-stock-api';
+import { fetchBulkIndicators } from '@/lib/krx-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,10 +18,82 @@ async function getLivePrices(): Promise<{ source: 'memory' | 'naver'; data: Map<
   const data = await fetchAllStockPrices();
   naverCache = { data, ts: Date.now() };
 
-  // stock_cache 업데이트 (fire-and-forget)
+  // stock_cache 가격 업데이트 (fire-and-forget)
   updateStockCache(data).catch(() => {});
 
+  // 우선순위 종목 수급+지표 갱신 (fire-and-forget, 10분마다)
+  refreshPriorityData().catch(() => {});
+
   return { source: 'naver', data };
+}
+
+// 우선순위 종목 수급+지표 갱신 (10분 쿨다운)
+let lastPriorityRefresh = 0;
+const PRIORITY_COOLDOWN = 10 * 60 * 1000; // 10분
+
+async function refreshPriorityData() {
+  if (Date.now() - lastPriorityRefresh < PRIORITY_COOLDOWN) return;
+  lastPriorityRefresh = Date.now();
+
+  const supabase = createServiceClient();
+  const ts = new Date().toISOString();
+
+  // 우선순위 종목 수집 (즐겨찾기 + 관심 + 최근 7일 신호)
+  const [{ data: favs }, { data: watchlist }, { data: recentSigs }] = await Promise.all([
+    supabase.from('favorite_stocks').select('symbol'),
+    supabase.from('watchlist').select('symbol'),
+    supabase.from('signals').select('symbol').gte('timestamp', new Date(Date.now() - 7 * 86400000).toISOString()),
+  ]);
+
+  const symbols = new Set<string>();
+  for (const f of favs ?? []) symbols.add(f.symbol);
+  for (const w of watchlist ?? []) symbols.add(w.symbol);
+  for (const s of recentSigs ?? []) if (s.symbol) symbols.add(s.symbol);
+
+  const symArr = Array.from(symbols);
+  if (symArr.length === 0) return;
+
+  // 수급 + 지표 병렬 조회 (최대 50종목으로 제한)
+  const limited = symArr.slice(0, 50);
+  const [investorMap, indicatorMap] = await Promise.all([
+    fetchBulkInvestorData(limited, 10),
+    fetchBulkIndicators(limited, 10),
+  ]);
+
+  // stock_cache 배치 업데이트
+  const rows = limited.map((symbol) => {
+    const investor = investorMap.get(symbol);
+    const indicator = indicatorMap.get(symbol);
+    const row: Record<string, unknown> = { symbol };
+
+    if (investor) {
+      row.foreign_net_qty = investor.foreign_net;
+      row.institution_net_qty = investor.institution_net;
+      row.foreign_net_5d = investor.foreign_net_5d;
+      row.institution_net_5d = investor.institution_net_5d;
+      row.foreign_streak = investor.foreign_streak;
+      row.institution_streak = investor.institution_streak;
+      row.investor_updated_at = ts;
+    }
+    if (indicator) {
+      row.per = indicator.per || null;
+      row.pbr = indicator.pbr || null;
+      row.roe = indicator.roe || null;
+      row.high_52w = indicator.high_52w || null;
+      row.low_52w = indicator.low_52w || null;
+      row.dividend_yield = indicator.dividend_yield || null;
+      row.forward_per = indicator.forward_per;
+      row.forward_eps = indicator.forward_eps;
+      row.target_price = indicator.target_price;
+      row.invest_opinion = indicator.invest_opinion;
+      row.consensus_updated_at = ts;
+    }
+    return row;
+  }).filter((r) => Object.keys(r).length > 1); // symbol만 있으면 스킵
+
+  for (let i = 0; i < rows.length; i += 500) {
+    await supabase.from('stock_cache').upsert(rows.slice(i, i + 500), { onConflict: 'symbol', ignoreDuplicates: false });
+  }
 }
 
 async function updateStockCache(priceMap: Map<string, StockPriceData>) {

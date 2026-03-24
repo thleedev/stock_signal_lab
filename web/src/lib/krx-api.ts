@@ -19,6 +19,11 @@ export interface BulkIndicatorData {
   high_52w: number;
   low_52w: number;
   dividend_yield: number;
+  // Forward valuation (컨센서스)
+  forward_per: number | null;
+  forward_eps: number | null;
+  target_price: number | null;
+  invest_opinion: number | null;  // 1~5 (5=강력매수)
 }
 
 interface NaverIntegrationInfo {
@@ -46,6 +51,21 @@ async function fetchSingleIndicator(symbol: string): Promise<BulkIndicatorData |
       const info = infos.find((i) => i.code === code);
       return parseIndicatorValue(info?.value);
     };
+    const getValueOrNull = (code: string): number | null => {
+      const info = infos.find((i) => i.code === code);
+      if (!info?.value) return null;
+      const v = parseIndicatorValue(info.value);
+      return v > 0 ? v : null;
+    };
+
+    // 컨센서스 데이터 (없을 수 있음)
+    const consensus = data.consensusInfo as { priceTargetMean?: string; recommMean?: string } | undefined;
+    const targetPrice = consensus?.priceTargetMean
+      ? parseInt(consensus.priceTargetMean.replace(/,/g, ''), 10) || null
+      : null;
+    const investOpinion = consensus?.recommMean
+      ? parseFloat(consensus.recommMean) || null
+      : null;
 
     return {
       per: getValue('per'),
@@ -56,6 +76,10 @@ async function fetchSingleIndicator(symbol: string): Promise<BulkIndicatorData |
       high_52w: getValue('highPriceOf52Weeks'),
       low_52w: getValue('lowPriceOf52Weeks'),
       dividend_yield: getValue('dividendYield'),
+      forward_per: getValueOrNull('cnsPer'),
+      forward_eps: getValueOrNull('cnsEps'),
+      target_price: targetPrice,
+      invest_opinion: investOpinion,
     };
   } catch {
     return null;
