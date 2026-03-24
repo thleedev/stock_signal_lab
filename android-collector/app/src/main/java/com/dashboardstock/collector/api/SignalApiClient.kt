@@ -3,7 +3,6 @@ package com.dashboardstock.collector.api
 import android.content.Context
 import android.util.Log
 import com.dashboardstock.collector.BuildConfig
-import com.dashboardstock.collector.db.SentSignalCache
 import com.google.gson.GsonBuilder
 import com.google.gson.annotations.SerializedName
 import okhttp3.MediaType.Companion.toMediaType
@@ -72,8 +71,6 @@ object SignalApiClient {
             if (s.signalTime != null && s.symbol != null) {
                 val patched = patchNullSignalTime(s)
                 if (patched) {
-                    // 기존 행 업데이트 성공 → 캐시에서 null 키 제거 (다음 null 신호 허용)
-                    SentSignalCache.removeNullTimeKey(context, s)
                     Log.d(TAG, "PATCH success: ${s.name}(${s.symbol}) signal_time=${s.signalTime}")
                     continue
                 }
