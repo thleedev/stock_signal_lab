@@ -36,14 +36,16 @@ export async function POST(request: NextRequest) {
     device_id: body.device_id || null,
   }));
 
+  // upsert with ignoreDuplicates: UNIQUE constraint(idx_signals_dedup)에
+  // 걸리는 중복 행은 무시하고 나머지만 INSERT
   const { data, error } = await supabase
     .from('signals')
-    .insert(rows)
+    .upsert(rows, { onConflict: 'symbol,source,signal_type,signal_time', ignoreDuplicates: true })
     .select('id');
 
   if (error) {
     console.error('signals insert error:', error);
-    return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 
   // heartbeat 업데이트
@@ -102,9 +104,6 @@ async function processSignalsBatch(
     }
   }
 
-  if (lumpCount > 0 || splitCount > 0) {
-    console.log(`[strategy-engine] Processed: ${lumpCount} lump, ${splitCount} split trades`);
-  }
 }
 
 /**

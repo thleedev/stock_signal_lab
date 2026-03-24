@@ -29,15 +29,15 @@ object SignalApiClient {
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(8, TimeUnit.SECONDS)
+            .writeTimeout(8, TimeUnit.SECONDS)
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
                     level = if (BuildConfig.DEBUG)
                         HttpLoggingInterceptor.Level.BODY
                     else
-                        HttpLoggingInterceptor.Level.BASIC
+                        HttpLoggingInterceptor.Level.NONE
                 }
             )
             .build()
@@ -128,39 +128,55 @@ object SignalApiClient {
      * @return true면 매칭되어 UPDATE 완료, false면 매칭 없음 (INSERT 필요)
      */
     private fun patchNullSignalTime(s: SignalInput): Boolean {
-        try {
-            val signalOdt = OffsetDateTime.parse(s.signalTime)
-            val rangeStart = signalOdt.minusHours(2)
-                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-            val rangeEnd = signalOdt.plusHours(2)
-                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        val maxRetries = 2
+        val signalOdt = OffsetDateTime.parse(s.signalTime)
+        val rangeStart = signalOdt.minusHours(2)
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+        val rangeEnd = signalOdt.plusHours(2)
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-            val path = "signals?symbol=eq.${s.symbol}" +
-                    "&source=eq.${s.source}" +
-                    "&signal_type=eq.${s.signalType}" +
-                    "&signal_time=is.null" +
-                    "&timestamp=gte.${rangeStart}" +
-                    "&timestamp=lte.${rangeEnd}"
+        val path = "signals?symbol=eq.${s.symbol}" +
+                "&source=eq.${s.source}" +
+                "&signal_type=eq.${s.signalType}" +
+                "&signal_time=is.null" +
+                "&timestamp=gte.${rangeStart}" +
+                "&timestamp=lte.${rangeEnd}"
 
-            val patchBody = gson.toJson(mapOf("signal_time" to s.signalTime))
-                .toRequestBody(JSON_TYPE)
+        val patchBody = gson.toJson(mapOf("signal_time" to s.signalTime))
+            .toRequestBody(JSON_TYPE)
 
-            val request = supabaseRequest(path)
-                .header("Prefer", "return=representation")
-                .patch(patchBody)
-                .build()
+        for (attempt in 0..maxRetries) {
+            try {
+                val request = supabaseRequest(path)
+                    .header("Prefer", "return=representation")
+                    .patch(patchBody)
+                    .build()
 
-            val response = client.newCall(request).execute()
-            val isOk = response.isSuccessful
-            val responseBody = response.body?.string() ?: "[]"
-            response.close()
+                val response = client.newCall(request).execute()
+                val isOk = response.isSuccessful
+                val responseBody = response.body?.string() ?: "[]"
+                response.close()
 
-            // 응답이 빈 배열이면 매칭 없음
-            return isOk && responseBody != "[]" && responseBody.isNotBlank()
-        } catch (e: Exception) {
-            Log.w(TAG, "patchNullSignalTime error for ${s.symbol}", e)
-            return false
+                if (!isOk) {
+                    // HTTP 에러는 재시도하지 않음 (서버 측 문제)
+                    Log.w(TAG, "patchNullSignalTime HTTP error ${response.code} for ${s.symbol}")
+                    return false
+                }
+
+                // 응답이 빈 배열이면 매칭 없음
+                return responseBody != "[]" && responseBody.isNotBlank()
+            } catch (e: Exception) {
+                if (attempt < maxRetries) {
+                    val delayMs = 1000L * (1 shl attempt) // 1s, 2s 지수 백오프
+                    Log.w(TAG, "patchNullSignalTime retry ${attempt + 1}/$maxRetries for ${s.symbol}, backoff=${delayMs}ms", e)
+                    Thread.sleep(delayMs)
+                } else {
+                    Log.w(TAG, "patchNullSignalTime failed after ${maxRetries + 1} attempts for ${s.symbol}", e)
+                    return false
+                }
+            }
         }
+        return false
     }
 
     /**

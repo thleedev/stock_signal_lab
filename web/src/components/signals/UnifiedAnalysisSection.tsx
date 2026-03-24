@@ -107,19 +107,22 @@ const CHARACTER_FILTER_OPTIONS = [
 
 // ── 점수 정규화 ───────────────────────────────────────────────────────────────
 function normScores(item: StockRankItem) {
+  const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
+    // AI 점수는 이전 max 기준(signal:30, tech:30, val:20, supply:23)으로 저장됨 → 0~100 변환
     return {
-      sig: Math.round(Math.min(100, Math.max(0, item.ai.signal_score / 30 * 100))),
-      tech: Math.round(Math.min(100, Math.max(0, item.ai.technical_score / 30 * 100))),
-      val: Math.round(Math.min(100, Math.max(0, item.ai.valuation_score / 20 * 100))),
-      sup: Math.round(Math.min(100, Math.max(0, item.ai.supply_score / 23 * 100))),
+      sig: clamp(item.ai.signal_score / 30 * 100),
+      tech: clamp(item.ai.technical_score / 30 * 100),
+      val: clamp(item.ai.valuation_score / 20 * 100),
+      sup: clamp(item.ai.supply_score / 23 * 100),
     };
   }
+  // 서버 calcScore가 이제 0~100 정규화 점수를 반환
   return {
-    sig: Math.round(Math.min(100, Math.max(0, item.score_signal / 30 * 100))),
-    tech: Math.round(Math.min(100, Math.max(0, item.score_momentum / 30 * 100))),
-    val: Math.round(Math.min(100, Math.max(0, item.score_valuation / 20 * 100))),
-    sup: Math.round(Math.min(100, Math.max(0, item.score_supply / 20 * 100))),
+    sig: clamp(item.score_signal),
+    tech: clamp(item.score_momentum),
+    val: clamp(item.score_valuation),
+    sup: clamp(item.score_supply),
   };
 }
 
@@ -260,26 +263,6 @@ function getGrade(score: number): { grade: string; label: string; cls: string } 
   return { grade: 'D', label: '주의', cls: 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400' };
 }
 
-// ── 세부 점수 → 강/중/약 한줄 요약 ──────────────────────────────────────────────
-function getScoreSummary(sig: number, tech: number, val: number, sup: number): string {
-  const describe = (score: number): string => {
-    if (score >= 70) return '강';
-    if (score >= 40) return '중';
-    return '약';
-  };
-  const items = [
-    { name: '기술', score: tech, desc: describe(tech) },
-    { name: '수급', score: sup, desc: describe(sup) },
-    { name: '신호', score: sig, desc: describe(sig) },
-    { name: '밸류', score: val, desc: describe(val) },
-  ];
-  // 강한 것부터 표시, "약"은 생략 (중요한 것만 보여줌)
-  const strong = items.filter(i => i.desc === '강').map(i => `${i.name}◎`);
-  const mid = items.filter(i => i.desc === '중').map(i => `${i.name}○`);
-  const weak = items.filter(i => i.desc === '약').map(i => `${i.name}△`);
-  return [...strong, ...mid, ...weak].join(' ');
-}
-function fmtPrice(v: number | null) { return v == null ? '-' : v.toLocaleString() + '원'; }
 
 // ── Gap 계산 유틸 ─────────────────────────────────────────────────────────────
 function getGapInfo(
@@ -310,7 +293,16 @@ function getGapInfo(
   return { source: sourceFilter, buyPrice: sig.buyPrice, gap, date: sig.date };
 }
 
-// ── RankCard 컴포넌트 (컴팩트 2줄) ──────────────────────────────────────────────
+// ── 신호 경과일 텍스트 ──────────────────────────────────────────────────────────
+function getSignalAge(dateStr: string | null): string {
+  if (!dateStr) return '';
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+  if (diff <= 0) return '오늘 신호';
+  if (diff === 1) return '어제 신호';
+  return `${diff}일전 신호`;
+}
+
+// ── RankCard 컴포넌트 (모바일 2줄 / 데스크탑 2줄+점수바) ──────────────────────
 function RankCard({
   item, rank, weighted, favs, gapInfo, onClick, characters,
 }: {
@@ -327,48 +319,41 @@ function RankCard({
   const pct = item.price_change_pct;
   const { sig, tech, val, sup } = normScores(item);
   const reason = getRecommendReason(item);
+  const { grade, label: gradeLabel, cls: gradeCls } = getGrade(weighted);
+  const signalAge = getSignalAge(item.latest_signal_date);
+  const pctCls = pct != null && pct > 0 ? 'text-red-500' : pct != null && pct < 0 ? 'text-blue-500' : 'text-[var(--muted)]';
 
   return (
     <div
       onClick={onClick}
-      className={`px-4 py-2.5 cursor-pointer hover:bg-[var(--card-hover)] transition-colors select-none ${
+      className={`px-3 sm:px-4 py-2 sm:py-2.5 cursor-pointer hover:bg-[var(--card-hover)] transition-colors select-none ${
         isWarning ? 'bg-orange-50/60 dark:bg-orange-950/10' : ''
       }`}
     >
-      {/* ── 줄 1: 순위 · 종목명 · 성격태그 · 점수 · 등락 ── */}
-      <div className="flex items-center gap-2 min-w-0">
+      {/* ── 줄 1: 순위 · 종목명 · 등급 · 등락률 ── */}
+      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+        {/* 순위 */}
         <span className={`text-sm font-bold tabular-nums w-6 shrink-0 text-right ${hasAi ? 'text-blue-500' : 'text-[var(--muted)]'}`}>
           {rank}
         </span>
 
-        <div className="flex items-center gap-1.5 min-w-0 shrink-0">
-          <span className="font-semibold text-[15px] leading-snug truncate max-w-[7rem] sm:max-w-[10rem]">{item.name}</span>
-          {favs.has(item.symbol) && <span className="text-yellow-400 text-xs">★</span>}
-          {hasAi && <span className="px-1 py-px rounded text-[9px] font-bold bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-300">AI</span>}
-        </div>
+        {/* 종목명 + 즐겨찾기 */}
+        <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[6rem] sm:max-w-[10rem]">{item.name}</span>
+        {favs.has(item.symbol) && <span className="text-yellow-400 text-xs shrink-0">★</span>}
 
-        {/* 성격 태그 */}
-        {/* 성격 태그 — 데스크탑 최대 3개 */}
+        {/* 등급 뱃지 (등급 + 라벨) */}
+        <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold leading-none shrink-0 ${gradeCls}`} title={`${weighted.toFixed(0)}pt`}>
+          {grade} {gradeLabel}
+        </span>
+
+        {/* 성격 태그 — 데스크탑만 */}
         {characters.length > 0 && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             {characters.slice(0, 3).map(charKey => {
               const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
               return (
-                <span key={charKey} className={`px-1.5 py-0.5 rounded text-[11px] font-bold leading-none ${BADGE_CLS[def.variant]}`}>
-                  {def.icon} {def.label}
-                </span>
-              );
-            })}
-          </div>
-        )}
-        {/* 성격 태그 — 모바일 최대 2개 */}
-        {characters.length > 0 && (
-          <div className="sm:hidden flex items-center gap-1 shrink-0">
-            {characters.slice(0, 2).map(charKey => {
-              const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
-              return (
-                <span key={charKey} className={`px-1.5 py-0.5 rounded text-[11px] font-bold leading-none ${BADGE_CLS[def.variant]}`}>
-                  {def.icon} {def.label}
+                <span key={charKey} className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${BADGE_CLS[def.variant]}`}>
+                  {def.icon}{def.label}
                 </span>
               );
             })}
@@ -377,51 +362,52 @@ function RankCard({
 
         <div className="flex-1 min-w-0" />
 
-        {/* 등급 뱃지 */}
-        {(() => {
-          const { grade, label, cls } = getGrade(weighted);
-          return (
-            <span className={`px-1.5 py-0.5 rounded text-xs font-bold leading-none shrink-0 ${cls}`} title={`${weighted.toFixed(0)}pt · ${label}`}>
-              {grade}
-            </span>
-          );
-        })()}
+        {/* 신호 경과 */}
+        {signalAge && <span className="hidden sm:inline text-[11px] text-[var(--muted)] shrink-0">{signalAge}</span>}
 
-        {/* 현재가 · 등락 · Gap — 라벨 포함 */}
-        <div className="shrink-0 flex items-center gap-2 text-right">
-          {/* 현재가 */}
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] text-[var(--muted)] leading-none">현재가</span>
-            <span className="text-xs font-semibold tabular-nums">{item.current_price?.toLocaleString() ?? '-'}</span>
-          </div>
-          {/* 등락률 */}
-          <div className="flex flex-col items-end">
-            <span className="text-[9px] text-[var(--muted)] leading-none">등락</span>
-            <span className={`text-xs font-bold tabular-nums ${
-              pct != null && pct > 0 ? 'text-red-500' : pct != null && pct < 0 ? 'text-blue-500' : 'text-[var(--muted)]'
-            }`}>
-              {pct != null ? `${pct > 0 ? '+' : ''}${fmtNum(pct)}%` : '-'}
-            </span>
-          </div>
-          {/* Gap: 신호가 대비 */}
-          {gapInfo && (
-            <div className="flex flex-col items-end">
-              <span className="text-[9px] text-[var(--muted)] leading-none">Gap</span>
-              <span className={`text-xs font-bold tabular-nums ${gapInfo.gap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                {gapInfo.gap >= 0 ? '+' : ''}{gapInfo.gap.toFixed(1)}%
-              </span>
-            </div>
-          )}
-        </div>
+        {/* 등락률 */}
+        <span className={`text-sm font-bold tabular-nums shrink-0 ${pctCls}`}>
+          {pct != null ? `${pct > 0 ? '+' : ''}${fmtNum(pct)}%` : '-'}
+        </span>
+
+        {/* 현재가 — 데스크탑만 */}
+        <span className="hidden sm:inline text-xs text-[var(--muted)] tabular-nums shrink-0">
+          {item.current_price?.toLocaleString() ?? '-'}원
+        </span>
+
+        {/* Gap — 신호가 대비 */}
+        {gapInfo && (
+          <span className={`text-[11px] font-semibold tabular-nums shrink-0 ${gapInfo.gap >= 0 ? 'text-red-400' : 'text-blue-400'}`}
+            title={`신호가 ${gapInfo.buyPrice.toLocaleString()}원 대비`}>
+            Gap{gapInfo.gap >= 0 ? '+' : ''}{gapInfo.gap.toFixed(1)}%
+          </span>
+        )}
       </div>
 
-      {/* ── 줄 2: 추천근거 ── */}
-      <div className="mt-1 pl-8">
-        <p className="text-xs text-[var(--muted)] leading-relaxed">{reason}</p>
+      {/* ── 줄 2: 추천근거 + 모바일 성격태그 + 신호경과 ── */}
+      <div className="flex items-start gap-1.5 mt-0.5 pl-8">
+        {/* 모바일 성격태그 */}
+        {characters.length > 0 && (
+          <div className="sm:hidden flex items-center gap-0.5 shrink-0 pt-px">
+            {characters.slice(0, 2).map(charKey => {
+              const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
+              return (
+                <span key={charKey} className={`px-1 py-px rounded text-[9px] font-bold leading-none ${BADGE_CLS[def.variant]}`}>
+                  {def.icon}{def.label}
+                </span>
+              );
+            })}
+          </div>
+        )}
+        {/* 모바일 신호경과 */}
+        {signalAge && <span className="sm:hidden text-[10px] text-[var(--muted)] shrink-0 pt-px">{signalAge}</span>}
+
+        {/* 추천근거 */}
+        <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
       </div>
 
-      {/* ── 줄 3: 세부 점수 미니바 ── */}
-      <div className="flex items-center gap-3 mt-1 pl-8 flex-wrap">
+      {/* ── 줄 3 (데스크탑만): 세부 점수 미니바 ── */}
+      <div className="hidden sm:flex items-center gap-3 mt-1 pl-8">
         {[
           { label: '기술', value: tech, color: 'bg-emerald-500' },
           { label: '수급', value: sup, color: 'bg-sky-500' },
@@ -430,7 +416,7 @@ function RankCard({
         ].map(b => (
           <div key={b.label} className="flex items-center gap-1">
             <span className="text-[10px] text-[var(--muted)] w-5">{b.label}</span>
-            <div className="w-12 sm:w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+            <div className="w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
               <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
             </div>
             <span className="text-[10px] tabular-nums text-[var(--muted)] w-5">{b.value}</span>

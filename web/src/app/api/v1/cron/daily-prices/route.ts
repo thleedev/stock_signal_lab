@@ -52,8 +52,6 @@ export async function GET(request: Request) {
     openTrades?.forEach((t) => symbols.add(t.symbol));
     pendingSchedule?.forEach((s) => symbols.add(s.symbol));
 
-    console.log(`[daily-prices] ${symbols.size} symbols to fetch`);
-
     // === 2. KIS API로 일봉 수집 ===
     let savedCount = 0;
 
@@ -110,7 +108,6 @@ export async function GET(request: Request) {
             .eq('symbol', row.symbol);
         }
         shortSellUpdated = shortSellUpdates.length;
-        console.log(`[daily-prices] Short-sell updated: ${shortSellUpdated} symbols`);
       }
     }
 
@@ -130,7 +127,6 @@ export async function GET(request: Request) {
           .eq('symbol', sym);
       }
       investorUpdated = investorMap.size;
-      console.log(`[daily-prices] Investor data updated: ${investorUpdated} symbols`);
     }
 
     // === 5. 분할매매 예약 실행 ===
@@ -148,7 +144,7 @@ export async function GET(request: Request) {
   } catch (e) {
     console.error('[daily-prices] Cron error:', e);
     return NextResponse.json(
-      { error: String(e) },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -220,6 +216,5 @@ async function executePendingSplitTrades(
     executed++;
   }
 
-  console.log(`[split] Executed ${executed}/${pending.length} schedules`);
   return executed;
 }

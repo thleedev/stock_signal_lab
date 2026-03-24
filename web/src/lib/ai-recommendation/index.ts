@@ -166,22 +166,33 @@ export async function generateRecommendations(
     (sym) => (priceMap.get(sym) ?? []).length < 20
   );
 
+  // KIS API 속도 제한을 준수하면서 병렬로 가격 데이터 조회 (5개씩 청크 처리)
   if (symbolsNeedingPrices.length > 0) {
-    for (const sym of symbolsNeedingPrices) {
-      const prices = await getDailyPrices(sym, d30Compact, todayCompact);
-      if (prices.length > 0) {
-        const sorted = [...prices].sort((a, b) => a.date.localeCompare(b.date));
-        priceMap.set(sym, sorted.slice(-65));
-        // DB에 저장 (background, 실패해도 무시)
-        supabase
-          .from('daily_prices')
-          .upsert(
-            prices.map((p) => ({ symbol: sym, ...p })),
-            { onConflict: 'symbol,date' }
-          )
-          .then(() => {/* fire-and-forget */});
+    const CHUNK_SIZE = 5;
+    const allPricesToUpsert: { symbol: string; date: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
+
+    for (let i = 0; i < symbolsNeedingPrices.length; i += CHUNK_SIZE) {
+      const chunk = symbolsNeedingPrices.slice(i, i + CHUNK_SIZE);
+      const results = await Promise.all(
+        chunk.map(sym => getDailyPrices(sym, d30Compact, todayCompact).then(prices => ({ sym, prices })))
+      );
+      for (const { sym, prices } of results) {
+        if (prices.length > 0) {
+          const sorted = [...prices].sort((a, b) => a.date.localeCompare(b.date));
+          priceMap.set(sym, sorted.slice(-65));
+          allPricesToUpsert.push(...prices.map(p => ({ symbol: sym, ...p })));
+        }
       }
-      await delay(300);
+      if (i + CHUNK_SIZE < symbolsNeedingPrices.length) {
+        await delay(300);
+      }
+    }
+
+    // 모든 가격 데이터를 한 번에 일괄 upsert
+    if (allPricesToUpsert.length > 0) {
+      await supabase
+        .from('daily_prices')
+        .upsert(allPricesToUpsert, { onConflict: 'symbol,date' });
     }
   }
 

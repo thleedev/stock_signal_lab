@@ -47,14 +47,22 @@ object SentSignalCache {
             if (s.symbol == null) {
                 true // symbol 없는 건 항상 전송
             } else {
-                // signalTime 포함하여 같은 종목이라도 다른 시간대 신호는 통과
+                val baseKey = "${s.symbol}:${s.source}:${s.signalType}"
                 val timeKey = s.signalTime ?: ""
-                val key = "${s.symbol}:${s.source}:${s.signalType}:${timeKey}"
-                if (p.contains(key)) {
-                    Log.d(TAG, "Skip duplicate: ${s.name}(${s.symbol}) ${s.signalType} @${timeKey}")
-                    false
-                } else {
-                    true
+                val fullKey = "$baseKey:$timeKey"
+                when {
+                    // 정확히 같은 키(signalTime 포함)로 이미 전송됨
+                    p.contains(fullKey) -> {
+                        Log.d(TAG, "Skip duplicate: ${s.name}(${s.symbol}) ${s.signalType} @${timeKey}")
+                        false
+                    }
+                    // signalTime=NULL인데, 같은 종목이 signalTime 있는 버전으로 이미 전송됨
+                    // baseKey: 접두사로 시작하는 키가 있는지 확인
+                    s.signalTime == null && p.all.keys.any { it.startsWith("$baseKey:") && it != "$baseKey:" } -> {
+                        Log.d(TAG, "Skip null-time duplicate: ${s.name}(${s.symbol}) ${s.signalType} (already sent with time)")
+                        false
+                    }
+                    else -> true
                 }
             }
         }

@@ -88,6 +88,7 @@ export async function POST(request: NextRequest) {
     const { data: signalCounts } = await supabase
       .from('signals')
       .select('symbol, signal_type, timestamp')
+      .in('signal_type', ['BUY', 'BUY_FORECAST'])
       .gte('timestamp', thirtyDaysAgo.toISOString())
       .order('timestamp', { ascending: false });
 

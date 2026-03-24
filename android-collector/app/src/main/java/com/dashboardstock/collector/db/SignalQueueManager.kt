@@ -39,9 +39,17 @@ object SignalQueueManager {
             try {
                 val type = object : TypeToken<List<SignalInput>>() {}.type
                 val signals: List<SignalInput> = gson.fromJson(entity.payload, type)
-                SignalApiClient.sendSignals(context, signals)
+                // 이미 전송 성공한 신호는 캐시로 필터링 (재시도 시 중복 방지)
+                val filtered = SentSignalCache.filterNew(context, signals)
+                if (filtered.isEmpty()) {
+                    dao.delete(entity.id)
+                    Log.i(TAG, "Skipped batch id=${entity.id}, all already sent")
+                    continue
+                }
+                SignalApiClient.sendSignals(context, filtered)
+                SentSignalCache.markSent(context, filtered)
                 dao.delete(entity.id)
-                Log.i(TAG, "Flushed batch id=${entity.id}")
+                Log.i(TAG, "Flushed batch id=${entity.id}, sent ${filtered.size}/${signals.size}")
             } catch (e: Exception) {
                 Log.w(TAG, "Retry failed for id=${entity.id}, attempt=${entity.retryCount + 1}", e)
                 dao.incrementRetry(entity.id)

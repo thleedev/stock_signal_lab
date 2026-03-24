@@ -66,18 +66,18 @@ class SmsReceiver : BroadcastReceiver() {
         Log.i(TAG, "Parsed ${signals.size} signals from $source")
 
         CoroutineScope(Dispatchers.IO).launch {
+            val filtered = SentSignalCache.filterNew(context, signals)
+            if (filtered.isEmpty()) {
+                Log.i(TAG, "All SMS signals already sent with same status")
+                return@launch
+            }
             try {
-                val filtered = SentSignalCache.filterNew(context, signals)
-                if (filtered.isEmpty()) {
-                    Log.i(TAG, "All SMS signals already sent with same status")
-                    return@launch
-                }
                 SignalApiClient.sendSignals(context, filtered)
                 SentSignalCache.markSent(context, filtered)
                 Log.i(TAG, "SMS signals sent: ${filtered.size}/${signals.size}")
             } catch (e: Exception) {
                 Log.e(TAG, "API send failed, queuing offline", e)
-                SignalQueueManager.enqueue(context, signals)
+                SignalQueueManager.enqueue(context, filtered)
             }
         }
     }
