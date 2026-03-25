@@ -349,10 +349,21 @@ export async function GET(request: NextRequest) {
           base.latest_signal_date = dateSig;
           base.latest_signal_type = 'BUY';
         }
-        const scores = calcScore(base, todayStr);
+        // 신호 최근성 기준일: 날짜 필터가 있으면 해당 날짜, 없으면 오늘
+        const scoreBaseDate = dateSig ? dateStr : todayStr;
+        const scores = calcScore(base, scoreBaseDate);
         const aiRec = aiRecMap.get(base.symbol);
         const item: StockRankItem = { ...base, ...scores };
         if (aiRec) {
+          // AI 점수를 0~100으로 정규화하여 score_* 필드도 통일 (이중 체계 제거)
+          const clamp100 = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
+          item.score_signal = clamp100((aiRec.signal_score ?? 0) / 30 * 100);
+          item.score_momentum = clamp100((aiRec.technical_score ?? 0) / 48 * 100);
+          item.score_valuation = clamp100((aiRec.valuation_score ?? 0) / 25 * 100);
+          item.score_supply = clamp100((aiRec.supply_score ?? 0) / 45 * 100);
+          item.score_total = Math.round(
+            (item.score_signal + item.score_momentum + item.score_valuation + item.score_supply) / 4
+          );
           item.ai = {
             total_score: aiRec.total_score ?? 0,
             signal_score: aiRec.signal_score ?? 0,
