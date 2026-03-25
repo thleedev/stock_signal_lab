@@ -426,6 +426,38 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // live 결과를 stock_cache에도 비동기 저장 (다음 요청에서도 유효하도록)
+    if (liveInvMap.size > 0 || liveIndMap.size > 0) {
+      const cacheUpdates: Record<string, unknown>[] = [];
+      for (const sym of new Set([...liveInvMap.keys(), ...liveIndMap.keys()])) {
+        const update: Record<string, unknown> = { symbol: sym };
+        const inv = liveInvMap.get(sym);
+        if (inv) {
+          update.foreign_net_qty = inv.foreign_net;
+          update.institution_net_qty = inv.institution_net;
+          update.foreign_net_5d = inv.foreign_net_5d;
+          update.institution_net_5d = inv.institution_net_5d;
+          update.foreign_streak = inv.foreign_streak;
+          update.institution_streak = inv.institution_streak;
+          update.investor_updated_at = new Date().toISOString();
+        }
+        const ind = liveIndMap.get(sym);
+        if (ind) {
+          if (ind.per > 0) update.per = ind.per;
+          if (ind.pbr > 0) update.pbr = ind.pbr;
+          if (ind.high_52w > 0) update.high_52w = ind.high_52w;
+          if (ind.low_52w > 0) update.low_52w = ind.low_52w;
+          if (ind.forward_per !== null) update.forward_per = ind.forward_per;
+          if (ind.target_price !== null) update.target_price = ind.target_price;
+          if (ind.invest_opinion !== null) update.invest_opinion = ind.invest_opinion;
+        }
+        cacheUpdates.push(update);
+      }
+      // 비동기 — 응답 차단하지 않음
+      Promise.resolve(supabase.from('stock_cache').upsert(cacheUpdates, { onConflict: 'symbol' }))
+        .catch((e: unknown) => console.error('[stock-ranking] cache upsert error:', e));
+    }
+
     // ── 점수 계산 + ai 병합 + 날짜 필터
     const scored: StockRankItem[] = allRows
       .filter((r) => r.symbol && r.name)
