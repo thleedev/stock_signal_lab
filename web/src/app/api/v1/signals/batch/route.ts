@@ -4,6 +4,7 @@ import { verifyCollectorKey, unauthorizedResponse } from '@/lib/auth';
 import { SignalBatchRequest, Signal } from '@/types/signal';
 import { processSignal } from '@/lib/strategy-engine';
 import { sendSignalNotification } from '@/lib/fcm';
+import { enrichSignalStocks } from '@/lib/signal-data-enricher';
 
 // POST /api/v1/signals/batch — 수집기에서 신호 일괄 수신
 export async function POST(request: NextRequest) {
@@ -69,6 +70,17 @@ export async function POST(request: NextRequest) {
   sendSignalNotifications(body.signals, data).catch((e) =>
     console.error('[fcm] notification error:', e)
   );
+
+  // 수급/일봉/forward 사전 조회 (비동기 — 응답 차단하지 않음)
+  // 신호 종목의 데이터를 미리 확보하여 종목분석 점수 정확도 보장
+  const signalSymbols = body.signals
+    .filter((s) => s.symbol && (s.signal_type === 'BUY' || s.signal_type === 'BUY_FORECAST'))
+    .map((s) => s.symbol!);
+  if (signalSymbols.length > 0) {
+    enrichSignalStocks(supabase, signalSymbols).catch((e) =>
+      console.error('[signal-enricher] enrichment error:', e)
+    );
+  }
 
   return Response.json({
     success: true,
