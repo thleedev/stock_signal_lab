@@ -25,7 +25,7 @@ interface MenuState {
 
 interface Weights {
   signal: number;
-  technical: number;
+  trend: number;
   valuation: number;
   supply: number;
 }
@@ -103,13 +103,13 @@ function getBasicBadges(item: StockRankItem, todayMs: number): Badge[] {
   return b;
 }
 
-// 모든 점수를 100점 만점으로 정규화 (signal:30, tech:-12~48, val:25, supply:45)
+// 모든 점수를 100점 만점으로 정규화 (signal:30, trend:0~58, val:25, supply:45)
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
     return {
       sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp((item.ai.technical_score + 12) / 60 * 100),
+      tech: clamp(item.ai.trend_score / 58 * 100),
       val: clamp(item.ai.valuation_score / 25 * 100),
       sup: clamp((item.ai.supply_score + 10) / 55 * 100),
     };
@@ -125,9 +125,9 @@ function normScores(item: StockRankItem) {
 
 // 가중치 비율 기반 합산 점수 (100점 만점)
 function computeWeighted(item: StockRankItem, w: Weights): number {
-  const total = w.signal + w.technical + w.valuation + w.supply || 1;
+  const total = w.signal + w.trend + w.valuation + w.supply || 1;
   const scores = normScores(item);
-  return (scores.sig * w.signal + scores.tech * w.technical + scores.val * w.valuation + scores.sup * w.supply) / total;
+  return (scores.sig * w.signal + scores.tech * w.trend + scores.val * w.valuation + scores.sup * w.supply) / total;
 }
 
 function fmtNum(v: number | null, d = 1) { return v == null ? '-' : v.toFixed(d); }
@@ -187,7 +187,7 @@ const RankCard = React.memo(function RankCard({
           <span className="opacity-30 mx-0.5">|</span>
           <span className="shrink-0 tabular-nums">신{sig}</span>
           <span className="opacity-30">·</span>
-          <span className="shrink-0 tabular-nums">기{tech}</span>
+          <span className="shrink-0 tabular-nums">추{tech}</span>
           <span className="opacity-30">·</span>
           <span className="shrink-0 tabular-nums">밸{val}</span>
           <span className="opacity-30">·</span>
@@ -221,7 +221,7 @@ const RankCard = React.memo(function RankCard({
       <div className="sm:hidden flex items-center gap-1 text-[10px] text-[var(--muted)] mt-0.5 pl-7">
         <span>{item.symbol} · {item.market}</span>
         <span className="opacity-30 mx-0.5">|</span>
-        <span className="tabular-nums">신{sig}·기{tech}·밸{val}·수{sup}</span>
+        <span className="tabular-nums">신{sig}·추{tech}·밸{val}·수{sup}</span>
         {item.per != null && <><span className="opacity-30">|</span><span>P{fmtNum(item.per, 0)}</span></>}
       </div>
 
@@ -265,7 +265,7 @@ function WeightPopup({
 
   const items = [
     { key: 'signal' as const, label: '신호' },
-    { key: 'technical' as const, label: '기술/모멘텀' },
+    { key: 'trend' as const, label: '추세/모멘텀' },
     { key: 'valuation' as const, label: '밸류' },
     { key: 'supply' as const, label: '수급' },
   ];

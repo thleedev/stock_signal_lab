@@ -51,7 +51,7 @@ export interface StockRankItem {
   ai?: {
     total_score: number;
     signal_score: number;
-    technical_score: number;
+    trend_score: number;
     valuation_score: number;
     supply_score: number;
     rsi: number | null;
@@ -546,7 +546,7 @@ export async function GET(request: NextRequest) {
           // AI 점수를 0~100으로 정규화하여 score_* 필드도 통일 (이중 체계 제거)
           const clamp100 = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
           item.score_signal = clamp100((aiRec.signal_score ?? 0) / 30 * 100);
-          item.score_momentum = clamp100(((aiRec.technical_score ?? 0) + 12) / 60 * 100);
+          item.score_momentum = clamp100((aiRec.technical_score ?? 0) / 58 * 100);
           item.score_valuation = clamp100((aiRec.valuation_score ?? 0) / 25 * 100);
           item.score_supply = clamp100(((aiRec.supply_score ?? 0) + 10) / 55 * 100);
           item.score_total = Math.round(
@@ -555,7 +555,7 @@ export async function GET(request: NextRequest) {
           item.ai = {
             total_score: aiRec.total_score ?? 0,
             signal_score: aiRec.signal_score ?? 0,
-            technical_score: aiRec.technical_score ?? 0,
+            trend_score: aiRec.technical_score ?? 0, // DB 컬럼은 아직 technical_score (Task 7 마이그레이션 후 변경)
             valuation_score: aiRec.valuation_score ?? 0,
             supply_score: aiRec.supply_score ?? 0,
             rsi: aiRec.rsi ?? null,

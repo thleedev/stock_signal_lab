@@ -99,7 +99,7 @@ function RecommendationCard({ item }: { item: AiRecommendation }) {
       <div className="grid grid-cols-4 gap-1 mt-3 text-center">
         {[
           { label: '신호강도', score: item.signal_score, max: 30 },
-          { label: '기술적', score: item.technical_score, max: 30 },
+          { label: '추세', score: item.trend_score, max: 58 },
           { label: '밸류', score: item.valuation_score, max: 20 },
           { label: '수급', score: item.supply_score, max: 20 },
         ].map(({ label, score, max }) => (
@@ -156,7 +156,7 @@ function WeightPanel({
   onChange: (w: AiRecommendationWeights) => void;
   onReset: () => void;
 }) {
-  const total = weights.signal + weights.technical + weights.valuation + weights.supply;
+  const total = weights.signal + weights.trend + weights.valuation + weights.supply;
   const isValid = Math.abs(total - 100) <= 0.01;
 
   const handleChange = (key: keyof AiRecommendationWeights, val: number) => {
@@ -165,7 +165,7 @@ function WeightPanel({
 
   const items: { key: keyof AiRecommendationWeights; label: string }[] = [
     { key: 'signal', label: '신호강도' },
-    { key: 'technical', label: '기술적 분석' },
+    { key: 'trend', label: '추세 분석' },
     { key: 'valuation', label: '밸류에이션' },
     { key: 'supply', label: '수급' },
   ];
@@ -260,7 +260,7 @@ export function AiRecommendationSection({ initialData }: Props) {
   };
 
   const handleWeightsApply = () => {
-    const total = weights.signal + weights.technical + weights.valuation + weights.supply;
+    const total = weights.signal + weights.trend + weights.valuation + weights.supply;
     if (Math.abs(total - 100) <= 0.01) {
       refresh(weights);
     }
@@ -350,7 +350,7 @@ export function AiRecommendationSection({ initialData }: Props) {
             disabled={
               loading ||
               Math.abs(
-                weights.signal + weights.technical + weights.valuation + weights.supply - 100
+                weights.signal + weights.trend + weights.valuation + weights.supply - 100
               ) > 0.01
             }
             className="mt-2 w-full text-xs py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"

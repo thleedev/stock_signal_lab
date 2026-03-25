@@ -48,7 +48,7 @@ interface MenuState {
 
 interface Weights {
   signal: number;
-  technical: number;
+  trend: number;
   valuation: number;
   supply: number;
 }
@@ -109,10 +109,10 @@ const CHARACTER_FILTER_OPTIONS = [
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
-    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, tech:-12~48, val:25, supply:-10~45)
+    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, trend:0~58, val:25, supply:-10~45)
     return {
       sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp((item.ai.technical_score + 12) / 60 * 100),
+      tech: clamp(item.ai.trend_score / 58 * 100),
       val: clamp(item.ai.valuation_score / 25 * 100),
       sup: clamp((item.ai.supply_score + 10) / 55 * 100),
     };
@@ -128,9 +128,9 @@ function normScores(item: StockRankItem) {
 
 // ── 가중치 합산 점수 ──────────────────────────────────────────────────────────
 function computeWeighted(item: StockRankItem, w: Weights): number {
-  const total = w.signal + w.technical + w.valuation + w.supply || 1;
+  const total = w.signal + w.trend + w.valuation + w.supply || 1;
   const scores = normScores(item);
-  return (scores.sig * w.signal + scores.tech * w.technical + scores.val * w.valuation + scores.sup * w.supply) / total;
+  return (scores.sig * w.signal + scores.tech * w.trend + scores.val * w.valuation + scores.sup * w.supply) / total;
 }
 
 function getInvestmentCharacters(item: StockRankItem, weights: Weights): InvestmentCharacter[] {
@@ -495,7 +495,7 @@ function WeightPopup({
 
   const items = [
     { key: 'signal' as const, label: '신호' },
-    { key: 'technical' as const, label: '기술/모멘텀' },
+    { key: 'trend' as const, label: '추세/모멘텀' },
     { key: 'valuation' as const, label: '밸류' },
     { key: 'supply' as const, label: '수급' },
   ];
@@ -536,7 +536,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [visibleCount, setVisibleCount] = useState(50);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
-  const [weights, setWeights] = useState<Weights>({ signal: 10, technical: 40, valuation: 10, supply: 40 });
+  const [weights, setWeights] = useState<Weights>({ signal: 10, trend: 40, valuation: 10, supply: 40 });
   const [sort, setSort] = useState<SortMode>('score');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [charFilter, setCharFilter] = useState<string>('all');
