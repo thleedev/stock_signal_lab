@@ -528,10 +528,9 @@ export async function GET(request: NextRequest) {
           base.latest_signal_date = dateSig;
           base.latest_signal_type = 'BUY';
         }
-        const scoreBaseDate = dateSig ? dateStr : todayStr;
         const sector = sectorMap.get(base.symbol) ?? null;
         const sectorAvgPct = sector ? (sectorAvgPctMap.get(sector) ?? null) : null;
-        const scores = calcScore(base, scoreBaseDate, sectorAvgPct);
+        const scores = calcScore(base, todayStr, sectorAvgPct);
         const aiRec = aiRecMap.get(base.symbol);
         const item: StockRankItem = {
           ...base,

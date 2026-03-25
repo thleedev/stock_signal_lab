@@ -545,7 +545,7 @@ git commit -m "feat: API 라우트에 trend/risk 가중치 및 필드 반영"
 - Modify: `web/src/components/signals/StockRankingSection.tsx`
 - Modify: `web/src/components/signals/UnifiedAnalysisSection.tsx`
 
-- [ ] **Step 1: AiRecommendationSection.tsx**
+- [x] **Step 1: AiRecommendationSection.tsx**
 
 102줄:
 
@@ -557,7 +557,7 @@ git commit -m "feat: API 라우트에 trend/risk 가중치 및 필드 반영"
 { label: '추세', score: item.trend_score, max: 58 }
 ```
 
-- [ ] **Step 2: StockRankingSection.tsx**
+- [x] **Step 2: StockRankingSection.tsx**
 
 112줄 정규화 공식:
 
@@ -571,7 +571,7 @@ tech: clamp(item.ai.trend_score / 58 * 100)
 
 188~190줄 라벨: `기술` → `추세`
 
-- [ ] **Step 3: UnifiedAnalysisSection.tsx**
+- [x] **Step 3: UnifiedAnalysisSection.tsx**
 
 115줄 정규화 공식:
 
@@ -583,12 +583,12 @@ tech: clamp((item.ai.technical_score + 12) / 60 * 100)
 tech: clamp(item.ai.trend_score / 58 * 100)
 ```
 
-- [ ] **Step 4: 빌드 확인**
+- [x] **Step 4: 빌드 확인**
 
 Run: `cd web && npx tsc --noEmit`
 Expected: 타입 에러 없음
 
-- [ ] **Step 5: 커밋**
+- [x] **Step 5: 커밋**
 
 ```bash
 git add web/src/components/signals/
