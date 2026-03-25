@@ -7,16 +7,19 @@ export interface AiRecommendation {
   total_score: number; // 0~100
 
   // 가중치 (재계산 시 사용한 값)
-  weight_signal: number; // 기본 30
-  weight_technical: number; // 기본 30
-  weight_valuation: number; // 기본 20
-  weight_supply: number; // 기본 20
+  weight_signal: number;
+  weight_trend: number; // weight_technical → weight_trend
+  weight_valuation: number;
+  weight_supply: number;
+  weight_risk: number; // 신규: 리스크 감산 가중치
 
   // 항목별 점수 (원점수)
   signal_score: number | null;
-  technical_score: number | null;
+  trend_score: number | null; // technical_score → trend_score
   valuation_score: number | null;
   supply_score: number | null;
+  risk_score: number | null; // 신규: 리스크 점수
+  trend_days: number | null; // 신규: 추세 지속 일수
 
   // 기술적 지표
   signal_count: number | null;
@@ -50,17 +53,19 @@ export interface AiRecommendation {
 
 export interface AiRecommendationWeights {
   signal: number; // 0~100
-  technical: number; // 0~100
+  trend: number; // 0~100 (technical → trend 리네이밍)
   valuation: number; // 0~100
   supply: number; // 0~100
+  risk: number; // 감산 가중치
 }
 
-// 애널리스트 관점 기본 가중치: 기술(40) = 수급(40) > 신호(10) = 밸류(10)
+// 애널리스트 관점 기본 가중치: 추세(40) > 수급(30) > 밸류(20) > 신호(10), 리스크 감산(15)
 export const DEFAULT_WEIGHTS: AiRecommendationWeights = {
   signal: 10,
-  technical: 40,
-  valuation: 10,
-  supply: 40,
+  trend: 40,
+  valuation: 20,
+  supply: 30,
+  risk: 15,
 };
 
 export interface AiRecommendationResponse {
