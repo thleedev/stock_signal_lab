@@ -193,27 +193,26 @@ function calcScore(
   // 반복 추천 + 매수가 대비 현재가 위치
   let score_signal = 0;
   const cnt = stock.signal_count_30d ?? 0;
-  if (cnt >= 5) score_signal += 40;       // 매우 빈번: 높은 확신
-  else if (cnt >= 3) score_signal += 30;
-  else if (cnt >= 2) score_signal += 20;
-  else if (cnt >= 1) score_signal += 10;
 
-  // 매수가 대비 현재가 갭 (핵심 지표)
-  // 매수가 이하 = 저가 진입 기회, 소폭 상승 = 아직 유효, 급등 = 이미 반영
+  // 신호 존재 자체가 핵심 — 반복될수록 확신
+  if (cnt >= 5) score_signal += 60;
+  else if (cnt >= 3) score_signal += 50;
+  else if (cnt >= 2) score_signal += 40;
+  else if (cnt >= 1) score_signal += 30;
+
+  // 매수가 대비 현재가 갭 (보조 지표, 최대 ±20점)
   if (stock.latest_signal_price && stock.latest_signal_price > 0 && stock.current_price && stock.current_price > 0) {
     const gap = ((stock.current_price - stock.latest_signal_price) / stock.latest_signal_price) * 100;
-    if (gap <= -5) score_signal += 50;         // 매수가 대비 -5% 이하: 할인 매수 기회
-    else if (gap <= 0) score_signal += 60;     // 매수가 이하~동일: 최적 진입점
-    else if (gap < 3) score_signal += 50;      // +3% 미만: 아직 초입
-    else if (gap < 5) score_signal += 40;      // +3~5%: 유효하나 추격 주의
-    else if (gap < 10) score_signal += 25;     // +5~10%: 상승 진행, 신중
-    else if (gap < 20) score_signal += 10;     // +10~20%: 이미 상당 부분 반영
-    // +20% 이상: 0점 (추격매수 경고)
+    if (gap <= 0) score_signal += 20;          // 매수가 이하: 진입 기회
+    else if (gap < 5) score_signal += 15;      // +5% 미만: 아직 초입
+    else if (gap < 10) score_signal += 10;     // +5~10%: 유효
+    else if (gap < 20) score_signal += 5;      // +10~20%: 상당 반영
+    else score_signal -= 10;                    // +20% 이상: 추격매수 감점
   } else {
-    // 매수가 정보 없으면 신호 존재 자체로 기본점수
-    if (cnt >= 1) score_signal += 30;
+    // 매수가 정보 없으면 기본 가산
+    if (cnt >= 1) score_signal += 10;
   }
-  score_signal = Math.min(100, score_signal);
+  score_signal = Math.max(0, Math.min(100, score_signal));
 
   // ── 기술/모멘텀 (0~100) ──
   // 52주 범위 내 상대 위치(하단일수록 유리) + 단기 등락률(과열 감점)
@@ -349,12 +348,13 @@ export async function GET(request: NextRequest) {
     );
 
     // ── 신호 종목 중 수급 stale인 종목 live 보강 ──
-    // 날짜 필터된 종목 또는 최근 7일 신호 종목만 대상 (전 종목 X)
+    // 화면에 표시될 종목만 대상 (전 종목 X)
     const signalSymbols = allRows
       .filter((r) => {
-        if (dateSymbols && !dateSymbols.has(r.symbol as string)) return false;
-        const cnt = (r.signal_count_30d as number) ?? 0;
-        if (cnt === 0) return false;
+        const sym = r.symbol as string;
+        // 날짜 필터된 종목이거나 신호가 있는 종목
+        const isRelevant = dateSymbols ? dateSymbols.has(sym) : ((r.signal_count_30d as number) ?? 0) > 0;
+        if (!isRelevant) return false;
         const invDate = (r.investor_updated_at as string)?.slice(0, 10);
         return invDate !== todayStr; // stale인 것만
       })
