@@ -243,7 +243,10 @@ function calcScore(
     else if (pct >= 15 && pct < 25) score_momentum -= 5;  // 과열 주의
     else if (pct >= 25) score_momentum -= 20;              // 극단적 급등: 강한 감점
     else if (pct >= 0 && pct < 1) score_momentum += 15;   // 보합~미약 상승
-    else if (pct < 0 && pct > -3) score_momentum += 5;    // 소폭 하락: 눌림목 가능
+    else if (pct > -3) score_momentum += 5;                // 소폭 하락: 눌림목 가능
+    else if (pct > -5) score_momentum += 3;                // 조정: 바닥 탐색
+    else if (pct > -10) score_momentum += 0;               // 급락: 중립
+    else score_momentum -= 10;                              // 폭락: 감점
   }
   score_momentum = Math.max(0, Math.min(100, score_momentum));
 

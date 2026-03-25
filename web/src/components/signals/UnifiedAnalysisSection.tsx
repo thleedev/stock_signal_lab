@@ -301,11 +301,11 @@ function fmtNum(v: number | null, d = 1) { return v == null ? '-' : v.toFixed(d)
 
 // ── 점수 → 등급 변환 ──────────────────────────────────────────────────────────
 function getGrade(score: number): { grade: string; label: string; cls: string } {
-  if (score >= 90) return { grade: 'A+', label: '적극매수', cls: 'bg-red-600 text-white' };
-  if (score >= 80) return { grade: 'A', label: '매수', cls: 'bg-red-500 text-white' };
-  if (score >= 65) return { grade: 'B+', label: '관심', cls: 'bg-orange-400 text-white' };
-  if (score >= 50) return { grade: 'B', label: '보통', cls: 'bg-yellow-400 text-gray-900' };
-  if (score >= 35) return { grade: 'C', label: '관망', cls: 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
+  if (score >= 70) return { grade: 'A+', label: '적극매수', cls: 'bg-red-600 text-white' };
+  if (score >= 55) return { grade: 'A', label: '매수', cls: 'bg-red-500 text-white' };
+  if (score >= 42) return { grade: 'B+', label: '관심', cls: 'bg-orange-400 text-white' };
+  if (score >= 30) return { grade: 'B', label: '보통', cls: 'bg-yellow-400 text-gray-900' };
+  if (score >= 18) return { grade: 'C', label: '관망', cls: 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
   return { grade: 'D', label: '주의', cls: 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400' };
 }
 
@@ -573,11 +573,10 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   }, [liveLoading, refreshLivePrices]);
 
   // ── 데이터 조회 ───────────────────────────────────────────────────────────────
-  const doFetch = useCallback(async (date: string, searchQ: string, mkt: string) => {
+  const doFetch = useCallback(async (date: string, mkt: string) => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ date });
-      if (searchQ) params.set('q', searchQ);
       if (mkt !== 'all') params.set('market', mkt);
       const res = await window.fetch(`/api/v1/stock-ranking?${params}`);
       if (res.ok) setData(await res.json());
@@ -586,16 +585,16 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     }
   }, []);
 
-  useEffect(() => { doFetch(LAST7[0], '', 'all'); }, [doFetch]);
+  useEffect(() => { doFetch(LAST7[0], 'all'); }, [doFetch]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
   const resetScroll = () => setVisibleCount(PAGE_SIZE);
   const handleDate = (date: string) => {
     setSelectedDate(date); resetScroll(); setQ(''); setMarket('all');
-    doFetch(date, '', 'all');
+    doFetch(date, 'all');
   };
-  const handleSearch = (v: string) => { setQ(v); resetScroll(); doFetch(selectedDate, v, market); };
-  const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(selectedDate, q, mkt); };
+  const handleSearch = (v: string) => { setQ(v); resetScroll(); };
+  const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(selectedDate, mkt); };
 
   const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
     e.stopPropagation();
@@ -740,9 +739,18 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     });
   }, [sortedItems, charFilter, weights]);
 
+  // ── 검색 필터 (클라이언트 사이드) ──────────────────────────────────────────
+  const filteredBySearch = useMemo(() => {
+    if (!q) return filteredByChar;
+    const lower = q.toLowerCase();
+    return filteredByChar.filter(
+      (s) => s.name?.toLowerCase().includes(lower) || s.symbol?.toLowerCase().includes(lower)
+    );
+  }, [filteredByChar, q]);
+
   const total = data?.total ?? 0;
-  const displayTotal = filteredByChar.length;
-  const displayItems = filteredByChar.slice(0, visibleCount);
+  const displayTotal = filteredBySearch.length;
+  const displayItems = filteredBySearch.slice(0, visibleCount);
   const hasMore = visibleCount < displayTotal;
   const aiCount = rawItems.filter((i) => i.ai).length;
 
