@@ -3,10 +3,10 @@ import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
 import { getLastNWeekdays, getKstDayRange, getKstWeekRange } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
-import { UnifiedAnalysisSection, type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
+import { type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
 import { extractSignalPrice } from "@/lib/signal-constants";
 import { SignalFilterBar } from "./signal-filter-bar";
-import ShortTermRecommendationSection from "@/components/signals/ShortTermRecommendationSection";
+import RecommendationView from "@/components/signals/RecommendationView";
 import type { WatchlistGroup } from "@/types/stock";
 
 export const revalidate = 30;
@@ -155,47 +155,31 @@ export default async function SignalsPage({
 
   return (
     <PageLayout>
-      <PageHeader
-        title="AI 신호"
-        subtitle={selectedDate === "all" ? "전체 기간" : selectedDate === "week" ? "이번주" : `${selectedDate} 기준`}
-        action={
-          <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
-            <Link
-              href="/signals"
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "signals"
-                  ? "bg-[var(--accent)] text-white"
-                  : "text-[var(--muted)] hover:text-[var(--text)]"
-              }`}
-            >
-              AI 신호
-            </Link>
-            <Link
-              href="/signals?tab=analysis"
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "analysis"
-                  ? "bg-[var(--accent)] text-white"
-                  : "text-[var(--muted)] hover:text-[var(--text)]"
-              }`}
-            >
-              종목추천
-            </Link>
-            <Link
-              href="/signals?tab=short-term"
-              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                activeTab === "short-term"
-                  ? "bg-[var(--accent)] text-white"
-                  : "text-[var(--muted)] hover:text-[var(--text)]"
-              }`}
-            >
-              단기추천
-            </Link>
-          </div>
-        }
-      />
-
-      {activeTab === "signals" && (
+      {activeTab === "signals" ? (
         <>
+          <PageHeader
+            title="AI 신호"
+            subtitle={selectedDate === "all" ? "전체 기간" : selectedDate === "week" ? "이번주" : `${selectedDate} 기준`}
+            action={
+              <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
+                <span className="px-3 py-1.5 text-sm font-medium rounded-md bg-[var(--accent)] text-white">
+                  AI 신호
+                </span>
+                <Link
+                  href="/signals?tab=analysis"
+                  className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
+                >
+                  종목추천
+                </Link>
+                <Link
+                  href="/signals?tab=short-term"
+                  className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
+                >
+                  단기추천
+                </Link>
+              </div>
+            }
+          />
           <SignalFilterBar dates={last7} selectedDate={selectedDate} activeSource={activeSource} />
           <SignalColumns
             buySignals={buySignals}
@@ -206,20 +190,9 @@ export default async function SignalsPage({
             symbolGroups={symbolGroups}
           />
         </>
-      )}
-
-      {activeTab === "analysis" && (
-        <UnifiedAnalysisSection
-          signalMap={signalMap}
-          favoriteSymbols={favoriteSymbols}
-          watchlistSymbols={watchlistSymbols}
-          groups={groups}
-          symbolGroups={symbolGroups}
-        />
-      )}
-
-      {activeTab === "short-term" && (
-        <ShortTermRecommendationSection
+      ) : (
+        <RecommendationView
+          initialTab={activeTab as "analysis" | "short-term"}
           signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}

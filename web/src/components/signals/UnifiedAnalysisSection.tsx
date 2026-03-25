@@ -6,6 +6,7 @@ import StockActionMenu from '@/components/common/stock-action-menu';
 import { getLastNWeekdays } from '@/lib/date-utils';
 import { FilterBar } from '@/components/common/filter-bar';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
+import { useStockRanking } from '@/hooks/use-stock-ranking';
 import type { WatchlistGroup } from '@/types/stock';
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
@@ -29,13 +30,6 @@ interface GapInfo {
 }
 
 type SortMode = 'score' | 'name' | 'updated' | 'gap';
-
-interface RankingResponse {
-  items: StockRankItem[];
-  total: number;
-  page: number;
-  limit: number;
-}
 
 interface MenuState {
   isOpen: boolean;
@@ -529,8 +523,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   // 마운트 시마다 날짜 재계산 (모듈 레벨 const는 SPA 내비게이션 시 갱신 안 됨)
   const LAST7 = useMemo(() => getLastNWeekdays(7), []);
   const [selectedDate, setSelectedDate] = useState<string>(() => getLastNWeekdays(7)[0]);
-  const [data, setData] = useState<RankingResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { data, loading, doFetch } = useStockRanking();
   const [q, setQ] = useState('');
   const [market, setMarket] = useState<string>('all');
   const [visibleCount, setVisibleCount] = useState(50);
@@ -572,19 +565,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     }
   }, [liveLoading, refreshLivePrices]);
 
-  // ── 데이터 조회 ───────────────────────────────────────────────────────────────
-  const doFetch = useCallback(async (date: string, mkt: string) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ date });
-      if (mkt !== 'all') params.set('market', mkt);
-      const res = await window.fetch(`/api/v1/stock-ranking?${params}`);
-      if (res.ok) setData(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // ── 데이터 조회 (모듈 레벨 캐시로 탭 전환 시 즉시 반환) ───────────────────────
   useEffect(() => { doFetch(LAST7[0], 'all'); }, [doFetch]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
@@ -723,6 +704,15 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     });
   }, [rawItems, livePrices]);
 
+  // ── 점수 사전 계산 (sort·render에서 중복 호출 제거) ──────────────────────────
+  const weightedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of liveItems) {
+      map.set(item.symbol, computeWeighted(item, weights));
+    }
+    return map;
+  }, [liveItems, weights]);
+
   // ── 정렬 ──────────────────────────────────────────────────────────────────────
   const sortedItems = useMemo(() => [...liveItems].sort((a, b) => {
     if (sort === 'gap') {
@@ -736,9 +726,9 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       const db = b.latest_signal_date ?? '';
       if (da !== db) return db.localeCompare(da);
     }
-    // score (default + fallback for updated) — 순수 가중합 점수 순위
-    return computeWeighted(b, weights) - computeWeighted(a, weights);
-  }), [liveItems, sort, weights, sourceFilter, signalMap, livePrices, gapAsc]);
+    // score (default + fallback for updated) — 캐시된 점수 사용
+    return (weightedMap.get(b.symbol) ?? 0) - (weightedMap.get(a.symbol) ?? 0);
+  }), [liveItems, sort, weightedMap, sourceFilter, signalMap, livePrices, gapAsc]);
 
   // ── 투자성격 필터 ────────────────────────────────────────────────────────────
   const filteredByChar = useMemo(() => {
@@ -837,23 +827,18 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       )}
 
       <div className={`rounded-xl border border-[var(--border)] bg-[var(--card)] divide-y divide-[var(--border)] overflow-hidden ${loading ? 'opacity-60' : ''}`}>
-        {displayItems.map((item, idx) => {
-          const w = computeWeighted(item, weights);
-          const gapInfo = getGapInfo(item, signalMap, sourceFilter, livePrices);
-          const characters = getInvestmentCharacters(item, weights);
-          return (
+        {displayItems.map((item, idx) => (
             <RankCard
               key={item.symbol}
               item={item}
               rank={idx + 1}
-              weighted={w}
+              weighted={weightedMap.get(item.symbol) ?? 0}
               favs={favs}
-              gapInfo={gapInfo}
+              gapInfo={getGapInfo(item, signalMap, sourceFilter, livePrices)}
               onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
-              characters={characters}
+              characters={getInvestmentCharacters(item, weights)}
             />
-          );
-        })}
+        ))}
       </div>
 
       {/* ── 무한스크롤 sentinel ── */}

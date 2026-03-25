@@ -6,6 +6,7 @@ import StockActionMenu from '@/components/common/stock-action-menu';
 import { getLastNWeekdays } from '@/lib/date-utils';
 import { FilterBar } from '@/components/common/filter-bar';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
+import { useStockRanking } from '@/hooks/use-stock-ranking';
 import type { WatchlistGroup } from '@/types/stock';
 import type { SignalMap } from './UnifiedAnalysisSection';
 
@@ -29,13 +30,6 @@ interface GapInfo {
 }
 
 type SortMode = 'score' | 'name' | 'updated' | 'gap';
-
-interface RankingResponse {
-  items: StockRankItem[];
-  total: number;
-  page: number;
-  limit: number;
-}
 
 interface MenuState {
   isOpen: boolean;
@@ -677,8 +671,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
   // 마운트 시마다 날짜 재계산 (모듈 레벨 const는 SPA 내비게이션 시 갱신 안 됨)
   const LAST7 = useMemo(() => getLastNWeekdays(7), []);
   const [selectedDate, setSelectedDate] = useState<string>(() => getLastNWeekdays(7)[0]);
-  const [data, setData] = useState<RankingResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { data, loading, doFetch } = useStockRanking();
   const [q, setQ] = useState('');
   const [market, setMarket] = useState<string>('all');
   const [visibleCount, setVisibleCount] = useState(50);
@@ -729,19 +722,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     }
   }, [liveLoading, refreshLivePrices]);
 
-  // ── 데이터 조회 ───────────────────────────────────────────────────────────────
-  const doFetch = useCallback(async (date: string, mkt: string) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ date });
-      if (mkt !== 'all') params.set('market', mkt);
-      const res = await window.fetch(`/api/v1/stock-ranking?${params}`);
-      if (res.ok) setData(await res.json());
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // ── 데이터 조회 (모듈 레벨 캐시로 탭 전환 시 즉시 반환) ───────────────────────
   useEffect(() => { doFetch(LAST7[0], 'all'); }, [doFetch]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
   // 가중치 변경 시 localStorage 저장
@@ -893,6 +874,29 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     });
   }, [rawItems, livePrices]);
 
+  // ── 점수 사전 계산 (sort·render에서 중복 호출 제거) ──────────────────────────
+  const precomputed = useMemo(() => {
+    const map = new Map<string, {
+      scores: ShortTermScores;
+      weighted: number;
+      characters: ShortTermCharacter[];
+      badges: { label: string; variant: BadgeVariant }[];
+    }>();
+    for (const item of liveItems) {
+      const scores = computeShortTermScores(item);
+      const coreSum = weights.momentum + weights.supply + weights.catalyst + weights.valuation;
+      const base = (scores.momentum * weights.momentum + scores.supply * weights.supply + scores.catalyst * weights.catalyst + scores.valuation * weights.valuation) / (coreSum || 1);
+      const weighted = Math.max(0, Math.min(100, base - scores.risk * (weights.risk / 100)));
+      map.set(item.symbol, {
+        scores,
+        weighted,
+        characters: getShortTermCharacters(item),
+        badges: getShortTermBadges(item),
+      });
+    }
+    return map;
+  }, [liveItems, weights]);
+
   // ── 정렬 ──────────────────────────────────────────────────────────────────────
   const sortedItems = useMemo(() => [...liveItems].sort((a, b) => {
     if (sort === 'gap') {
@@ -906,9 +910,9 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
       const db = b.latest_signal_date ?? '';
       if (da !== db) return db.localeCompare(da);
     }
-    // score (default + fallback for updated) — 순수 가중합 점수 순위
-    return computeShortTermWeighted(b, weights) - computeShortTermWeighted(a, weights);
-  }), [liveItems, sort, weights, sourceFilter, signalMap, livePrices, gapAsc]);
+    // score (default + fallback for updated) — 캐시된 점수 사용
+    return (precomputed.get(b.symbol)?.weighted ?? 0) - (precomputed.get(a.symbol)?.weighted ?? 0);
+  }), [liveItems, sort, precomputed, sourceFilter, signalMap, livePrices, gapAsc]);
 
   // ── 투자성격 필터 ────────────────────────────────────────────────────────────
   const filteredByChar = useMemo(() => {
@@ -1008,23 +1012,19 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
 
       <div className={`rounded-xl border border-[var(--border)] bg-[var(--card)] divide-y divide-[var(--border)] overflow-hidden ${loading ? 'opacity-60' : ''}`}>
         {displayItems.map((item, idx) => {
-          const w = computeShortTermWeighted(item, weights);
-          const gapInfo = getGapInfo(item, signalMap, sourceFilter, livePrices);
-          const characters = getShortTermCharacters(item);
-          const stScores = computeShortTermScores(item);
-          const badges = getShortTermBadges(item);
+          const pc = precomputed.get(item.symbol);
           return (
             <RankCard
               key={item.symbol}
               item={item}
               rank={idx + 1}
-              weighted={w}
+              weighted={pc?.weighted ?? 0}
               favs={favs}
-              gapInfo={gapInfo}
+              gapInfo={getGapInfo(item, signalMap, sourceFilter, livePrices)}
               onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
-              characters={characters}
-              stScores={stScores}
-              badges={badges}
+              characters={pc?.characters ?? []}
+              stScores={pc?.scores ?? { momentum: 0, supply: 0, catalyst: 0, valuation: 0, risk: 0 }}
+              badges={pc?.badges ?? []}
             />
           );
         })}
