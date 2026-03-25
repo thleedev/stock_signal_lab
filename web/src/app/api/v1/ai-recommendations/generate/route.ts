@@ -68,13 +68,16 @@ export async function POST(request: NextRequest) {
           total_candidates,
           // standard 모델 전용 컬럼 — NOT NULL 제약이 있으므로 기본값 0
           signal_score: 0,
-          technical_score: 0,
+          trend_score: 0,
           valuation_score: 0,
           supply_score: 0,
+          risk_score: 0,
+          trend_days: 0,
           weight_signal: 0,
-          weight_technical: 0,
+          weight_trend: 0,
           weight_valuation: 0,
           weight_supply: 0,
+          weight_risk: 0,
         }));
 
         const { error: insertErr } = await supabase.from('ai_recommendations').insert(insertData);
@@ -93,15 +96,24 @@ export async function POST(request: NextRequest) {
     // --- 기존 standard 모델 ---
     const rawWeights: AiRecommendationWeights = {
       signal: Number(body.weights?.signal ?? DEFAULT_WEIGHTS.signal),
-      technical: Number(body.weights?.technical ?? DEFAULT_WEIGHTS.technical),
+      trend: Number(body.weights?.trend ?? DEFAULT_WEIGHTS.trend),
       valuation: Number(body.weights?.valuation ?? DEFAULT_WEIGHTS.valuation),
       supply: Number(body.weights?.supply ?? DEFAULT_WEIGHTS.supply),
+      risk: Number(body.weights?.risk ?? DEFAULT_WEIGHTS.risk),
     };
+    // 핵심 4개 가중치 합계 검증 (signal + trend + valuation + supply = 100)
     const weightSum =
-      rawWeights.signal + rawWeights.technical + rawWeights.valuation + rawWeights.supply;
+      rawWeights.signal + rawWeights.trend + rawWeights.valuation + rawWeights.supply;
     if (Math.abs(weightSum - 100) > 0.01) {
       return NextResponse.json(
-        { error: `가중치 합계가 100이어야 합니다. 현재: ${weightSum}` },
+        { error: `가중치 합계(signal+trend+valuation+supply)가 100이어야 합니다. 현재: ${weightSum}` },
+        { status: 400 },
+      );
+    }
+    // risk 가중치는 별도 0~100 범위 검증
+    if (rawWeights.risk < 0 || rawWeights.risk > 100) {
+      return NextResponse.json(
+        { error: `risk 가중치는 0~100 범위여야 합니다. 현재: ${rawWeights.risk}` },
         { status: 400 },
       );
     }
