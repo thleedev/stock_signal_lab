@@ -30,6 +30,7 @@ export interface StockRankItem {
   signal_count_30d: number | null;
   latest_signal_type: string | null;
   latest_signal_date: string | null;
+  latest_signal_price: number | null;
   high_52w: number | null;
   low_52w: number | null;
   // 기본 점수 (stock_cache 기반)
@@ -189,22 +190,28 @@ function calcScore(
   score_supply = Math.min(100, score_supply);
 
   // ── 신호 신뢰도 (0~100) ──
-  // 반복 추천 + 최근일수록 신뢰도 높음
+  // 반복 추천 + 매수가 대비 현재가 위치
   let score_signal = 0;
   const cnt = stock.signal_count_30d ?? 0;
-  if (cnt >= 5) score_signal += 50;       // 매우 빈번: 높은 확신
-  else if (cnt >= 3) score_signal += 40;
-  else if (cnt >= 2) score_signal += 25;
-  else if (cnt >= 1) score_signal += 15;
-  if (stock.latest_signal_type === 'BUY' || stock.latest_signal_type === 'BUY_FORECAST') {
-    if (stock.latest_signal_date) {
-      const days = (new Date(todayStr).getTime() - new Date(stock.latest_signal_date).getTime()) / 86400000;
-      if (days <= 1) score_signal += 50;        // 오늘/어제: 최고 신뢰
-      else if (days <= 3) score_signal += 40;    // 3일 이내
-      else if (days <= 7) score_signal += 30;    // 1주 이내
-      else if (days <= 14) score_signal += 20;   // 2주 이내
-      else if (days <= 30) score_signal += 10;   // 1개월 이내
-    }
+  if (cnt >= 5) score_signal += 40;       // 매우 빈번: 높은 확신
+  else if (cnt >= 3) score_signal += 30;
+  else if (cnt >= 2) score_signal += 20;
+  else if (cnt >= 1) score_signal += 10;
+
+  // 매수가 대비 현재가 갭 (핵심 지표)
+  // 매수가 이하 = 저가 진입 기회, 소폭 상승 = 아직 유효, 급등 = 이미 반영
+  if (stock.latest_signal_price && stock.latest_signal_price > 0 && stock.current_price && stock.current_price > 0) {
+    const gap = ((stock.current_price - stock.latest_signal_price) / stock.latest_signal_price) * 100;
+    if (gap <= -5) score_signal += 50;         // 매수가 대비 -5% 이하: 할인 매수 기회
+    else if (gap <= 0) score_signal += 60;     // 매수가 이하~동일: 최적 진입점
+    else if (gap < 3) score_signal += 50;      // +3% 미만: 아직 초입
+    else if (gap < 5) score_signal += 40;      // +3~5%: 유효하나 추격 주의
+    else if (gap < 10) score_signal += 25;     // +5~10%: 상승 진행, 신중
+    else if (gap < 20) score_signal += 10;     // +10~20%: 이미 상당 부분 반영
+    // +20% 이상: 0점 (추격매수 경고)
+  } else {
+    // 매수가 정보 없으면 신호 존재 자체로 기본점수
+    if (cnt >= 1) score_signal += 30;
   }
   score_signal = Math.min(100, score_signal);
 
@@ -319,7 +326,7 @@ export async function GET(request: NextRequest) {
         while (true) {
           let query = supabase
             .from('stock_cache')
-            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, high_52w, low_52w, dividend_yield, market_cap, forward_per, target_price, invest_opinion')
+            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, latest_signal_price, high_52w, low_52w, dividend_yield, market_cap, forward_per, target_price, invest_opinion')
             .not('current_price', 'is', null)
             .range(from, from + 999);
           if (market !== 'all') query = query.eq('market', market);

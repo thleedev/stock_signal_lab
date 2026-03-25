@@ -200,17 +200,23 @@ export async function GET(request: Request) {
     // ═══ Step 5: 신호 집계 (30일) ═══
     const { data: signalCounts } = await supabase
       .from('signals')
-      .select('symbol, signal_type, timestamp')
+      .select('symbol, signal_type, timestamp, raw_data')
       .in('signal_type', ['BUY', 'BUY_FORECAST'])
       .gte('timestamp', d30.toISOString())
       .order('timestamp', { ascending: false });
 
     if (signalCounts && signalCounts.length > 0) {
-      const symbolSignals: Record<string, { count: number; latestType: string; latestDate: string }> = {};
+      const { extractSignalPrice } = await import('@/lib/signal-constants');
+      const symbolSignals: Record<string, {
+        count: number; latestType: string; latestDate: string; latestPrice: number | null;
+      }> = {};
       for (const s of signalCounts) {
         if (!s.symbol) continue;
         if (!symbolSignals[s.symbol]) {
-          symbolSignals[s.symbol] = { count: 0, latestType: s.signal_type, latestDate: s.timestamp };
+          const price = extractSignalPrice(s.raw_data as Record<string, unknown> | null);
+          symbolSignals[s.symbol] = {
+            count: 0, latestType: s.signal_type, latestDate: s.timestamp, latestPrice: price,
+          };
         }
         symbolSignals[s.symbol].count++;
       }
@@ -221,6 +227,7 @@ export async function GET(request: Request) {
           signal_count_30d: info.count,
           latest_signal_type: info.latestType,
           latest_signal_date: info.latestDate,
+          latest_signal_price: info.latestPrice,
         }));
         await supabase.from('stock_cache').upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
       }

@@ -8,6 +8,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators } from '@/lib/krx-api';
+import { extractSignalPrice } from '@/lib/signal-constants';
 
 export async function enrichSignalStocks(
   supabase: SupabaseClient,
@@ -89,27 +90,34 @@ export async function enrichSignalStocks(
     }
   }
 
-  // 3. 신호 집계 업데이트 (30일 BUY 신호 카운트)
+  // 3. 신호 집계 업데이트 (30일 BUY 신호 카운트 + 최근 매수가)
   const thirtyDaysAgo = new Date(nowKst.getTime() - 30 * 86400000).toISOString().slice(0, 10);
   const { data: signalRows } = await supabase
     .from('signals')
-    .select('symbol, timestamp, signal_type')
+    .select('symbol, timestamp, signal_type, raw_data')
     .in('symbol', unique)
     .in('signal_type', ['BUY', 'BUY_FORECAST'])
     .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`);
 
   if (signalRows && signalRows.length > 0) {
-    const countMap = new Map<string, { count: number; latestDate: string; latestType: string }>();
+    const countMap = new Map<string, {
+      count: number; latestDate: string; latestType: string; latestPrice: number | null;
+    }>();
     for (const row of signalRows) {
       const sym = row.symbol as string;
       const existing = countMap.get(sym);
       if (!existing) {
-        countMap.set(sym, { count: 1, latestDate: row.timestamp as string, latestType: row.signal_type as string });
+        const price = extractSignalPrice(row.raw_data as Record<string, unknown> | null);
+        countMap.set(sym, {
+          count: 1, latestDate: row.timestamp as string,
+          latestType: row.signal_type as string, latestPrice: price,
+        });
       } else {
         existing.count++;
         if ((row.timestamp as string) > existing.latestDate) {
           existing.latestDate = row.timestamp as string;
           existing.latestType = row.signal_type as string;
+          existing.latestPrice = extractSignalPrice(row.raw_data as Record<string, unknown> | null);
         }
       }
     }
@@ -119,6 +127,7 @@ export async function enrichSignalStocks(
       signal_count_30d: info.count,
       latest_signal_date: info.latestDate,
       latest_signal_type: info.latestType,
+      latest_signal_price: info.latestPrice,
     }));
 
     if (signalUpdates.length > 0) {
