@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
 import type { StockInvestorData } from '@/lib/naver-stock-api';
+import { fetchBulkIndicators } from '@/lib/krx-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -371,21 +372,35 @@ export async function GET(request: NextRequest) {
       })
       .map((r) => r.symbol as string);
 
-    let liveInvMap = new Map<string, StockInvestorData>();
-    if (signalSymbols.length > 0) {
-      // 200개씩 청크 분할 (전체 스킵 방지)
-      const chunks = [];
-      for (let i = 0; i < signalSymbols.length; i += 200) {
-        chunks.push(signalSymbols.slice(i, i + 200));
-      }
-      const results = await Promise.all(chunks.map(c => fetchBulkInvestorData(c, 20)));
-      for (const m of results) {
-        for (const [k, v] of m) liveInvMap.set(k, v);
-      }
-      // live 결과를 allRows에 반영 (calcScore가 사용할 수 있도록)
-      for (const row of allRows) {
-        const inv = liveInvMap.get(row.symbol as string);
-        if (!inv) continue;
+    // 지표(PER/52주 등) null인 종목도 보강 대상에 포함
+    const indicatorNullSymbols = signalSymbols.filter((sym) => {
+      const r = allRows.find((row) => row.symbol === sym);
+      return r && (r.per === null || r.high_52w === null);
+    });
+
+    // 수급 + 지표 병렬 live 조회
+    const [liveInvMap, liveIndMap] = await Promise.all([
+      signalSymbols.length > 0
+        ? (async () => {
+            const m = new Map<string, StockInvestorData>();
+            const chunks = [];
+            for (let i = 0; i < signalSymbols.length; i += 200)
+              chunks.push(signalSymbols.slice(i, i + 200));
+            const results = await Promise.all(chunks.map(c => fetchBulkInvestorData(c, 20)));
+            for (const r of results) for (const [k, v] of r) m.set(k, v);
+            return m;
+          })()
+        : Promise.resolve(new Map<string, StockInvestorData>()),
+      indicatorNullSymbols.length > 0
+        ? fetchBulkIndicators(indicatorNullSymbols, 20)
+        : Promise.resolve(new Map()),
+    ]);
+
+    // live 결과를 allRows에 반영
+    for (const row of allRows) {
+      const sym = row.symbol as string;
+      const inv = liveInvMap.get(sym);
+      if (inv) {
         row.foreign_net_qty = inv.foreign_net;
         row.institution_net_qty = inv.institution_net;
         row.foreign_net_5d = inv.foreign_net_5d;
@@ -393,6 +408,18 @@ export async function GET(request: NextRequest) {
         row.foreign_streak = inv.foreign_streak;
         row.institution_streak = inv.institution_streak;
         row.investor_updated_at = todayStr;
+      }
+      const ind = liveIndMap.get(sym);
+      if (ind) {
+        if (ind.per > 0) row.per = ind.per;
+        if (ind.pbr > 0) row.pbr = ind.pbr;
+        if (ind.roe !== 0) row.roe = ind.roe;
+        if (ind.high_52w > 0) row.high_52w = ind.high_52w;
+        if (ind.low_52w > 0) row.low_52w = ind.low_52w;
+        if (ind.dividend_yield > 0) row.dividend_yield = ind.dividend_yield;
+        if (ind.forward_per !== null) row.forward_per = ind.forward_per;
+        if (ind.target_price !== null) row.target_price = ind.target_price;
+        if (ind.invest_opinion !== null) row.invest_opinion = ind.invest_opinion;
       }
     }
 

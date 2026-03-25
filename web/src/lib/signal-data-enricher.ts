@@ -20,6 +20,8 @@ export async function enrichSignalStocks(
   const nowKst = new Date(Date.now() + 9 * 60 * 60 * 1000);
   const todayStr = nowKst.toISOString().slice(0, 10);
 
+  console.log(`[signal-enricher] 시작: ${unique.length}종목 (${unique.join(', ')})`);
+
   // 수급 + 지표(forward 포함) + 일봉을 병렬 조회
   const [investorMap, indicatorMap, dailyPricesMap] = await Promise.all([
     fetchBulkInvestorData(unique, 20),
@@ -47,30 +49,28 @@ export async function enrichSignalStocks(
     }
 
     if (ind) {
-      update.per = ind.per || undefined;
-      update.pbr = ind.pbr || undefined;
-      update.roe = ind.roe || undefined;
-      update.high_52w = ind.high_52w || undefined;
-      update.low_52w = ind.low_52w || undefined;
-      update.dividend_yield = ind.dividend_yield || undefined;
+      // 0은 유효한 값이므로 null 체크만 (|| 대신 ??)
+      if (ind.per > 0) update.per = ind.per;
+      if (ind.pbr > 0) update.pbr = ind.pbr;
+      if (ind.roe !== 0) update.roe = ind.roe;
+      if (ind.high_52w > 0) update.high_52w = ind.high_52w;
+      if (ind.low_52w > 0) update.low_52w = ind.low_52w;
+      if (ind.dividend_yield > 0) update.dividend_yield = ind.dividend_yield;
       if (ind.forward_per !== null) update.forward_per = ind.forward_per;
       if (ind.target_price !== null) update.target_price = ind.target_price;
       if (ind.invest_opinion !== null) update.invest_opinion = ind.invest_opinion;
       update.consensus_updated_at = nowKst.toISOString();
     }
 
-    // undefined 제거
-    for (const key of Object.keys(update)) {
-      if (update[key] === undefined) delete update[key];
-    }
-
     cacheUpdates.push(update);
   }
 
   if (cacheUpdates.length > 0) {
-    await supabase
+    const { error } = await supabase
       .from('stock_cache')
       .upsert(cacheUpdates, { onConflict: 'symbol' });
+    if (error) console.error('[signal-enricher] stock_cache upsert 실패:', error.message);
+    else console.log(`[signal-enricher] stock_cache 갱신: ${cacheUpdates.length}종목 (investor:${investorMap.size}, indicator:${indicatorMap.size})`);
   }
 
   // 2. daily_prices 일봉 저장
