@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
+import type { StockInvestorData } from '@/lib/naver-stock-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -197,9 +199,11 @@ function calcScore(
   if (stock.latest_signal_type === 'BUY' || stock.latest_signal_type === 'BUY_FORECAST') {
     if (stock.latest_signal_date) {
       const days = (new Date(todayStr).getTime() - new Date(stock.latest_signal_date).getTime()) / 86400000;
-      if (days <= 1) score_signal += 50;   // 오늘/어제: 최고 신뢰
-      else if (days <= 3) score_signal += 35;
-      else if (days <= 7) score_signal += 15;
+      if (days <= 1) score_signal += 50;        // 오늘/어제: 최고 신뢰
+      else if (days <= 3) score_signal += 40;    // 3일 이내
+      else if (days <= 7) score_signal += 30;    // 1주 이내
+      else if (days <= 14) score_signal += 20;   // 2주 이내
+      else if (days <= 30) score_signal += 10;   // 1개월 이내
     }
   }
   score_signal = Math.min(100, score_signal);
@@ -336,6 +340,35 @@ export async function GET(request: NextRequest) {
     const aiRecMap = new Map(
       (aiRecsResult.data ?? []).map((r) => [r.symbol as string, r])
     );
+
+    // ── 신호 종목 중 수급 stale인 종목 live 보강 ──
+    // 날짜 필터된 종목 또는 최근 7일 신호 종목만 대상 (전 종목 X)
+    const signalSymbols = allRows
+      .filter((r) => {
+        if (dateSymbols && !dateSymbols.has(r.symbol as string)) return false;
+        const cnt = (r.signal_count_30d as number) ?? 0;
+        if (cnt === 0) return false;
+        const invDate = (r.investor_updated_at as string)?.slice(0, 10);
+        return invDate !== todayStr; // stale인 것만
+      })
+      .map((r) => r.symbol as string);
+
+    let liveInvMap = new Map<string, StockInvestorData>();
+    if (signalSymbols.length > 0 && signalSymbols.length <= 200) {
+      liveInvMap = await fetchBulkInvestorData(signalSymbols, 20);
+      // live 결과를 allRows에 반영 (calcScore가 사용할 수 있도록)
+      for (const row of allRows) {
+        const inv = liveInvMap.get(row.symbol as string);
+        if (!inv) continue;
+        row.foreign_net_qty = inv.foreign_net;
+        row.institution_net_qty = inv.institution_net;
+        row.foreign_net_5d = inv.foreign_net_5d;
+        row.institution_net_5d = inv.institution_net_5d;
+        row.foreign_streak = inv.foreign_streak;
+        row.institution_streak = inv.institution_streak;
+        row.investor_updated_at = todayStr;
+      }
+    }
 
     // ── 점수 계산 + ai 병합 + 날짜 필터
     const scored: StockRankItem[] = allRows
