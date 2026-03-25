@@ -1,7 +1,8 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { AiRecommendation, AiRecommendationWeights, DEFAULT_WEIGHTS } from '@/types/ai-recommendation';
 import { calcSignalScore } from './signal-score';
-import { calcTechnicalScore, DailyPrice } from './technical-score';
+import { calcTechnicalScore, calcSMA, calcBollingerUpper, DailyPrice } from './technical-score';
+import { calcRiskScore, RiskScoreInput } from './risk-score';
 import { calcValuationScore, ForwardData } from './valuation-score';
 import { calcSupplyScore } from './supply-score';
 import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
@@ -304,21 +305,54 @@ export async function generateRecommendations(
 
     const valuationResult = calcValuationScore(perVal, pbrVal, roeVal, divVal, forwardData);
 
-    // 가중치 적용 총점 (음수 범위 포함 정규화)
-    const total_score =
+    // 리스크 입력 준비
+    const closes = prices.map(p => p.close);
+    const currentPrice = closes.length > 0 ? closes[closes.length - 1] : 0;
+    const pct5d = closes.length >= 6
+      ? ((currentPrice - closes[closes.length - 6]) / closes[closes.length - 6]) * 100
+      : 0;
+
+    const sma20Arr = calcSMA(closes, 20);
+    const sma20Latest = sma20Arr.length > 0 ? sma20Arr[sma20Arr.length - 1] : currentPrice;
+    const disparity20 = sma20Latest > 0 ? currentPrice / sma20Latest : 1.0;
+
+    // 볼린저 상단
+    const bollingerUpper = closes.length >= 20 ? calcBollingerUpper(closes) : null;
+
+    const riskInput: RiskScoreInput = {
+      rsi: technicalResult.rsi,
+      pct5d,
+      disparity20,
+      bollingerUpper,
+      currentPrice,
+      doubleTop: technicalResult.double_top,
+      foreignNet,
+      institutionNet,
+      foreignStreak,
+      institutionStreak,
+      shortSellRatio,
+    };
+    const riskResult = calcRiskScore(riskInput);
+
+    // 가중치 적용 총점 (추세 정규화 /58, 리스크 감산 적용)
+    const base =
       (signalResult.score / 30) * weights.signal +
-      ((technicalResult.score + 12) / 60) * weights.technical +
+      (technicalResult.score / 58) * weights.trend +
       (valuationResult.score / 25) * weights.valuation +
       ((supplyResult.score + 10) / 55) * weights.supply;
+
+    const total_score = Math.max(0, Math.min(base - (riskResult.score / 100) * weights.risk, 100));
 
     return {
       symbol,
       name: name ?? null,
       total_score: Math.round(total_score * 10) / 10,
       signal_score: signalResult.score,
-      technical_score: technicalResult.score,
+      trend_score: technicalResult.score,
       valuation_score: valuationResult.score,
       supply_score: supplyResult.score,
+      risk_score: riskResult.score,
+      trend_days: technicalResult.trend_days,
       signal_count: signalResult.signal_count,
       rsi: technicalResult.rsi,
       macd_cross: technicalResult.macd_cross,
@@ -350,9 +384,10 @@ export async function generateRecommendations(
     date: todayKst,
     rank: idx + 1,
     weight_signal: weights.signal,
-    weight_technical: weights.technical,
+    weight_trend: weights.trend,
     weight_valuation: weights.valuation,
     weight_supply: weights.supply,
+    weight_risk: weights.risk,
     total_candidates,
     created_at: new Date().toISOString(),
   }));

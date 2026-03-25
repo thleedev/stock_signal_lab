@@ -50,7 +50,7 @@ function calcRSI(closes: number[]): number | null {
   return 100 - 100 / (1 + rs);
 }
 
-function calcSMA(values: number[], period: number): number[] {
+export function calcSMA(values: number[], period: number): number[] {
   const result: number[] = [];
   for (let i = period - 1; i < values.length; i++) {
     const slice = values.slice(i - period + 1, i + 1);
@@ -65,6 +65,15 @@ function calcBollingerLower(closes: number[], period = 20, stdMultiplier = 2): n
   const mean = slice.reduce((a, b) => a + b, 0) / period;
   const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
   return mean - stdMultiplier * Math.sqrt(variance);
+}
+
+/** 볼린저 밴드 상단: mean + 2 * std */
+export function calcBollingerUpper(closes: number[], period = 20, stdMultiplier = 2): number | null {
+  if (closes.length < period) return null;
+  const slice = closes.slice(-period);
+  const mean = slice.reduce((a, b) => a + b, 0) / period;
+  const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
+  return mean + stdMultiplier * Math.sqrt(variance);
 }
 
 export function calcTechnicalScore(
