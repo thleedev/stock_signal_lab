@@ -1,5 +1,6 @@
 export interface TechnicalScoreResult {
-  score: number; // -12~48
+  score: number; // 0~58 (추세 점수, 순수 가점만)
+  trend_days: number; // 종가 > SMA20 연속일수
   rsi: number | null;
   macd_cross: boolean;
   golden_cross: boolean;
@@ -73,6 +74,7 @@ export function calcTechnicalScore(
 ): TechnicalScoreResult {
   const empty: TechnicalScoreResult = {
     score: 0,
+    trend_days: 0,
     rsi: null,
     macd_cross: false,
     golden_cross: false,
@@ -102,7 +104,7 @@ export function calcTechnicalScore(
   // RSI (14일)
   const rsi = calcRSI(closes);
   const rsiInZone = rsi !== null && rsi >= 30 && rsi <= 50;
-  if (rsiInZone) score += 5;
+  if (rsiInZone) score += 4;
 
   // 골든크로스: 5일선이 20일선 상향 돌파 (최근 3일 내)
   const sma5 = calcSMA(closes, 5);
@@ -133,7 +135,7 @@ export function calcTechnicalScore(
       }
     }
   }
-  if (bollingerBottom) score += 4;
+  if (bollingerBottom) score += 2;
 
   // MACD 골든크로스 (12/26/9) — 최근 3일 내 발생 여부 확인
   let macdCross = false;
@@ -178,7 +180,7 @@ export function calcTechnicalScore(
       }
     }
   }
-  if (phoenixPattern) score += 5;
+  if (phoenixPattern) score += 3;
 
   // 거래량 급증: 20일 평균 대비 2배 이상
   let volumeSurge = false;
@@ -190,7 +192,7 @@ export function calcTechnicalScore(
   }
   if (volumeSurge) score += 4;
 
-  // 이동평균 정배열: 5일선 > 20일선 > 60일선 (확실한 상승 추세)
+  // 이동평균 정배열: 완전정배열(5>20>60) 12점, 부분정배열(5>20만) 5점
   let maAligned = false;
   if (closes.length >= 60) {
     const sma60 = calcSMA(closes, 60);
@@ -199,9 +201,18 @@ export function calcTechnicalScore(
     const latest60 = sma60[sma60.length - 1];
     if (latest5 > latest20 && latest20 > latest60) {
       maAligned = true;
+      score += 12; // 완전정배열
+    } else if (latest5 > latest20) {
+      score += 5; // 부분정배열 (5>20만)
+    }
+  } else if (sma5.length >= 1 && sma20.length >= 1) {
+    // 60일 데이터 부족 시 부분정배열만 판정
+    const latest5 = sma5[sma5.length - 1];
+    const latest20 = sma20[sma20.length - 1];
+    if (latest5 > latest20) {
+      score += 5;
     }
   }
-  if (maAligned) score += 4;
 
   // 52주 저점 근처 (±5%)
   let week52LowNear = false;
@@ -209,7 +220,7 @@ export function calcTechnicalScore(
     const ratio = currentPrice / low52w;
     if (ratio >= 0.95 && ratio <= 1.05) week52LowNear = true;
   }
-  if (week52LowNear) score += 3;
+  if (week52LowNear) score += 2;
 
   // ── 단기 상승 임박 지표 ──
 
@@ -222,7 +233,7 @@ export function calcTechnicalScore(
       const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
       if (disparity >= 0.92 && disparity <= 0.98 && todayBullish) {
         disparityRebound = true;
-        score += 5;
+        score += 3;
       }
     }
   }
@@ -236,7 +247,7 @@ export function calcTechnicalScore(
       const todayVol = volumes[volumes.length - 1];
       if (avg10Recent <= avg20Vol * 0.5 && todayVol >= avg20Vol * 2) {
         volumeBreakout = true;
-        score += 5;
+        score += 3;
       }
     }
   }
@@ -254,22 +265,15 @@ export function calcTechnicalScore(
       const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
       if (todayPct >= 1.5 && todayBullish) {
         consecutiveDropRebound = true;
-        score += 4;
+        score += 3;
       }
     }
   }
 
-  // 애널리스트 관점: RSI + 5일 등락률 복합 타이밍 보정
-  const isRsiOverbought = rsi !== null && rsi >= 70;
+  // 초기진입 보너스: 신호 발생 + 아직 덜 오름
   if (closes.length >= 6) {
     const pct5d = ((currentPrice - closes[closes.length - 6]) / closes[closes.length - 6]) * 100;
-    if (isRsiOverbought && pct5d >= 10) {
-      // RSI 과매수 + 5일 +10%: 과열 확실 → 큰 감점
-      score -= 6;
-    } else if (pct5d >= 25) {
-      // 극단적 급등 → 감점
-      score -= 4;
-    } else if (pct5d >= 0 && pct5d < 3 && (goldenCross || macdCross || volumeSurge)) {
+    if (pct5d >= 0 && pct5d < 3 && (goldenCross || macdCross || volumeSurge)) {
       // 신호 발생 + 아직 덜 오름: 초기 진입 기회 → 가산점
       score += 3;
     }
@@ -299,10 +303,30 @@ export function calcTechnicalScore(
       }
     }
   }
-  if (doubleTop) score -= 8;
+  // 쌍봉 판정 결과는 risk-score에서 참조하므로 boolean만 유지 (감점 제거)
+
+  // 추세 지속일수: 종가 > SMA20인 연속일수를 역순 카운트
+  let trendDays = 0;
+  if (sma20.length >= 1) {
+    // sma20 배열은 closes[19]부터 시작 (index 기준)
+    const sma20Offset = closes.length - sma20.length;
+    for (let i = closes.length - 1; i >= sma20Offset; i--) {
+      const sma20Idx = i - sma20Offset;
+      if (closes[i] > sma20[sma20Idx]) {
+        trendDays++;
+      } else {
+        break;
+      }
+    }
+  }
+  // 추세 지속일수 점수: >=15일 10점, >=10일 6점, >=5일 3점, <5일 0점
+  if (trendDays >= 15) score += 10;
+  else if (trendDays >= 10) score += 6;
+  else if (trendDays >= 5) score += 3;
 
   return {
-    score: Math.max(-12, Math.min(score, 48)),
+    score: Math.max(0, Math.min(score, 58)),
+    trend_days: trendDays,
     rsi,
     macd_cross: macdCross,
     golden_cross: goldenCross,
