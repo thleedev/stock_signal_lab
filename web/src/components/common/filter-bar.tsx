@@ -12,7 +12,7 @@ const MARKET_OPTIONS = [
 ];
 
 interface FilterBarProps {
-  date: {
+  date?: {
     dates: string[];
     selected: string;
     onChange: (d: string) => void;
@@ -212,14 +212,16 @@ export function FilterBar({
       )}
 
       {/* DateDropdown */}
-      <DateDropdown
-        dates={date.dates}
-        selected={date.selected}
-        onChange={date.onChange}
-        allLabel={date.allLabel}
-        extraAll={date.extraAll}
-        label={date.label}
-      />
+      {date && (
+        <DateDropdown
+          dates={date.dates}
+          selected={date.selected}
+          onChange={date.onChange}
+          allLabel={date.allLabel}
+          extraAll={date.extraAll}
+          label={date.label}
+        />
+      )}
 
       {/* 소스 드롭다운 */}
       {source && (

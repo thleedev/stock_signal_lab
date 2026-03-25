@@ -69,3 +69,37 @@ export interface AiRecommendationResponse {
   total_candidates: number;
   needs_refresh: boolean;
 }
+
+// --- 초단기 모멘텀 모델 타입 ---
+
+export type ModelType = 'standard' | 'short_term';
+
+export interface ShortTermWeights {
+  momentum: number;   // 기본 45
+  supply: number;     // 기본 28
+  catalyst: number;   // 기본 22
+  valuation: number;  // 기본 5
+  risk: number;       // 기본 15 (감산)
+}
+
+export const DEFAULT_SHORT_TERM_WEIGHTS: ShortTermWeights = {
+  momentum: 45,
+  supply: 28,
+  catalyst: 22,
+  valuation: 5,
+  risk: 15,
+};
+
+export interface ShortTermScoreBreakdown {
+  momentum: number;
+  supply: number;
+  catalyst: number;
+  valuation: number;
+  risk: number;
+  total: number;
+  grade: string;
+  gradeLabel: string;
+  preFilterPassed: boolean;
+  preFilterReasons?: string[];
+  badges?: string[];
+}

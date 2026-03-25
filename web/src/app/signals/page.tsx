@@ -6,6 +6,7 @@ import SignalColumns from "./signal-columns";
 import { UnifiedAnalysisSection, type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
 import { extractSignalPrice } from "@/lib/signal-constants";
 import { SignalFilterBar } from "./signal-filter-bar";
+import ShortTermRecommendationSection from "@/components/signals/ShortTermRecommendationSection";
 import type { WatchlistGroup } from "@/types/stock";
 
 export const revalidate = 30;
@@ -17,7 +18,10 @@ export default async function SignalsPage({
 }) {
   const params = await searchParams;
   const activeSource = params.source || "all";
-  const activeTab = params.tab === "analysis" ? "analysis" : "signals";
+  const activeTab =
+    params.tab === "analysis" ? "analysis"
+    : params.tab === "short-term" ? "short-term"
+    : "signals";
   const supabase = createServiceClient();
 
   const last7 = getLastNWeekdays(7);
@@ -117,10 +121,10 @@ export default async function SignalsPage({
     sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
   }
 
-  // ── 종목분석 탭 ──────────────────────────────────────────
+  // ── 종목추천 탭 ──────────────────────────────────────────
   const signalMap: SignalMap = {};
 
-  if (activeTab === "analysis") {
+  if (activeTab === "analysis" || activeTab === "short-term") {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const since30d = thirtyDaysAgo.toISOString();
@@ -174,7 +178,17 @@ export default async function SignalsPage({
                   : "text-[var(--muted)] hover:text-[var(--text)]"
               }`}
             >
-              종목분석
+              종목추천
+            </Link>
+            <Link
+              href="/signals?tab=short-term"
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                activeTab === "short-term"
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--muted)] hover:text-[var(--text)]"
+              }`}
+            >
+              단기추천
             </Link>
           </div>
         }
@@ -196,6 +210,16 @@ export default async function SignalsPage({
 
       {activeTab === "analysis" && (
         <UnifiedAnalysisSection
+          signalMap={signalMap}
+          favoriteSymbols={favoriteSymbols}
+          watchlistSymbols={watchlistSymbols}
+          groups={groups}
+          symbolGroups={symbolGroups}
+        />
+      )}
+
+      {activeTab === "short-term" && (
+        <ShortTermRecommendationSection
           signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}

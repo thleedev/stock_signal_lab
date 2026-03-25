@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
-import type { StockInvestorData } from '@/lib/naver-stock-api';
+import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
+import type { StockInvestorData, NaverDailyPrice } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators } from '@/lib/krx-api';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +35,12 @@ export interface StockRankItem {
   sector: string | null;
   high_52w: number | null;
   low_52w: number | null;
+  // 초단기 모멘텀용 파생 필드 (daily_prices 기반)
+  volume_ratio: number | null;      // 당일거래량 / 20일평균거래량
+  close_position: number | null;    // (종가-저가)/(고가-저가), 고가=저가면 1.0
+  trading_value: number | null;     // 거래대금 (원) = volume * close
+  gap_pct: number | null;           // (당일시가-전일종가)/전일종가 * 100
+  cum_return_3d: number | null;     // 3일 누적 수익률 (%)
   // 기본 점수 (stock_cache 기반)
   score_total: number;
   score_valuation: number;
@@ -263,6 +269,34 @@ function calcScore(
   // total은 균등 평균 (클라이언트에서 가중치 적용하므로 여기선 단순 평균)
   const score_total = Math.round((score_valuation + score_supply + score_signal + score_momentum) / 4);
   return { score_total, score_valuation, score_supply, score_signal, score_momentum };
+}
+
+/**
+ * 여러 종목의 일봉 데이터를 병렬 fetch (네이버 fchart API)
+ * concurrency 제한으로 API 부하 방지
+ */
+async function fetchBulkDailyPrices(
+  symbols: string[],
+  concurrency = 10,
+  days = 22,
+): Promise<Map<string, NaverDailyPrice[]>> {
+  const result = new Map<string, NaverDailyPrice[]>();
+  if (symbols.length === 0) return result;
+
+  const queue = [...symbols];
+  const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const sym = queue.shift()!;
+      try {
+        const prices = await fetchNaverDailyPrices(sym, days);
+        if (prices.length > 0) result.set(sym, prices);
+      } catch {
+        // 개별 종목 실패 무시
+      }
+    }
+  });
+  await Promise.all(workers);
+  return result;
 }
 
 function kstDayRange(dateStr: string) {
@@ -499,7 +533,15 @@ export async function GET(request: NextRequest) {
         const sectorAvgPct = sector ? (sectorAvgPctMap.get(sector) ?? null) : null;
         const scores = calcScore(base, scoreBaseDate, sectorAvgPct);
         const aiRec = aiRecMap.get(base.symbol);
-        const item: StockRankItem = { ...base, ...scores };
+        const item: StockRankItem = {
+          ...base,
+          ...scores,
+          volume_ratio: null,
+          close_position: null,
+          trading_value: null,
+          gap_pct: null,
+          cum_return_3d: null,
+        };
         if (aiRec) {
           // AI 점수를 0~100으로 정규화하여 score_* 필드도 통일 (이중 체계 제거)
           const clamp100 = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
@@ -535,6 +577,178 @@ export async function GET(request: NextRequest) {
         }
         return item;
       });
+
+    // ── 초단기 모멘텀용 daily_prices 조회 ──
+    const displaySymbols = scored.map(s => s.symbol);
+    if (displaySymbols.length > 0) {
+      type DailyPrice = { date: string; open: number | null; high: number; low: number; close: number; volume: number };
+      const dpResults: Record<string, unknown>[] = [];
+      for (let i = 0; i < displaySymbols.length; i += 300) {
+        const chunk = displaySymbols.slice(i, i + 300);
+        const { data } = await supabase
+          .from('daily_prices')
+          .select('symbol, date, open, high, low, close, volume')
+          .in('symbol', chunk)
+          .order('date', { ascending: false })
+          .limit(chunk.length * 22);
+        if (data) dpResults.push(...data);
+      }
+
+      // symbol별 그룹핑 (날짜 내림차순 유지)
+      const dpMap = new Map<string, DailyPrice[]>();
+      for (const p of dpResults) {
+        const sym = p.symbol as string;
+        if (!dpMap.has(sym)) dpMap.set(sym, []);
+        dpMap.get(sym)!.push({
+          date: p.date as string,
+          open: p.open as number | null,
+          high: p.high as number,
+          low: p.low as number,
+          close: p.close as number,
+          volume: p.volume as number,
+        });
+      }
+
+      // 각 scored item에 초단기 필드 계산
+      for (const item of scored) {
+        const prices = dpMap.get(item.symbol);
+        if (!prices || prices.length === 0) continue;
+
+        const today = prices[0];
+        const yesterday = prices.length > 1 ? prices[1] : null;
+        // 3일전 = prices[3] (today, -1d, -2d, -3d)
+        const threeDaysAgo = prices.length > 3 ? prices[3] : null;
+
+        // volume_ratio: 당일거래량 / 20일평균거래량
+        const volSlice = prices.slice(1, 21); // 전일~20일전
+        const avgVol = volSlice.length > 0
+          ? volSlice.reduce((sum, p) => sum + p.volume, 0) / volSlice.length
+          : 0;
+        item.volume_ratio = avgVol > 0
+          ? Math.round((today.volume / avgVol) * 100) / 100
+          : null;
+
+        // close_position: (종가-저가)/(고가-저가)
+        item.close_position = today.high === today.low
+          ? 1.0
+          : Math.round(((today.close - today.low) / (today.high - today.low)) * 100) / 100;
+
+        // trading_value: 거래대금
+        item.trading_value = today.volume * today.close;
+
+        // gap_pct: 갭 비율
+        item.gap_pct = today.open != null && yesterday
+          ? Math.round(((today.open - yesterday.close) / yesterday.close) * 10000) / 100
+          : null;
+
+        // cum_return_3d: 3일 누적 수익률
+        item.cum_return_3d = threeDaysAgo && threeDaysAgo.close > 0
+          ? Math.round(((today.close - threeDaysAgo.close) / threeDaysAgo.close) * 10000) / 100
+          : null;
+      }
+
+      // ── 장중 daily_prices live 보강 (오늘 데이터 없는 종목) ──
+      const dpStaleSymbols = scored
+        .filter(item => {
+          const prices = dpMap.get(item.symbol);
+          if (!prices || prices.length === 0) return true;
+          return prices[0].date !== todayStr;
+        })
+        .filter(item => {
+          // 신호 있는 종목만 (전체 2000+종목 다 fetch하면 안 됨)
+          return (item.signal_count_30d ?? 0) > 0 || dateSymbols?.has(item.symbol);
+        })
+        .map(item => item.symbol);
+
+      if (dpStaleSymbols.length > 0) {
+        const liveDpMap = await fetchBulkDailyPrices(dpStaleSymbols, 10, 22);
+
+        // scored items 업데이트
+        for (const item of scored) {
+          const livePrices = liveDpMap.get(item.symbol);
+          if (!livePrices || livePrices.length === 0) continue;
+
+          const liveToday = livePrices[0];
+          const liveYesterday = livePrices.length > 1 ? livePrices[1] : null;
+          const liveThreeDaysAgo = livePrices.length > 3 ? livePrices[3] : null;
+
+          // volume_ratio
+          const volSliceLive = livePrices.slice(1, 21);
+          const avgVolLive = volSliceLive.length > 0
+            ? volSliceLive.reduce((sum, p) => sum + p.volume, 0) / volSliceLive.length
+            : 0;
+          item.volume_ratio = avgVolLive > 0
+            ? Math.round((liveToday.volume / avgVolLive) * 100) / 100
+            : null;
+
+          // close_position
+          item.close_position = liveToday.high === liveToday.low
+            ? 1.0
+            : Math.round(((liveToday.close - liveToday.low) / (liveToday.high - liveToday.low)) * 100) / 100;
+
+          // trading_value
+          item.trading_value = liveToday.volume * liveToday.close;
+
+          // gap_pct
+          item.gap_pct = liveToday.open && liveYesterday
+            ? Math.round(((liveToday.open - liveYesterday.close) / liveYesterday.close) * 10000) / 100
+            : null;
+
+          // cum_return_3d
+          item.cum_return_3d = liveThreeDaysAgo && liveThreeDaysAgo.close > 0
+            ? Math.round(((liveToday.close - liveThreeDaysAgo.close) / liveThreeDaysAgo.close) * 10000) / 100
+            : null;
+
+          // price_change_pct도 갱신 (장중 최신 반영)
+          if (liveYesterday) {
+            item.price_change_pct = Math.round(((liveToday.close - liveYesterday.close) / liveYesterday.close) * 10000) / 100;
+          }
+          // current_price도 갱신
+          item.current_price = liveToday.close;
+        }
+
+        // daily_prices에 비동기 upsert (다음 요청에서 DB에서 직접 읽힘)
+        const dpUpserts: Array<{symbol: string; date: string; open: number; high: number; low: number; close: number; volume: number}> = [];
+        for (const [sym, prices] of liveDpMap) {
+          const todayPrice = prices[0];
+          if (todayPrice && todayPrice.date === todayStr) {
+            dpUpserts.push({
+              symbol: sym,
+              date: todayPrice.date,
+              open: todayPrice.open,
+              high: todayPrice.high,
+              low: todayPrice.low,
+              close: todayPrice.close,
+              volume: todayPrice.volume,
+            });
+          }
+        }
+        if (dpUpserts.length > 0) {
+          Promise.resolve(
+            supabase.from('daily_prices').upsert(dpUpserts, { onConflict: 'symbol,date' })
+          ).catch((e: unknown) => console.error('[stock-ranking] daily_prices upsert error:', e));
+        }
+
+        // stock_cache의 price_change_pct, current_price도 갱신
+        const cacheUpdatesForPct: Array<{symbol: string; price_change_pct: number; current_price: number}> = [];
+        for (const [sym, prices] of liveDpMap) {
+          const lpToday = prices[0];
+          const lpYesterday = prices.length > 1 ? prices[1] : null;
+          if (lpToday && lpYesterday) {
+            cacheUpdatesForPct.push({
+              symbol: sym,
+              price_change_pct: Math.round(((lpToday.close - lpYesterday.close) / lpYesterday.close) * 10000) / 100,
+              current_price: lpToday.close,
+            });
+          }
+        }
+        if (cacheUpdatesForPct.length > 0) {
+          Promise.resolve(
+            supabase.from('stock_cache').upsert(cacheUpdatesForPct, { onConflict: 'symbol' })
+          ).catch((e: unknown) => console.error('[stock-ranking] cache pct upsert error:', e));
+        }
+      }
+    }
 
     // ── 검색 필터
     const filtered = q
