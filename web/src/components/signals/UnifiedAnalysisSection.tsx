@@ -680,9 +680,19 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       const pct = live.price_change_pct ?? item.price_change_pct;
       const cp = live.current_price;
 
-      // AI 종목은 서버 기술점수 유지 (차트패턴 기반), 비AI만 모멘텀 재계산
+      // AI 종목: 서버 기술점수 유지하되, 실시간 등락률로 모멘텀 보정
       if (item.ai) {
-        return { ...item, current_price: cp, price_change_pct: pct };
+        let momBonus = 0;
+        if (pct !== null && pct !== undefined) {
+          if (pct >= 5) momBonus = 15;          // 급등: 강한 모멘텀
+          else if (pct >= 3) momBonus = 10;     // 상승 초입
+          else if (pct >= 1) momBonus = 5;      // 완만 상승
+          else if (pct <= -5) momBonus = -10;   // 급락
+          else if (pct <= -3) momBonus = -5;    // 조정
+        }
+        const adjMomentum = Math.max(0, Math.min(100, item.score_momentum + momBonus));
+        const adjTotal = item.score_valuation + item.score_supply + item.score_signal + adjMomentum;
+        return { ...item, current_price: cp, price_change_pct: pct, score_momentum: adjMomentum, score_total: adjTotal };
       }
 
       let score_momentum = 0;

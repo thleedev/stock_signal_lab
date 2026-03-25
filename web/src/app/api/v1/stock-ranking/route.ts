@@ -76,7 +76,8 @@ export interface StockRankItem {
  */
 function calcScore(
   stock: Omit<StockRankItem, 'score_total' | 'score_valuation' | 'score_supply' | 'score_signal' | 'score_momentum' | 'ai'>,
-  todayStr: string
+  todayStr: string,
+  sectorAvgPct: number | null = null, // 같은 섹터 평균 등락률
 ) {
   // ── 밸류에이션 (0~100) ──
   const hasForward = stock.forward_per !== null || stock.target_price !== null || stock.invest_opinion !== null;
@@ -247,6 +248,15 @@ function calcScore(
     else if (pct > -5) score_momentum += 3;                // 조정: 바닥 탐색
     else if (pct > -10) score_momentum += 0;               // 급락: 중립
     else score_momentum -= 10;                              // 폭락: 감점
+  }
+
+  // 섹터 상대강도: 같은 섹터 평균 대비 얼마나 강한지
+  if (sectorAvgPct !== null && stock.price_change_pct !== null) {
+    const relStrength = stock.price_change_pct - sectorAvgPct;
+    if (relStrength >= 5) score_momentum += 20;        // 섹터 대비 +5% 이상: 강한 주도주
+    else if (relStrength >= 2) score_momentum += 12;   // 섹터 대비 +2% 이상: 상대 강세
+    else if (relStrength >= 0) score_momentum += 5;    // 섹터 평균 이상
+    else if (relStrength < -5) score_momentum -= 10;   // 섹터 대비 크게 뒤처짐
   }
   score_momentum = Math.max(0, Math.min(100, score_momentum));
 
@@ -458,21 +468,36 @@ export async function GET(request: NextRequest) {
         .catch((e: unknown) => console.error('[stock-ranking] cache upsert error:', e));
     }
 
+    // ── 섹터별 평균 등락률 집계 (인메모리, 추가 쿼리 없음) ──
+    const sectorPctMap = new Map<string, number[]>();
+    for (const r of allRows) {
+      const sec = sectorMap.get(r.symbol as string);
+      const pct = r.price_change_pct as number | null;
+      if (sec && pct !== null) {
+        if (!sectorPctMap.has(sec)) sectorPctMap.set(sec, []);
+        sectorPctMap.get(sec)!.push(pct);
+      }
+    }
+    const sectorAvgPctMap = new Map<string, number>();
+    for (const [sec, pcts] of sectorPctMap) {
+      sectorAvgPctMap.set(sec, pcts.reduce((a, b) => a + b, 0) / pcts.length);
+    }
+
     // ── 점수 계산 + ai 병합 + 날짜 필터
     const scored: StockRankItem[] = allRows
       .filter((r) => r.symbol && r.name)
       .filter((r) => !dateSymbols || dateSymbols.has(r.symbol as string))
       .map((r) => {
         const base = r as Omit<StockRankItem, 'score_total' | 'score_valuation' | 'score_supply' | 'score_signal' | 'score_momentum' | 'ai'>;
-        // 선택된 날짜의 실제 BUY 신호 날짜로 덮어쓰기 (stock_cache 전체 신호 기준 → 해당 날짜 BUY 기준)
         const dateSig = dateSignalMap.get(base.symbol);
         if (dateSig) {
           base.latest_signal_date = dateSig;
           base.latest_signal_type = 'BUY';
         }
-        // 신호 최근성 기준일: 날짜 필터가 있으면 해당 날짜, 없으면 오늘
         const scoreBaseDate = dateSig ? dateStr : todayStr;
-        const scores = calcScore(base, scoreBaseDate);
+        const sector = sectorMap.get(base.symbol) ?? null;
+        const sectorAvgPct = sector ? (sectorAvgPctMap.get(sector) ?? null) : null;
+        const scores = calcScore(base, scoreBaseDate, sectorAvgPct);
         const aiRec = aiRecMap.get(base.symbol);
         const item: StockRankItem = { ...base, ...scores };
         if (aiRec) {
