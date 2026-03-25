@@ -378,7 +378,6 @@ export async function GET(request: NextRequest) {
             .not('current_price', 'is', null)
             .range(from, from + 999);
           if (market !== 'all') query = query.eq('market', market);
-          if (showSignalAll) query = query.gt('signal_count_30d', 0);
           const { data } = await query;
           if (!data || data.length === 0) break;
           allRows.push(...data);
@@ -520,7 +519,12 @@ export async function GET(request: NextRequest) {
     // ── 점수 계산 + ai 병합 + 날짜 필터
     const scored: StockRankItem[] = allRows
       .filter((r) => r.symbol && r.name)
-      .filter((r) => !dateSymbols || dateSymbols.has(r.symbol as string))
+      .filter((r) => {
+        const sym = r.symbol as string;
+        if (dateSymbols) return dateSymbols.has(sym);
+        if (showSignalAll) return ((r.signal_count_30d as number) ?? 0) > 0;
+        return true;
+      })
       .map((r) => {
         const base = r as Omit<StockRankItem, 'score_total' | 'score_valuation' | 'score_supply' | 'score_signal' | 'score_momentum' | 'ai'>;
         const dateSig = dateSignalMap.get(base.symbol);

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
+import { GradeTooltip } from '@/components/common/grade-tooltip';
 import { getLastNWeekdays } from '@/lib/date-utils';
 import { FilterBar } from '@/components/common/filter-bar';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
@@ -519,10 +520,14 @@ function RankCard({
         <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[6rem] sm:max-w-[10rem]">{item.name}</span>
         {favs.has(item.symbol) && <span className="text-yellow-400 text-xs shrink-0">★</span>}
 
-        {/* 등급 뱃지 (등급 + 라벨) */}
-        <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold leading-none shrink-0 ${gradeCls}`} title={`${weighted.toFixed(0)}pt`}>
-          {grade} {gradeLabel}
-        </span>
+        {/* 등급 뱃지 + 툴팁 */}
+        <GradeTooltip weighted={weighted} grade={grade} gradeLabel={gradeLabel} gradeCls={gradeCls} scores={[
+          { label: '모멘텀', value: stScores.momentum, color: 'bg-emerald-500' },
+          { label: '수급', value: stScores.supply, color: 'bg-sky-500' },
+          { label: '촉매', value: stScores.catalyst, color: 'bg-amber-500' },
+          { label: '밸류', value: stScores.valuation, color: 'bg-violet-500' },
+          { label: '리스크', value: stScores.risk, color: 'bg-red-400' },
+        ]} />
 
         {/* 성격 배지 — 데스크탑만 */}
         {badges.length > 0 && (
