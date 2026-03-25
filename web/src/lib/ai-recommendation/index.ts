@@ -43,7 +43,7 @@ export async function fetchTodayBuySymbols(
 export async function generateRecommendations(
   supabase: SupabaseClient,
   weights: AiRecommendationWeights = DEFAULT_WEIGHTS,
-  limit = 5
+  limit = 30
 ): Promise<{ recommendations: AiRecommendation[]; total_candidates: number }> {
   const todayKst = getTodayKst();
   const candidates = await fetchTodayBuySymbols(supabase, todayKst);
@@ -304,15 +304,12 @@ export async function generateRecommendations(
 
     const valuationResult = calcValuationScore(perVal, pbrVal, roeVal, divVal, forwardData);
 
-    // 가중치 적용 총점 (기술 점수 음수도 반영 — 과열/쌍봉 경고가 총점에 영향)
-    const TECH_MAX = 48;
+    // 가중치 적용 총점 (음수 범위 포함 정규화)
     const total_score =
       (signalResult.score / 30) * weights.signal +
-      (Math.max(0, technicalResult.score) / TECH_MAX) * weights.technical +
+      ((technicalResult.score + 12) / 60) * weights.technical +
       (valuationResult.score / 25) * weights.valuation +
-      (supplyResult.score / 45) * weights.supply +
-      // 기술 음수 감점: 과열/쌍봉 패턴 시 총점 직접 차감
-      (technicalResult.score < 0 ? technicalResult.score / 12 * weights.technical : 0);
+      ((supplyResult.score + 10) / 55) * weights.supply;
 
     return {
       symbol,

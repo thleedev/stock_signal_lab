@@ -1,7 +1,7 @@
 // N+1 방지: 오케스트레이터에서 사전 집계/조회 후 전달받는다. DB 쿼리 없음.
 
 export interface SupplyScoreResult {
-  score: number;               // 0~45
+  score: number;               // -10~45
   foreign_buying: boolean;     // 외국인 순매수 > 0
   institution_buying: boolean; // 기관 순매수 > 0
   volume_vs_sector: boolean;   // 섹터 거래대금 2배 이상
@@ -34,16 +34,18 @@ export function calcSupplyScore(
   if (foreignNet5d !== null && foreignNet5d > 0) score += 5;
   if (institutionNet5d !== null && institutionNet5d > 0) score += 5;
 
-  // ── 연속 매수 (매집 의지) ──
+  // ── 연속 매수/매도 (매집 의지 or 이탈 경고) ──
   const fStreak = foreignStreak ?? 0;
   if (fStreak >= 5) score += 7;
   else if (fStreak >= 3) score += 5;
   else if (fStreak >= 2) score += 3;
+  else if (fStreak <= -3) score -= 5;  // 외국인 3일+ 연속 매도
 
   const iStreak = institutionStreak ?? 0;
   if (iStreak >= 5) score += 7;
   else if (iStreak >= 3) score += 5;
   else if (iStreak >= 2) score += 3;
+  else if (iStreak <= -3) score -= 5;  // 기관 3일+ 연속 매도
 
   // ── 섹터 거래대금 급증(2배) ──
   let volumeVsSector = false;
@@ -78,7 +80,7 @@ export function calcSupplyScore(
   if (lowShortSell) score += 2;
 
   return {
-    score: Math.min(score, 45),
+    score: Math.max(-10, Math.min(score, 45)),
     foreign_buying: foreignBuying,
     institution_buying: institutionBuying,
     volume_vs_sector: volumeVsSector,

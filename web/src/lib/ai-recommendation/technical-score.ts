@@ -245,7 +245,7 @@ export function calcTechnicalScore(
   let consecutiveDropRebound = false;
   if (closes.length >= 5) {
     let dropDays = 0;
-    for (let i = closes.length - 2; i >= Math.max(0, closes.length - 6); i--) {
+    for (let i = closes.length - 2; i >= Math.max(1, closes.length - 6); i--) {
       if (closes[i] < closes[i - 1]) dropDays++;
       else break;
     }

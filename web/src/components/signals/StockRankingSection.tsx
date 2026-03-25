@@ -5,6 +5,7 @@ import { Search, ChevronLeft, ChevronRight, SlidersHorizontal, AlertTriangle, Tr
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { getLastNWeekdays, formatDateLabel } from '@/lib/date-utils';
+import { DEFAULT_WEIGHTS } from '@/types/ai-recommendation';
 
 interface RankingResponse {
   items: StockRankItem[];
@@ -102,15 +103,15 @@ function getBasicBadges(item: StockRankItem, todayMs: number): Badge[] {
   return b;
 }
 
-// 모든 점수를 100점 만점으로 정규화 (signal:30, tech:48, val:25, supply:45)
+// 모든 점수를 100점 만점으로 정규화 (signal:30, tech:-12~48, val:25, supply:45)
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
     return {
       sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp(item.ai.technical_score / 48 * 100),
+      tech: clamp((item.ai.technical_score + 12) / 60 * 100),
       val: clamp(item.ai.valuation_score / 25 * 100),
-      sup: clamp(item.ai.supply_score / 45 * 100),
+      sup: clamp((item.ai.supply_score + 10) / 55 * 100),
     };
   }
   // 서버 calcScore는 이미 0~100 정규화 점수를 반환
@@ -303,7 +304,7 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
   const [page, setPage] = useState(1);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
-  const [weights, setWeights] = useState<Weights>({ signal: 30, technical: 30, valuation: 20, supply: 20 });
+  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [sort, setSort] = useState<SortMode>('score');
   const [menu, setMenu] = useState<MenuState>({
     isOpen: false, symbol: '', name: '', currentPrice: null, isFavorite: false,

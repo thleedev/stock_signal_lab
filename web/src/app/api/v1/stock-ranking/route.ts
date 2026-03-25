@@ -31,6 +31,7 @@ export interface StockRankItem {
   latest_signal_type: string | null;
   latest_signal_date: string | null;
   latest_signal_price: number | null;
+  sector: string | null;
   high_52w: number | null;
   low_52w: number | null;
   // 기본 점수 (stock_cache 기반)
@@ -320,12 +321,12 @@ export async function GET(request: NextRequest) {
     let from = 0;
 
     const aiSelect = 'symbol, total_score, signal_score, technical_score, valuation_score, supply_score, rsi, golden_cross, bollinger_bottom, phoenix_pattern, macd_cross, volume_surge, week52_low_near, double_top, disparity_rebound, volume_breakout, consecutive_drop_rebound, foreign_buying, institution_buying, volume_vs_sector, low_short_sell';
-    const [, aiRecsResult] = await Promise.all([
+    const [, aiRecsResult, sectorResult] = await Promise.all([
       (async () => {
         while (true) {
           let query = supabase
             .from('stock_cache')
-            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, latest_signal_price, high_52w, low_52w, dividend_yield, market_cap, forward_per, target_price, invest_opinion')
+            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, investor_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, latest_signal_price, high_52w, low_52w, dividend_yield, market_cap, forward_per, target_price, invest_opinion')
             .not('current_price', 'is', null)
             .range(from, from + 999);
           if (market !== 'all') query = query.eq('market', market);
@@ -341,11 +342,21 @@ export async function GET(request: NextRequest) {
         .from('ai_recommendations')
         .select(aiSelect)
         .eq('date', todayStr),
+      supabase
+        .from('stock_info')
+        .select('symbol, sector'),
     ]);
 
     const aiRecMap = new Map(
       (aiRecsResult.data ?? []).map((r) => [r.symbol as string, r])
     );
+    const sectorMap = new Map(
+      (sectorResult.data ?? []).map((r) => [r.symbol as string, r.sector as string | null])
+    );
+    // sector 정보를 allRows에 병합
+    for (const row of allRows) {
+      row.sector = sectorMap.get(row.symbol as string) ?? null;
+    }
 
     // ── 신호 종목 중 수급 stale인 종목 live 보강 ──
     // 화면에 표시될 종목만 대상 (전 종목 X)
@@ -361,8 +372,16 @@ export async function GET(request: NextRequest) {
       .map((r) => r.symbol as string);
 
     let liveInvMap = new Map<string, StockInvestorData>();
-    if (signalSymbols.length > 0 && signalSymbols.length <= 200) {
-      liveInvMap = await fetchBulkInvestorData(signalSymbols, 20);
+    if (signalSymbols.length > 0) {
+      // 200개씩 청크 분할 (전체 스킵 방지)
+      const chunks = [];
+      for (let i = 0; i < signalSymbols.length; i += 200) {
+        chunks.push(signalSymbols.slice(i, i + 200));
+      }
+      const results = await Promise.all(chunks.map(c => fetchBulkInvestorData(c, 20)));
+      for (const m of results) {
+        for (const [k, v] of m) liveInvMap.set(k, v);
+      }
       // live 결과를 allRows에 반영 (calcScore가 사용할 수 있도록)
       for (const row of allRows) {
         const inv = liveInvMap.get(row.symbol as string);
@@ -398,9 +417,9 @@ export async function GET(request: NextRequest) {
           // AI 점수를 0~100으로 정규화하여 score_* 필드도 통일 (이중 체계 제거)
           const clamp100 = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
           item.score_signal = clamp100((aiRec.signal_score ?? 0) / 30 * 100);
-          item.score_momentum = clamp100((aiRec.technical_score ?? 0) / 48 * 100);
+          item.score_momentum = clamp100(((aiRec.technical_score ?? 0) + 12) / 60 * 100);
           item.score_valuation = clamp100((aiRec.valuation_score ?? 0) / 25 * 100);
-          item.score_supply = clamp100((aiRec.supply_score ?? 0) / 45 * 100);
+          item.score_supply = clamp100(((aiRec.supply_score ?? 0) + 10) / 55 * 100);
           item.score_total = Math.round(
             (item.score_signal + item.score_momentum + item.score_valuation + item.score_supply) / 4
           );

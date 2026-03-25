@@ -109,12 +109,12 @@ const CHARACTER_FILTER_OPTIONS = [
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
-    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, tech:48, val:25, supply:45)
+    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, tech:-12~48, val:25, supply:-10~45)
     return {
       sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp(item.ai.technical_score / 48 * 100),
+      tech: clamp((item.ai.technical_score + 12) / 60 * 100),
       val: clamp(item.ai.valuation_score / 25 * 100),
-      sup: clamp(item.ai.supply_score / 45 * 100),
+      sup: clamp((item.ai.supply_score + 10) / 55 * 100),
     };
   }
   // 서버 calcScore가 이제 0~100 정규화 점수를 반환
@@ -235,14 +235,25 @@ function getRecommendReason(item: StockRankItem): string {
 
   // ── 밸류에이션 ──
   const valReasons: string[] = [];
-  if (item.per !== null && item.per > 0 && item.per < 10) valReasons.push(`PER ${item.per.toFixed(1)}`);
+  if (item.forward_per !== null && item.forward_per > 0) {
+    valReasons.push(`추정PER ${item.forward_per.toFixed(1)}`);
+  } else if (item.per !== null && item.per > 0 && item.per < 10) {
+    valReasons.push(`PER ${item.per.toFixed(1)}`);
+  }
   if (item.pbr !== null && item.pbr > 0 && item.pbr < 1) valReasons.push(`PBR ${item.pbr.toFixed(2)}`);
   if (item.roe !== null && item.roe > 10) valReasons.push(`ROE ${item.roe.toFixed(0)}%`);
+  // 목표주가 상승여력
+  if (item.target_price && item.current_price && item.current_price > 0) {
+    const upside = ((item.target_price - item.current_price) / item.current_price) * 100;
+    if (upside >= 5) valReasons.push(`목표↑${upside.toFixed(0)}%`);
+  }
   if (valReasons.length >= 2) {
     reasons.push(`저평가(${valReasons.join(', ')})`);
   } else if (valReasons.length === 1) {
     reasons.push(valReasons[0]);
   }
+  // 섹터 정보
+  if (item.sector) reasons.push(item.sector);
 
   // ── 신호 빈도 ──
   const cnt = item.signal_count_30d ?? 0;
@@ -259,8 +270,26 @@ function getRecommendReason(item: StockRankItem): string {
     reasons.push(`+${pct.toFixed(1)}% 상승 진행중`);
   }
 
+  // ── 부정적 근거 (점수가 낮은 이유 투명화) ──
+  const { sig, tech, val, sup } = normScores(item);
+  if (sup <= 5 && !item.ai?.foreign_buying && !item.ai?.institution_buying) {
+    reasons.push('📉 수급 부재');
+  }
+  if (item.ai && tech <= 5) {
+    reasons.push('📊 기술데이터 부족');
+  }
+  if (val <= 5) {
+    reasons.push('💤 밸류 정보 없음');
+  }
+
+  // 매수가 대비 갭
+  if (item.latest_signal_price && item.current_price && item.latest_signal_price > 0) {
+    const gap = ((item.current_price - item.latest_signal_price) / item.latest_signal_price) * 100;
+    if (gap <= -10) reasons.push(`매수가 대비 ${gap.toFixed(0)}%`);
+    else if (gap >= 20) reasons.push(`⚠️ 매수가 대비 +${gap.toFixed(0)}%`);
+  }
+
   if (reasons.length === 0) {
-    // 최소한 신호 정보라도 표시
     const signalDate = item.latest_signal_date;
     if (signalDate) reasons.push(`최근신호 ${signalDate.slice(5)}`);
     if (item.signal_count_30d) reasons.push(`${item.signal_count_30d}회 추천`);
@@ -642,7 +671,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
 
   const rawItems = data?.items ?? [];
 
-  // ── 실시간 가격 반영 + 모멘텀 점수 재계산 ─────────────────────────────────────
+  // ── 실시간 가격 반영 ─────────────────────────────────────────────────────────
   const liveItems = useMemo(() => {
     if (Object.keys(livePrices).length === 0) return rawItems;
     return rawItems.map(item => {
@@ -652,10 +681,13 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       const pct = live.price_change_pct ?? item.price_change_pct;
       const cp = live.current_price;
 
-      // score_momentum 재계산 (stock-ranking/route.ts calcScore 로직과 동일한 0~100 스케일)
+      // AI 종목은 서버 기술점수 유지 (차트패턴 기반), 비AI만 모멘텀 재계산
+      if (item.ai) {
+        return { ...item, current_price: cp, price_change_pct: pct };
+      }
+
       let score_momentum = 0;
-      if (cp && item.high_52w && item.low_52w &&
-          item.high_52w > item.low_52w) {
+      if (cp && item.high_52w && item.low_52w && item.high_52w > item.low_52w) {
         const range = item.high_52w - item.low_52w;
         const position = (cp - item.low_52w) / range;
         if (position <= 0.15) score_momentum += 40;
