@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { fetchAllStockPrices, StockPriceData, fetchBulkInvestorData } from '@/lib/naver-stock-api';
+import { fetchAllStockPrices, StockPriceData } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators } from '@/lib/krx-api';
 
 export const dynamic = 'force-dynamic';
@@ -27,18 +27,22 @@ async function getLivePrices(): Promise<{ source: 'memory' | 'naver'; data: Map<
   return { source: 'naver', data };
 }
 
-// 우선순위 종목 수급+지표 갱신 (10분 쿨다운)
+// 우선순위 종목 지표 갱신 (장중에만, 10분 쿨다운)
+// fetchBulkIndicators 1회 호출로 지표+forward 데이터 수집 (수급은 크론에서 처리)
 let lastPriorityRefresh = 0;
-const PRIORITY_COOLDOWN = 10 * 60 * 1000; // 10분
+const PRIORITY_COOLDOWN = 10 * 60 * 1000;
 
 async function refreshPriorityData() {
+  // 장중(09:00~16:00 KST)에만 실행
+  const kstHour = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
+  if (kstHour < 9 || kstHour >= 16) return;
+
   if (Date.now() - lastPriorityRefresh < PRIORITY_COOLDOWN) return;
   lastPriorityRefresh = Date.now();
 
   const supabase = createServiceClient();
   const ts = new Date().toISOString();
 
-  // 우선순위 종목 수집 (즐겨찾기 + 관심 + 최근 7일 신호)
   const [{ data: favs }, { data: watchlist }, { data: recentSigs }] = await Promise.all([
     supabase.from('favorite_stocks').select('symbol'),
     supabase.from('watchlist').select('symbol'),
@@ -50,49 +54,34 @@ async function refreshPriorityData() {
   for (const w of watchlist ?? []) symbols.add(w.symbol);
   for (const s of recentSigs ?? []) if (s.symbol) symbols.add(s.symbol);
 
-  const symArr = Array.from(symbols);
+  const symArr = Array.from(symbols).slice(0, 30); // 최대 30종목
   if (symArr.length === 0) return;
 
-  // 수급 + 지표 병렬 조회 (최대 50종목으로 제한)
-  const limited = symArr.slice(0, 50);
-  const [investorMap, indicatorMap] = await Promise.all([
-    fetchBulkInvestorData(limited, 10),
-    fetchBulkIndicators(limited, 10),
-  ]);
+  // 1종목당 1호출: fetchBulkIndicators가 /integration API에서 지표+forward 모두 파싱
+  const indicatorMap = await fetchBulkIndicators(symArr, 10);
 
-  // stock_cache 배치 업데이트
-  const rows = limited.map((symbol) => {
-    const investor = investorMap.get(symbol);
-    const indicator = indicatorMap.get(symbol);
-    const row: Record<string, unknown> = { symbol };
+  const rows = symArr
+    .filter((sym) => indicatorMap.has(sym))
+    .map((symbol) => {
+      const ind = indicatorMap.get(symbol)!;
+      return {
+        symbol,
+        per: ind.per || null,
+        pbr: ind.pbr || null,
+        roe: ind.roe || null,
+        high_52w: ind.high_52w || null,
+        low_52w: ind.low_52w || null,
+        dividend_yield: ind.dividend_yield || null,
+        forward_per: ind.forward_per,
+        forward_eps: ind.forward_eps,
+        target_price: ind.target_price,
+        invest_opinion: ind.invest_opinion,
+        consensus_updated_at: ts,
+      };
+    });
 
-    if (investor) {
-      row.foreign_net_qty = investor.foreign_net;
-      row.institution_net_qty = investor.institution_net;
-      row.foreign_net_5d = investor.foreign_net_5d;
-      row.institution_net_5d = investor.institution_net_5d;
-      row.foreign_streak = investor.foreign_streak;
-      row.institution_streak = investor.institution_streak;
-      row.investor_updated_at = ts;
-    }
-    if (indicator) {
-      row.per = indicator.per || null;
-      row.pbr = indicator.pbr || null;
-      row.roe = indicator.roe || null;
-      row.high_52w = indicator.high_52w || null;
-      row.low_52w = indicator.low_52w || null;
-      row.dividend_yield = indicator.dividend_yield || null;
-      row.forward_per = indicator.forward_per;
-      row.forward_eps = indicator.forward_eps;
-      row.target_price = indicator.target_price;
-      row.invest_opinion = indicator.invest_opinion;
-      row.consensus_updated_at = ts;
-    }
-    return row;
-  }).filter((r) => Object.keys(r).length > 1); // symbol만 있으면 스킵
-
-  for (let i = 0; i < rows.length; i += 500) {
-    await supabase.from('stock_cache').upsert(rows.slice(i, i + 500), { onConflict: 'symbol', ignoreDuplicates: false });
+  if (rows.length > 0) {
+    await supabase.from('stock_cache').upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
   }
 }
 

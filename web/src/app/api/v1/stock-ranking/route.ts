@@ -51,6 +51,9 @@ export interface StockRankItem {
     volume_surge: boolean;
     week52_low_near: boolean;
     double_top: boolean;
+    disparity_rebound: boolean;
+    volume_breakout: boolean;
+    consecutive_drop_rebound: boolean;
     foreign_buying: boolean;
     institution_buying: boolean;
     volume_vs_sector: boolean;
@@ -306,7 +309,7 @@ export async function GET(request: NextRequest) {
     const allRows: Record<string, unknown>[] = [];
     let from = 0;
 
-    const aiSelect = 'symbol, total_score, signal_score, technical_score, valuation_score, supply_score, rsi, golden_cross, bollinger_bottom, phoenix_pattern, macd_cross, volume_surge, week52_low_near, double_top, foreign_buying, institution_buying, volume_vs_sector, low_short_sell';
+    const aiSelect = 'symbol, total_score, signal_score, technical_score, valuation_score, supply_score, rsi, golden_cross, bollinger_bottom, phoenix_pattern, macd_cross, volume_surge, week52_low_near, double_top, disparity_rebound, volume_breakout, consecutive_drop_rebound, foreign_buying, institution_buying, volume_vs_sector, low_short_sell';
     const [, aiRecsResult] = await Promise.all([
       (async () => {
         while (true) {
@@ -364,6 +367,9 @@ export async function GET(request: NextRequest) {
             volume_surge: aiRec.volume_surge ?? false,
             week52_low_near: aiRec.week52_low_near ?? false,
             double_top: aiRec.double_top ?? false,
+            disparity_rebound: aiRec.disparity_rebound ?? false,
+            volume_breakout: aiRec.volume_breakout ?? false,
+            consecutive_drop_rebound: aiRec.consecutive_drop_rebound ?? false,
             foreign_buying: aiRec.foreign_buying ?? false,
             institution_buying: aiRec.institution_buying ?? false,
             volume_vs_sector: aiRec.volume_vs_sector ?? false,

@@ -1,5 +1,5 @@
 export interface TechnicalScoreResult {
-  score: number; // -12~34
+  score: number; // -12~48
   rsi: number | null;
   macd_cross: boolean;
   golden_cross: boolean;
@@ -9,6 +9,9 @@ export interface TechnicalScoreResult {
   volume_surge: boolean;
   week52_low_near: boolean;
   ma_aligned: boolean;
+  disparity_rebound: boolean;   // 이격도 반등 (20일선 저이격 + 양봉)
+  volume_breakout: boolean;     // 거래량 바닥 탈출
+  consecutive_drop_rebound: boolean; // 연속하락 후 반등
   data_insufficient: boolean;
 }
 
@@ -79,6 +82,9 @@ export function calcTechnicalScore(
     volume_surge: false,
     week52_low_near: false,
     ma_aligned: false,
+    disparity_rebound: false,
+    volume_breakout: false,
+    consecutive_drop_rebound: false,
     data_insufficient: true,
   };
 
@@ -205,6 +211,54 @@ export function calcTechnicalScore(
   }
   if (week52LowNear) score += 3;
 
+  // ── 단기 상승 임박 지표 ──
+
+  // 이격도 반등: 현재가가 20일선 대비 92~98% (저이격) + 오늘 양봉
+  let disparityRebound = false;
+  if (sma20.length >= 1 && closes.length >= 2) {
+    const latestSma20 = sma20[sma20.length - 1];
+    if (latestSma20 > 0) {
+      const disparity = currentPrice / latestSma20;
+      const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
+      if (disparity >= 0.92 && disparity <= 0.98 && todayBullish) {
+        disparityRebound = true;
+        score += 5;
+      }
+    }
+  }
+
+  // 거래량 바닥 탈출: 최근 10일 평균 거래량이 20일 평균의 50% 이하 → 오늘 20일 평균 2배 이상
+  let volumeBreakout = false;
+  if (volumes.length >= 21) {
+    const avg20Vol = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
+    if (avg20Vol > 0 && volumes.length >= 11) {
+      const avg10Recent = volumes.slice(-11, -1).reduce((a, b) => a + b, 0) / 10;
+      const todayVol = volumes[volumes.length - 1];
+      if (avg10Recent <= avg20Vol * 0.5 && todayVol >= avg20Vol * 2) {
+        volumeBreakout = true;
+        score += 5;
+      }
+    }
+  }
+
+  // 연속하락 후 반등: 3일 이상 연속 하락 후 오늘 +1.5% 이상 양봉
+  let consecutiveDropRebound = false;
+  if (closes.length >= 5) {
+    let dropDays = 0;
+    for (let i = closes.length - 2; i >= Math.max(0, closes.length - 6); i--) {
+      if (closes[i] < closes[i - 1]) dropDays++;
+      else break;
+    }
+    if (dropDays >= 3) {
+      const todayPct = (closes[closes.length - 1] - closes[closes.length - 2]) / closes[closes.length - 2] * 100;
+      const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
+      if (todayPct >= 1.5 && todayBullish) {
+        consecutiveDropRebound = true;
+        score += 4;
+      }
+    }
+  }
+
   // 애널리스트 관점: RSI + 5일 등락률 복합 타이밍 보정
   const isRsiOverbought = rsi !== null && rsi >= 70;
   if (closes.length >= 6) {
@@ -248,7 +302,7 @@ export function calcTechnicalScore(
   if (doubleTop) score -= 8;
 
   return {
-    score: Math.max(-12, Math.min(score, 34)),
+    score: Math.max(-12, Math.min(score, 48)),
     rsi,
     macd_cross: macdCross,
     golden_cross: goldenCross,
@@ -258,6 +312,9 @@ export function calcTechnicalScore(
     volume_surge: volumeSurge,
     week52_low_near: week52LowNear,
     ma_aligned: maAligned,
+    disparity_rebound: disparityRebound,
+    volume_breakout: volumeBreakout,
+    consecutive_drop_rebound: consecutiveDropRebound,
     data_insufficient: false,
   };
 }

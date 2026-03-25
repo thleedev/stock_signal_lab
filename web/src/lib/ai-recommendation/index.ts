@@ -4,8 +4,8 @@ import { calcSignalScore } from './signal-score';
 import { calcTechnicalScore, DailyPrice } from './technical-score';
 import { calcValuationScore, ForwardData } from './valuation-score';
 import { calcSupplyScore } from './supply-score';
-import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
-import { getDailyPrices, delay } from '@/lib/kis-api';
+import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
+import { fetchBulkIndicators, BulkIndicatorData } from '@/lib/krx-api';
 
 // 오늘 날짜 KST (YYYY-MM-DD)
 export function getTodayKst(): string {
@@ -156,35 +156,31 @@ export async function generateRecommendations(
     priceMap.set(sym, rows.reverse().slice(-65));
   }
 
-  // 기술지표 daily_prices: DB에 없는 종목은 KIS API로 실시간 조회 후 DB 저장
-  const nowKst2 = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
-  const todayCompact = nowKst2.toISOString().slice(0, 10).replace(/-/g, '');
-  const d30Compact = new Date(nowKst2.getTime() - 30 * 86400000)
-    .toISOString().slice(0, 10).replace(/-/g, '');
-
+  // 기술지표 daily_prices: DB에 없는 종목은 네이버 fchart로 실시간 조회 후 DB 저장
   const symbolsNeedingPrices = symbols.filter(
     (sym) => (priceMap.get(sym) ?? []).length < 20
   );
 
-  // KIS API 속도 제한을 준수하면서 병렬로 가격 데이터 조회 (5개씩 청크 처리)
   if (symbolsNeedingPrices.length > 0) {
-    const CHUNK_SIZE = 5;
+    const CHUNK_SIZE = 20;
     const allPricesToUpsert: { symbol: string; date: string; open: number; high: number; low: number; close: number; volume: number }[] = [];
 
     for (let i = 0; i < symbolsNeedingPrices.length; i += CHUNK_SIZE) {
       const chunk = symbolsNeedingPrices.slice(i, i + CHUNK_SIZE);
-      const results = await Promise.all(
-        chunk.map(sym => getDailyPrices(sym, d30Compact, todayCompact).then(prices => ({ sym, prices })))
+      const results = await Promise.allSettled(
+        chunk.map(async (sym) => {
+          const prices = await fetchNaverDailyPrices(sym, 90);
+          return { sym, prices };
+        })
       );
-      for (const { sym, prices } of results) {
+      for (const res of results) {
+        if (res.status !== 'fulfilled') continue;
+        const { sym, prices } = res.value;
         if (prices.length > 0) {
           const sorted = [...prices].sort((a, b) => a.date.localeCompare(b.date));
           priceMap.set(sym, sorted.slice(-65));
           allPricesToUpsert.push(...prices.map(p => ({ symbol: sym, ...p })));
         }
-      }
-      if (i + CHUNK_SIZE < symbolsNeedingPrices.length) {
-        await delay(300);
       }
     }
 
@@ -196,7 +192,7 @@ export async function generateRecommendations(
     }
   }
 
-  // 투자자 데이터: stock_cache 캐시 우선, 당일 데이터 없으면 Naver live 배치 호출
+  // 투자자 데이터 + Forward 밸류에이션: 캐시 미스 종목은 네이버 live 배치 호출
   const todayStr = todayKst;
   const symbolsNeedingLiveFetch = symbols.filter((sym) => {
     const cache = cacheMap.get(sym);
@@ -205,38 +201,69 @@ export async function generateRecommendations(
     return updatedDate !== todayStr;
   });
 
-  let liveInvestorMap = new Map<string, { foreign_net: number; institution_net: number }>();
-  if (symbolsNeedingLiveFetch.length > 0) {
-    liveInvestorMap = await fetchBulkInvestorData(symbolsNeedingLiveFetch);
-  }
+  // 수급(5일/streak 포함) + forward 밸류에이션을 병렬 조회
+  const [liveInvestorMap, liveIndicatorMap] = await Promise.all([
+    symbolsNeedingLiveFetch.length > 0
+      ? fetchBulkInvestorData(symbolsNeedingLiveFetch)
+      : new Map(),
+    // forward 데이터 없는 종목도 실시간 조회
+    (() => {
+      const needForward = symbols.filter((sym) => {
+        const c = cacheMap.get(sym);
+        return !c?.forward_per && !c?.target_price && !c?.invest_opinion;
+      });
+      return needForward.length > 0
+        ? fetchBulkIndicators(needForward, 20)
+        : Promise.resolve(new Map<string, BulkIndicatorData>());
+    })(),
+  ]);
 
   // 각 종목 점수 계산 (순수 함수 호출 — DB 쿼리 없음)
   const scored = candidates.map(({ symbol, name }) => {
     const cache = cacheMap.get(symbol);
     const sector = sectorMap.get(symbol) ?? null;
     const sectorAvgTurnover = sector ? (sectorAvgMap.get(sector) ?? null) : null;
+    const liveInd = liveIndicatorMap.get(symbol);
+    const liveInv = liveInvestorMap.get(symbol);
+
+    // live indicator로 trailing/forward 지표 보강
+    const perVal = cache?.per ?? liveInd?.per ?? null;
+    const pbrVal = cache?.pbr ?? liveInd?.pbr ?? null;
+    const roeVal = cache?.roe ?? liveInd?.roe ?? null;
+    const divVal = cache?.dividend_yield ?? liveInd?.dividend_yield ?? null;
+    const high52 = cache?.high_52w ?? liveInd?.high_52w ?? null;
+    const low52 = cache?.low_52w ?? liveInd?.low_52w ?? null;
 
     const todaySignals = todaySignalMap.get(symbol) ?? [];
     const recentCount = recentCountMap.get(symbol) ?? 0;
     const prices = priceMap.get(symbol) ?? [];
 
     const signalResult = calcSignalScore(todaySignals, recentCount, cache?.current_price ?? null);
-    const technicalResult = calcTechnicalScore(
-      prices,
-      cache?.high_52w ?? null,
-      cache?.low_52w ?? null
-    );
+    const technicalResult = calcTechnicalScore(prices, high52, low52);
 
-    // 투자자 데이터: 캐시 우선, 없으면 live
+    // 투자자 데이터: 캐시 우선, 없으면 live (5일/streak 포함)
     const cachedInvestorFresh =
       cache?.investor_updated_at &&
       (cache.investor_updated_at as string).slice(0, 10) === todayStr;
+
     const foreignNet: number | null = cachedInvestorFresh
       ? (cache!.foreign_net_qty as number | null)
-      : (liveInvestorMap.get(symbol)?.foreign_net ?? null);
+      : (liveInv?.foreign_net ?? null);
     const institutionNet: number | null = cachedInvestorFresh
       ? (cache!.institution_net_qty as number | null)
-      : (liveInvestorMap.get(symbol)?.institution_net ?? null);
+      : (liveInv?.institution_net ?? null);
+    const foreignNet5d: number | null = cachedInvestorFresh
+      ? (cache!.foreign_net_5d as number | null)
+      : (liveInv?.foreign_net_5d ?? null);
+    const institutionNet5d: number | null = cachedInvestorFresh
+      ? (cache!.institution_net_5d as number | null)
+      : (liveInv?.institution_net_5d ?? null);
+    const foreignStreak: number | null = cachedInvestorFresh
+      ? (cache!.foreign_streak as number | null)
+      : (liveInv?.foreign_streak ?? null);
+    const institutionStreak: number | null = cachedInvestorFresh
+      ? (cache!.institution_streak as number | null)
+      : (liveInv?.institution_streak ?? null);
 
     // 공매도 비율: 당일 데이터만 사용 (휴장일 stale 방지)
     const shortSellFresh =
@@ -253,33 +280,35 @@ export async function generateRecommendations(
       foreignNet,
       institutionNet,
       shortSellRatio,
-      cache?.foreign_net_5d ?? null,
-      cache?.institution_net_5d ?? null,
-      cache?.foreign_streak ?? null,
-      cache?.institution_streak ?? null,
+      foreignNet5d,
+      institutionNet5d,
+      foreignStreak,
+      institutionStreak,
       cache?.market_cap ?? null,
     );
+
+    // Forward 밸류에이션: 캐시 우선, 없으면 live indicator
+    const fwdPer = cache?.forward_per ?? liveInd?.forward_per ?? null;
+    const fwdTarget = cache?.target_price ?? liveInd?.target_price ?? null;
+    const fwdOpinion = cache?.invest_opinion ?? liveInd?.invest_opinion ?? null;
+
     const forwardData: ForwardData | null =
-      (cache?.forward_per || cache?.target_price || cache?.invest_opinion)
+      (fwdPer || fwdTarget || fwdOpinion)
         ? {
-            forwardPer: cache?.forward_per ?? null,
-            targetPrice: cache?.target_price ?? null,
-            investOpinion: cache?.invest_opinion ?? null,
+            forwardPer: fwdPer,
+            targetPrice: fwdTarget,
+            investOpinion: fwdOpinion,
             currentPrice: cache?.current_price ?? null,
           }
         : null;
-    const valuationResult = calcValuationScore(
-      cache?.per ?? null,
-      cache?.pbr ?? null,
-      cache?.roe ?? null,
-      cache?.dividend_yield ?? null,
-      forwardData,
-    );
+
+    const valuationResult = calcValuationScore(perVal, pbrVal, roeVal, divVal, forwardData);
 
     // 가중치 적용 총점 (기술 점수 음수도 반영 — 과열/쌍봉 경고가 총점에 영향)
+    const TECH_MAX = 48;
     const total_score =
       (signalResult.score / 30) * weights.signal +
-      (Math.max(0, technicalResult.score) / 34) * weights.technical +
+      (Math.max(0, technicalResult.score) / TECH_MAX) * weights.technical +
       (valuationResult.score / 25) * weights.valuation +
       (supplyResult.score / 45) * weights.supply +
       // 기술 음수 감점: 과열/쌍봉 패턴 시 총점 직접 차감
@@ -302,6 +331,9 @@ export async function generateRecommendations(
       double_top: technicalResult.double_top,
       volume_surge: technicalResult.volume_surge,
       week52_low_near: technicalResult.week52_low_near,
+      disparity_rebound: technicalResult.disparity_rebound,
+      volume_breakout: technicalResult.volume_breakout,
+      consecutive_drop_rebound: technicalResult.consecutive_drop_rebound,
       per: valuationResult.per,
       pbr: valuationResult.pbr,
       roe: valuationResult.roe,

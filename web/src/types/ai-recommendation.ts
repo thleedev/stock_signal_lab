@@ -28,6 +28,9 @@ export interface AiRecommendation {
   double_top: boolean;
   volume_surge: boolean;
   week52_low_near: boolean;
+  disparity_rebound: boolean;
+  volume_breakout: boolean;
+  consecutive_drop_rebound: boolean;
 
   // 밸류에이션
   per: number | null;

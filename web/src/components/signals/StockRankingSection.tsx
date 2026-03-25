@@ -102,21 +102,23 @@ function getBasicBadges(item: StockRankItem, todayMs: number): Badge[] {
   return b;
 }
 
-// 모든 점수를 100점 만점으로 정규화
+// 모든 점수를 100점 만점으로 정규화 (signal:30, tech:48, val:25, supply:45)
 function normScores(item: StockRankItem) {
+  const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
     return {
-      sig: Math.round(Math.min(100, Math.max(0, item.ai.signal_score / 30 * 100))),
-      tech: Math.round(Math.min(100, Math.max(0, item.ai.technical_score / 30 * 100))),
-      val: Math.round(Math.min(100, Math.max(0, item.ai.valuation_score / 20 * 100))),
-      sup: Math.round(Math.min(100, Math.max(0, item.ai.supply_score / 23 * 100))),
+      sig: clamp(item.ai.signal_score / 30 * 100),
+      tech: clamp(item.ai.technical_score / 48 * 100),
+      val: clamp(item.ai.valuation_score / 25 * 100),
+      sup: clamp(item.ai.supply_score / 45 * 100),
     };
   }
+  // 서버 calcScore는 이미 0~100 정규화 점수를 반환
   return {
-    sig: Math.round(Math.min(100, Math.max(0, item.score_signal / 30 * 100))),
-    tech: Math.round(Math.min(100, Math.max(0, item.score_momentum / 30 * 100))),
-    val: Math.round(Math.min(100, Math.max(0, item.score_valuation / 20 * 100))),
-    sup: Math.round(Math.min(100, Math.max(0, item.score_supply / 20 * 100))),
+    sig: clamp(item.score_signal),
+    tech: clamp(item.score_momentum),
+    val: clamp(item.score_valuation),
+    sup: clamp(item.score_supply),
   };
 }
 

@@ -109,10 +109,10 @@ const CHARACTER_FILTER_OPTIONS = [
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   if (item.ai) {
-    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, tech:34, val:25, supply:45)
+    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, tech:48, val:25, supply:45)
     return {
       sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp(item.ai.technical_score / 34 * 100),
+      tech: clamp(item.ai.technical_score / 48 * 100),
       val: clamp(item.ai.valuation_score / 25 * 100),
       sup: clamp(item.ai.supply_score / 45 * 100),
     };
@@ -151,9 +151,10 @@ function getInvestmentCharacters(item: StockRankItem, weights: Weights): Investm
   }
 
   // 상승초입: 기술 신호 감지 + 아직 가격 덜 오른 종목 (진입 적기)
-  // 조건: 골든크로스/MACD/거래량급증 + 등락률 5% 미만
+  // 조건: 골든크로스/MACD/거래량급증/이격도반등/거래량바닥탈출/하락후반등 + 등락률 5% 미만
   if (item.ai) {
-    const hasEarlySignal = item.ai.golden_cross || item.ai.macd_cross || item.ai.volume_surge;
+    const hasEarlySignal = item.ai.golden_cross || item.ai.macd_cross || item.ai.volume_surge
+      || item.ai.disparity_rebound || item.ai.volume_breakout || item.ai.consecutive_drop_rebound;
     if (hasEarlySignal && pct < 5) {
       chars.push('early_rise');
     }
@@ -199,6 +200,9 @@ function getRecommendReason(item: StockRankItem): string {
     if (item.ai.phoenix_pattern) reasons.push('V자반등');
     if (item.ai.bollinger_bottom) reasons.push('볼린저하단 반등');
     if (item.ai.volume_surge) reasons.push('거래량급증');
+    if (item.ai.disparity_rebound) reasons.push('이격도반등');
+    if (item.ai.volume_breakout) reasons.push('거래량바닥탈출');
+    if (item.ai.consecutive_drop_rebound) reasons.push('하락후반등');
     if (item.ai.week52_low_near) reasons.push('52주저점 근접');
     if (item.ai.rsi !== null && item.ai.rsi < 30) reasons.push(`RSI${item.ai.rsi.toFixed(0)} 과매도`);
     if (item.ai.double_top) reasons.push('⚠️ 쌍봉 주의');
