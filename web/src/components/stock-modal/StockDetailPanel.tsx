@@ -1,0 +1,335 @@
+"use client";
+
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useStockModal } from "@/contexts/stock-modal-context";
+import type { StockRankItem } from "@/app/api/v1/stock-ranking/route";
+import { usePriceRefresh } from "@/hooks/use-price-refresh";
+import { PanelHeader } from "./PanelHeader";
+import { AiOpinionCard } from "./AiOpinionCard";
+import { SupplyDemandSection } from "./SupplyDemandSection";
+import { TechnicalSignalSection } from "./TechnicalSignalSection";
+import { MetricsGrid } from "./MetricsGrid";
+import { ConsensusSection } from "./ConsensusSection";
+import { DartInfoSection } from "./DartInfoSection";
+import { PortfolioGroupAccordion } from "./PortfolioGroupAccordion";
+import dynamic from "next/dynamic";
+
+// 차트 컴포넌트 — SSR 비활성화
+const StockChartSection = dynamic(
+  () => import("@/components/charts/stock-chart-section"),
+  { ssr: false }
+);
+
+// 거래 모달 — SSR 비활성화
+const TradeModal = dynamic(
+  () => import("@/app/my-portfolio/components/trade-modal").then((m) => m.TradeModal),
+  { ssr: false }
+);
+
+interface Signal {
+  id: string;
+  symbol: string;
+  signal_type: string;
+  source: string;
+  timestamp: string;
+  signal_price?: string | number;
+  raw_data?: Record<string, unknown>;
+}
+
+interface Metrics {
+  name: string;
+  current_price: number;
+  price_change: number;
+  price_change_pct: number;
+  per: number | null;
+  pbr: number | null;
+  roe: number | null;
+  eps: number | null;
+  bps: number | null;
+  market_cap: number | null;
+  high_52w: number | null;
+  low_52w: number | null;
+  dividend_yield: number | null;
+  volume: number | null;
+}
+
+interface PriceData {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/**
+ * StockDetailPanel — 슬라이드 패널 형태의 주식 상세 정보 컨테이너
+ * - 2컬럼 레이아웃 (좌: AI 분석, 우: 시장 데이터)
+ * - 3단계 점진적 데이터 로딩 (Phase 1: metrics/signals/prices)
+ * - 오버레이 클릭 및 ESC 키로 닫기 지원
+ */
+export function StockDetailPanel() {
+  const { modal, closeStockModal } = useStockModal();
+  const [isVisible, setIsVisible] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Phase 1 fetch 상태
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [dailyPrices, setDailyPrices] = useState<PriceData[]>([]);
+  const [phase1Loading, setPhase1Loading] = useState(false);
+  const [phase1Error, setPhase1Error] = useState<string | null>(null);
+
+  // initialData 없을 때 랭킹 데이터 fallback
+  const [rankingData, setRankingData] = useState<StockRankItem | null>(null);
+
+  // 거래 모달 상태
+  const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradePortfolioId, setTradePortfolioId] = useState<number | null>(null);
+
+  // 실시간 시세
+  const { prices: livePrices } = usePriceRefresh(modal ? [modal.symbol] : []);
+  const livePrice = modal ? livePrices[modal.symbol] : null;
+
+  // 데이터 우선순위: livePrice > metrics > initialData
+  const data = modal?.initialData ?? rankingData;
+  const currentPrice = livePrice?.current_price ?? metrics?.current_price ?? data?.current_price ?? 0;
+  const changeAmount = livePrice?.price_change ?? metrics?.price_change ?? 0;
+  const changePct = livePrice?.price_change_pct ?? metrics?.price_change_pct ?? data?.price_change_pct ?? 0;
+
+  // 지표 병합 (metrics 우선, initialData fallback)
+  const metricsData = {
+    per: metrics?.per ?? data?.per ?? null,
+    pbr: metrics?.pbr ?? data?.pbr ?? null,
+    roe: metrics?.roe ?? data?.roe ?? null,
+    eps: metrics?.eps ?? null,
+    bps: metrics?.bps ?? null,
+    dividend_yield: metrics?.dividend_yield ?? data?.dividend_yield ?? null,
+    market_cap: metrics?.market_cap ?? data?.market_cap ?? null,
+    volume: metrics?.volume ?? null,
+    high_52w: metrics?.high_52w ?? data?.high_52w ?? null,
+    low_52w: metrics?.low_52w ?? data?.low_52w ?? null,
+  };
+
+  // 슬라이드 애니메이션 처리
+  useEffect(() => {
+    if (modal) {
+      requestAnimationFrame(() => setIsVisible(true));
+    } else {
+      setIsVisible(false);
+    }
+  }, [modal]);
+
+  // Phase 1: metrics, signals, daily-prices 병렬 fetch
+  const fetchPhase1 = useCallback(async (symbol: string, hasInitialData: boolean) => {
+    setPhase1Loading(true);
+    setPhase1Error(null);
+    try {
+      const fetches: Promise<Response>[] = [
+        fetch(`/api/v1/stock/${symbol}/metrics`),
+        fetch(`/api/v1/signals?symbol=${symbol}`),
+        fetch(`/api/v1/stock/${symbol}/daily-prices`),
+      ];
+
+      // initialData 없을 때 랭킹 API 추가 호출
+      if (!hasInitialData) {
+        fetches.push(fetch(`/api/v1/stock-ranking?symbol=${symbol}`));
+      }
+
+      const responses = await Promise.all(fetches);
+      const [metricsRes, signalsRes, dailyPricesRes] = responses;
+
+      const [metricsJson, signalsJson, dailyPricesJson] = await Promise.all([
+        metricsRes.ok ? metricsRes.json() : null,
+        signalsRes.ok ? signalsRes.json() : { signals: [] },
+        dailyPricesRes.ok ? dailyPricesRes.json() : [],
+      ]);
+
+      if (metricsJson) setMetrics(metricsJson);
+
+      const sigs = Array.isArray(signalsJson) ? signalsJson : (signalsJson?.signals ?? []);
+      setSignals(sigs);
+
+      const rawPrices = Array.isArray(dailyPricesJson) ? dailyPricesJson : [];
+      // 날짜 오름차순 정렬
+      setDailyPrices(rawPrices.sort((a: PriceData, b: PriceData) => a.date.localeCompare(b.date)));
+
+      // initialData 없을 때 랭킹 데이터에서 해당 종목 추출
+      if (!hasInitialData && responses[3]) {
+        const rankingJson = await (responses[3].ok ? responses[3].json() : null);
+        if (rankingJson?.items) {
+          const item = rankingJson.items.find((i: StockRankItem) => i.symbol === symbol);
+          if (item) setRankingData(item);
+        }
+      }
+    } catch {
+      setPhase1Error("데이터를 불러오는 중 오류가 발생했습니다.");
+    } finally {
+      setPhase1Loading(false);
+    }
+  }, []);
+
+  // 종목 변경 시 상태 초기화 후 Phase 1 fetch
+  useEffect(() => {
+    if (modal?.symbol) {
+      setMetrics(null);
+      setSignals([]);
+      setDailyPrices([]);
+      setRankingData(null);
+      setPhase1Error(null);
+      fetchPhase1(modal.symbol, !!modal.initialData);
+    }
+  }, [modal?.symbol, modal?.initialData, fetchPhase1]);
+
+  // ESC 키로 패널 닫기
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeStockModal();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [closeStockModal]);
+
+  // 애니메이션 후 닫기
+  const handleClose = useCallback(() => {
+    setIsVisible(false);
+    setTimeout(closeStockModal, 300);
+  }, [closeStockModal]);
+
+  if (!modal) return null;
+
+  const stockName = metrics?.name ?? modal.name ?? data?.name ?? modal.symbol;
+
+  // 차트에 표시할 시그널 마커 생성
+  const signalMarkers = signals
+    .map((s) => ({
+      date: (s.timestamp || "").split("T")[0],
+      type: s.signal_type as "BUY" | "BUY_FORECAST" | "SELL" | "SELL_COMPLETE",
+      source: s.source,
+    }))
+    .filter((m) => m.date);
+  const signalDates = [...new Set(signalMarkers.map((m) => m.date))];
+
+  return (
+    <>
+      {/* 반투명 오버레이 */}
+      <div
+        className={`fixed inset-0 z-50 bg-black/50 transition-opacity duration-300 ${isVisible ? "opacity-100" : "opacity-0"}`}
+        onClick={handleClose}
+      />
+
+      {/* 슬라이드 패널 */}
+      <div
+        ref={panelRef}
+        className={`fixed top-0 right-0 z-50 h-screen w-[85vw] max-w-[1200px] max-md:w-full bg-[var(--card)] shadow-2xl flex flex-col transition-transform duration-300 ease-out ${isVisible ? "translate-x-0" : "translate-x-full"}`}
+      >
+        <PanelHeader
+          symbol={modal.symbol}
+          name={stockName}
+          currentPrice={currentPrice}
+          changeAmount={changeAmount}
+          changePct={changePct}
+          grade={data?.grade}
+          recommendation={data?.recommendation}
+          onClose={handleClose}
+        />
+
+        {/* 2컬럼 바디 */}
+        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+          {/* 좌측 컬럼: AI 분석 영역 */}
+          <div className="md:w-[55%] overflow-y-auto border-r border-[var(--border)] max-md:border-r-0">
+            {data ? (
+              <div className="space-y-0 divide-y divide-[var(--border)]">
+                <AiOpinionCard data={data} />
+                <SupplyDemandSection data={data} />
+                <TechnicalSignalSection
+                  data={data}
+                  signals={signals}
+                  signalsLoading={phase1Loading}
+                />
+              </div>
+            ) : (
+              // AI 분석 로딩 스켈레톤
+              <div className="p-4 space-y-4 animate-pulse">
+                <div className="h-40 bg-[var(--muted)]/20 rounded-xl" />
+                <div className="h-24 bg-[var(--muted)]/20 rounded-xl" />
+                <div className="h-32 bg-[var(--muted)]/20 rounded-xl" />
+              </div>
+            )}
+          </div>
+
+          {/* 우측 컬럼: 시장 데이터 영역 */}
+          <div className="md:w-[45%] overflow-y-auto">
+            <div className="space-y-0 divide-y divide-[var(--border)]">
+              {/* 주가 차트 */}
+              {phase1Loading && dailyPrices.length === 0 ? (
+                <div className="p-4 animate-pulse">
+                  <div className="h-[250px] bg-[var(--muted)]/20 rounded-xl" />
+                </div>
+              ) : dailyPrices.length > 0 ? (
+                <div>
+                  <StockChartSection
+                    prices={dailyPrices}
+                    signalDates={signalDates}
+                    signalMarkers={signalMarkers}
+                    initialPeriod={30}
+                  />
+                </div>
+              ) : null}
+
+              {/* 주요 지표 그리드 */}
+              <MetricsGrid data={metricsData} />
+
+              {/* 컨센서스 섹션 */}
+              {data && <ConsensusSection data={data} currentPrice={currentPrice} />}
+
+              {/* DART 공시 섹션 */}
+              {data && <DartInfoSection data={data} />}
+
+              {/* 에러 메시지 및 재시도 버튼 */}
+              {phase1Error && (
+                <div className="p-4 text-center">
+                  <p className="text-[var(--danger)] mb-3 text-sm">{phase1Error}</p>
+                  <button
+                    onClick={() => fetchPhase1(modal.symbol, !!modal.initialData)}
+                    className="text-sm px-3 py-1 rounded border border-[var(--border)] hover:bg-[var(--card-hover)]"
+                  >
+                    재시도
+                  </button>
+                </div>
+              )}
+
+              {/* 포트폴리오 그룹 아코디언 */}
+              <PortfolioGroupAccordion
+                symbol={modal.symbol}
+                name={stockName}
+                currentPrice={currentPrice}
+                onAddClick={(portfolioId) => {
+                  setTradePortfolioId(Number(portfolioId));
+                  setTradeModalOpen(true);
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 거래 모달 */}
+      {tradeModalOpen && (
+        <TradeModal
+          mode="buy"
+          isOpen={tradeModalOpen}
+          onClose={() => setTradeModalOpen(false)}
+          onSubmit={() => {
+            setTradeModalOpen(false);
+            fetchPhase1(modal.symbol, !!modal.initialData);
+          }}
+          initialSymbol={modal.symbol}
+          initialName={stockName}
+          initialPrice={currentPrice}
+          portfolios={[]}
+        />
+      )}
+    </>
+  );
+}

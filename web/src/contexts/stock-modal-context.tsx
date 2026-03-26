@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, ReactNode } from "react";
-import { StockDetailModal } from "@/components/stock-modal/StockDetailModal";
+import { StockDetailPanel } from "@/components/stock-modal/StockDetailPanel";
 import type { StockRankItem } from "@/app/api/v1/stock-ranking/route";
 
 interface StockModalState {
@@ -35,8 +35,7 @@ export function StockModalProvider({ children }: { children: ReactNode }) {
   return (
     <StockModalContext.Provider value={{ modal, openStockModal, closeStockModal }}>
       {children}
-      {/* StockDetailPanel은 Task 6에서 연결 — 지금은 기존 StockDetailModal 유지 */}
-      <StockDetailModal />
+      <StockDetailPanel />
     </StockModalContext.Provider>
   );
 }
