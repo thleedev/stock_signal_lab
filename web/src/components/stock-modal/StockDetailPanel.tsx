@@ -85,7 +85,6 @@ export function StockDetailPanel() {
 
   // 거래 모달 상태
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
-  const [tradePortfolioId, setTradePortfolioId] = useState<number | null>(null);
 
   // 실시간 시세
   const { prices: livePrices } = usePriceRefresh(modal ? [modal.symbol] : []);
@@ -304,8 +303,7 @@ export function StockDetailPanel() {
                 symbol={modal.symbol}
                 name={stockName}
                 currentPrice={currentPrice}
-                onAddClick={(portfolioId) => {
-                  setTradePortfolioId(Number(portfolioId));
+                onAddClick={() => {
                   setTradeModalOpen(true);
                 }}
               />
