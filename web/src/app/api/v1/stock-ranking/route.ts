@@ -452,10 +452,19 @@ export async function GET(request: NextRequest) {
       const snapshotDate = showAll || showSignalAll ? 'all' : (showWeek ? todayStr : (dateParam ?? todayStr));
       const snapshot = await readSnapshot(supabase, model, snapshotDate);
       if (snapshot) {
+        let snapshotItems = snapshot.items;
+        // signal_all: 신호 있는 종목만
+        if (showSignalAll) {
+          snapshotItems = snapshotItems.filter((s) =>
+            (s.signal_count_30d ?? 0) > 0 || s.signal_date
+          );
+        }
         // 검색 필터 적용
-        const snapshotItems = q
-          ? snapshot.items.filter((s) => s.name?.toLowerCase().includes(q) || s.symbol?.toLowerCase().includes(q))
-          : snapshot.items;
+        if (q) {
+          snapshotItems = snapshotItems.filter((s) =>
+            s.name?.toLowerCase().includes(q) || s.symbol?.toLowerCase().includes(q)
+          );
+        }
         // 마켓 필터 적용
         const filteredItems = market !== 'all'
           ? snapshotItems.filter((s) => s.market === market)

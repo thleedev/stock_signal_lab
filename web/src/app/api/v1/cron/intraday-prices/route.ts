@@ -106,9 +106,11 @@ export async function GET() {
         .update({ model })
         .eq('id', 1);
 
+      // date=all로 전체 종목 스코어링 → 스냅샷에 전체 저장
+      // signal_all/today 필터는 스냅샷 읽기 시 적용
       const res = await fetch(
-        `${baseUrl}/api/v1/stock-ranking?date=${todayStr}&model=${model}&refresh=true`,
-        { signal: AbortSignal.timeout(120000) },
+        `${baseUrl}/api/v1/stock-ranking?date=all&model=${model}&refresh=true`,
+        { signal: AbortSignal.timeout(180000) },
       );
       if (!res.ok) {
         console.error(`스냅샷 생성 실패 (${model}):`, res.status);
