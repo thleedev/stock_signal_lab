@@ -501,6 +501,12 @@ export async function GET(request: NextRequest) {
           .select('updating, last_updated')
           .single();
 
+        // 스냅샷이 30분 이상 오래되었으면 stale 표시
+        const snapshotAge = snapshot.snapshot_time
+          ? Date.now() - new Date(snapshot.snapshot_time).getTime()
+          : Infinity;
+        const isStale = snapshotAge > 30 * 60 * 1000;
+
         return NextResponse.json({
           items: filteredItems,
           total: filteredItems.length,
@@ -509,6 +515,7 @@ export async function GET(request: NextRequest) {
           today: todayStr,
           snapshot_time: snapshot.snapshot_time,
           updating: status?.updating ?? false,
+          stale: isStale,
         }, {
           headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
         });
