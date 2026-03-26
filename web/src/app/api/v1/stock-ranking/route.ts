@@ -396,11 +396,22 @@ async function readSnapshot(
     query = query.eq('snapshot_date', date)
   }
 
-  const { data, error } = await query.order('score_total', { ascending: false })
-  if (error || !data?.length) return null
+  // Supabase 기본 1000건 제한 → 페이지네이션으로 전체 조회
+  const allData: Record<string, unknown>[] = [];
+  let offset = 0;
+  while (true) {
+    const { data: page, error: pageError } = await query
+      .order('score_total', { ascending: false })
+      .range(offset, offset + 999);
+    if (pageError || !page?.length) break;
+    allData.push(...page);
+    if (page.length < 1000) break;
+    offset += 1000;
+  }
+  if (!allData.length) return null;
 
   return {
-    items: data.map((row: Record<string, unknown>) => ({
+    items: allData.map((row: Record<string, unknown>) => ({
       ...(row.raw_data as Record<string, unknown> ?? {}),
       symbol: row.symbol as string,
       name: row.name as string,
@@ -424,7 +435,7 @@ async function readSnapshot(
       characters: row.characters as string[],
       recommendation: row.recommendation as string,
     })) as StockRankItem[],
-    snapshot_time: (data[0] as Record<string, unknown>)?.snapshot_time as string ?? null,
+    snapshot_time: (allData[0] as Record<string, unknown>)?.snapshot_time as string ?? null,
   }
 }
 
