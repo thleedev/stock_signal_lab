@@ -318,6 +318,7 @@ function calcScore(
     daily_trading_value: (stock as Record<string, unknown>).trading_value as number | null | undefined,
     avg_trading_value_20d: (stock as Record<string, unknown>).avg_trading_value_20d as number | null | undefined,
     turnover_rate: (stock as Record<string, unknown>).turnover_rate as number | null | undefined,
+    market_cap: (stock as Record<string, unknown>).market_cap as number | null | undefined,
   }, scoringModel as 'standard' | 'short_term');
 
   // 가중 합산: signal(10) + trend(35) + valuation(20) + supply(25) + risk(10) = 100

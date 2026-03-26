@@ -27,6 +27,8 @@ interface RiskInput {
   avg_trading_value_20d?: number | null
   /** 주식 회전율 (%) */
   turnover_rate?: number | null
+  /** 시가총액 (억원) */
+  market_cap?: number | null
 }
 
 /** 점수 계산 모델 타입 */
@@ -53,9 +55,17 @@ export function calcRiskScore(input: RiskInput, model: Model = 'standard'): numb
     score += model === 'standard' ? -30 : -20
   }
 
-  // 최대주주 지분율 20% 미만: standard -20, short_term -15
-  if (input.major_shareholder_pct != null && input.major_shareholder_pct < 20) {
-    score += model === 'standard' ? -20 : -15
+  // 최대주주 지분율 — 시총에 따라 차등 적용
+  // 1조 이상: 적용 안 함, 3000억~1조: <5% 감점, 3000억 미만: <10% 감점
+  if (input.major_shareholder_pct != null) {
+    const cap = input.market_cap ?? 0 // 억원 단위
+    let threshold = 10
+    if (cap >= 10000) threshold = 0       // 1조 이상: 적용 안 함
+    else if (cap >= 3000) threshold = 5   // 3000억~1조
+
+    if (threshold > 0 && input.major_shareholder_pct < threshold) {
+      score += model === 'standard' ? -20 : -15
+    }
   }
 
   // 최대주주 지분율 감소: -10
