@@ -4,9 +4,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { GradeTooltip } from '@/components/common/grade-tooltip';
-import { getLastNWeekdays } from '@/lib/date-utils';
-import { FilterBar } from '@/components/common/filter-bar';
+import { RecommendationFilterBar } from './RecommendationFilterBar';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
+import { useSnapshotStatus } from '@/hooks/use-snapshot-status';
 import { useStockRanking } from '@/hooks/use-stock-ranking';
 import type { WatchlistGroup } from '@/types/stock';
 import type { SignalMap } from './UnifiedAnalysisSection';
@@ -227,6 +227,17 @@ function computeShortTermScores(item: StockRankItem): ShortTermScores {
   }
   // 유동성 트랩: 거래대금 적은데 급등
   if (tv > 0 && tv < 100_0000_0000 && pct > 3) riskRaw += 10;
+
+  // DART/네이버 기반 추가 리스크
+  if (item.is_managed) riskRaw += 100;
+  if (item.audit_opinion && item.audit_opinion !== '적정') riskRaw += 80;
+  if (item.has_recent_cbw) riskRaw += 20;
+  if (item.major_shareholder_pct != null && item.major_shareholder_pct > 0 && item.major_shareholder_pct < 20) riskRaw += 15;
+  if (item.major_shareholder_delta != null && item.major_shareholder_delta < 0) riskRaw += 10;
+  if (item.turnover_rate != null && item.turnover_rate > 10) riskRaw += 10;
+  const tvValue = item.daily_trading_value ?? item.trading_value ?? 0;
+  if (tvValue > 0 && tvValue < 3_000_000_000) riskRaw += 15;
+
   const risk = Math.min(100, riskRaw);
 
   return { momentum, supply, catalyst, valuation, risk };
@@ -673,12 +684,14 @@ function WeightPopup({
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function ShortTermRecommendationSection({ signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: ShortTermRecommendationSectionProps) {
-  // 마운트 시마다 날짜 재계산 (모듈 레벨 const는 SPA 내비게이션 시 갱신 안 됨)
-  const LAST7 = useMemo(() => getLastNWeekdays(7), []);
-  const [selectedDate, setSelectedDate] = useState<string>(() => getLastNWeekdays(7)[0]);
+  // 오늘 날짜 (KST 기준)
+  const todayStr = useMemo(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), []);
+  const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>('today');
   const { data, loading, doFetch } = useStockRanking();
   const [q, setQ] = useState('');
   const [market, setMarket] = useState<string>('all');
+  const [noiseFilter, setNoiseFilter] = useState(false);
+  const snapshotStatus = useSnapshotStatus();
   const [visibleCount, setVisibleCount] = useState(50);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
@@ -693,6 +706,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     return { momentum: 45, supply: 28, catalyst: 22, valuation: 5, risk: 15 };
   });
   const [sort, setSort] = useState<SortMode>('score');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [charFilter, setCharFilter] = useState<string>('all');
   const [gapAsc, setGapAsc] = useState(true);
@@ -728,7 +742,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
   }, [liveLoading, refreshLivePrices]);
 
   // ── 데이터 조회 (모듈 레벨 캐시로 탭 전환 시 즉시 반환) ───────────────────────
-  useEffect(() => { doFetch(LAST7[0], 'all'); }, [doFetch]);
+  useEffect(() => { doFetch(todayStr, 'all'); }, [doFetch, todayStr]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
   // 가중치 변경 시 localStorage 저장
   useEffect(() => {
@@ -736,12 +750,31 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
   }, [weights]);
 
   const resetScroll = () => setVisibleCount(PAGE_SIZE);
-  const handleDate = (date: string) => {
-    setSelectedDate(date); resetScroll(); setQ(''); setMarket('all');
-    doFetch(date, 'all');
+
+  // 날짜 모드 변경 핸들러: today/signal_all/all 3가지 모드
+  const handleDateChange = (mode: 'today' | 'signal_all' | 'all') => {
+    setDateMode(mode);
+    resetScroll();
+    setQ('');
+    setMarket('all');
+    const dateParam = mode === 'today' ? todayStr : mode;
+    doFetch(dateParam, 'all');
   };
+
+  // 정렬 변경 핸들러: 같은 정렬 기준 클릭 시 방향 토글
+  const handleSortChange = (by: SortMode) => {
+    if (by === sort) {
+      setSortDir(d => d === 'desc' ? 'asc' : 'desc');
+      if (by === 'gap') setGapAsc(v => !v);
+    } else {
+      setSort(by);
+      setSortDir('desc');
+      if (by === 'gap') setGapAsc(true);
+    }
+  };
+
   const handleSearch = (v: string) => { setQ(v); resetScroll(); };
-  const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(selectedDate, mkt); };
+  const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(dateMode === 'today' ? todayStr : dateMode, mkt); };
 
   const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
     e.stopPropagation();
@@ -911,13 +944,17 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     }
     if (sort === 'name') return (a.name ?? '').localeCompare(b.name ?? '', 'ko');
     if (sort === 'updated') {
-      const da = a.latest_signal_date ?? '';
-      const db = b.latest_signal_date ?? '';
-      if (da !== db) return db.localeCompare(da);
+      const dateA = a.signal_date || a.latest_signal_date || '';
+      const dateB = b.signal_date || b.latest_signal_date || '';
+      if (dateA !== dateB) {
+        return sortDir === 'desc'
+          ? dateB.localeCompare(dateA)
+          : dateA.localeCompare(dateB);
+      }
     }
     // score (default + fallback for updated) — 캐시된 점수 사용
     return (precomputed.get(b.symbol)?.weighted ?? 0) - (precomputed.get(a.symbol)?.weighted ?? 0);
-  }), [liveItems, sort, precomputed, sourceFilter, signalMap, livePrices, gapAsc]);
+  }), [liveItems, sort, sortDir, precomputed, sourceFilter, signalMap, livePrices, gapAsc]);
 
   // ── 투자성격 필터 ────────────────────────────────────────────────────────────
   const filteredByChar = useMemo(() => {
@@ -937,9 +974,30 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     );
   }, [filteredByChar, q]);
 
+  // ── 노이즈 필터 (저유동성·관리종목 등 제외) ────────────────────────────────
+  const filteredByNoise = useMemo(() => {
+    if (!noiseFilter) return filteredBySearch;
+    return filteredBySearch.filter((item) => {
+      const tv = item.daily_trading_value ?? item.trading_value ?? 0;
+      const avgTv = item.avg_trading_value_20d ?? 0;
+      const tr = item.turnover_rate ?? 0;
+      const managed = item.is_managed ?? false;
+      const cbw = item.has_recent_cbw ?? false;
+      const shareholder = item.major_shareholder_pct ?? 100;
+
+      if (tv < 10_000_000_000) return false;
+      if (avgTv > 0 && avgTv < 5_000_000_000) return false;
+      if (tr > 0 && tr < 1) return false;
+      if (managed) return false;
+      if (cbw) return false;
+      if (shareholder < 20) return false;
+      return true;
+    });
+  }, [filteredBySearch, noiseFilter]);
+
   const total = data?.total ?? 0;
-  const displayTotal = filteredBySearch.length;
-  const displayItems = filteredBySearch.slice(0, visibleCount);
+  const displayTotal = filteredByNoise.length;
+  const displayItems = filteredByNoise.slice(0, visibleCount);
   const hasMore = visibleCount < displayTotal;
   const aiCount = rawItems.filter((i) => i.ai).length;
 
@@ -963,23 +1021,24 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     <div className="space-y-3">
       {/* ── 필터 바 ── */}
       <div className="relative">
-        <FilterBar
-          date={{ dates: LAST7, selected: selectedDate, onChange: handleDate, extraAll: { value: 'signal_all', label: '신호전체' }, allLabel: '종목전체', label: '날짜' }}
-          source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter), label: '소스' }}
-          character={{ options: CHARACTER_FILTER_OPTIONS, selected: charFilter, onChange: (c) => { setCharFilter(c); resetScroll(); }, label: '성격' }}
-          market={{ selected: market, onChange: handleMarket, label: '시장' }}
-          search={{ value: q, onChange: handleSearch, placeholder: '종목명 / 코드' }}
-          sort={{
-            options: SORT_OPTIONS_WITH_GAP,
-            selected: sort,
-            onChange: (s) => setSort(s as SortMode),
-            gapAsc,
-            onGapToggle: () => setGapAsc((v) => !v),
-            label: '정렬',
-          }}
-          onWeightClick={() => setShowWeights((v) => !v)}
-          onRefresh={refreshPrices}
-          refreshing={priceLoading || liveLoading}
+        <RecommendationFilterBar
+          searchValue={q}
+          onSearchChange={handleSearch}
+          dateMode={dateMode}
+          onDateChange={handleDateChange}
+          market={market as 'all' | 'KOSPI' | 'KOSDAQ'}
+          onMarketChange={(m) => { setMarket(m); resetScroll(); doFetch(dateMode === 'today' ? todayStr : dateMode, m); }}
+          sortBy={sort}
+          sortDir={sortDir}
+          onSortChange={handleSortChange}
+          characterOptions={CHARACTER_FILTER_OPTIONS}
+          selectedCharacter={charFilter}
+          onCharacterChange={(c) => { setCharFilter(c); resetScroll(); }}
+          noiseFilter={noiseFilter}
+          onNoiseFilterChange={setNoiseFilter}
+          onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market)}
+          refreshing={loading}
+          updating={snapshotStatus.updating}
         />
         {showWeights && (
           <WeightPopup
@@ -1011,7 +1070,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
       )}
       {!loading && displayItems.length === 0 && (
         <div className="py-16 text-center text-[var(--muted)] text-sm">
-          {selectedDate === 'all' || selectedDate === 'signal_all' || selectedDate === 'week' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
+          {dateMode === 'all' || dateMode === 'signal_all' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
         </div>
       )}
 

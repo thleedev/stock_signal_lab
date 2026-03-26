@@ -3,6 +3,9 @@ import { createServiceClient } from '@/lib/supabase';
 import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import type { StockInvestorData, NaverDailyPrice } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators } from '@/lib/krx-api';
+import { calcRiskScore } from '@/lib/scoring/risk-score';
+import { calcSupplyAdditions } from '@/lib/scoring/supply-score-additions';
+import { calcValuationAdditions } from '@/lib/scoring/valuation-score-additions';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +50,27 @@ export interface StockRankItem {
   score_supply: number;
   score_signal: number;
   score_momentum: number;
+  // 리스크/촉매 점수
+  score_risk?: number;
+  score_catalyst?: number;
+  // 거래 관련 추가 필드
+  daily_trading_value?: number | null;
+  avg_trading_value_20d?: number | null;
+  turnover_rate?: number | null;
+  // DART/리스크 관련 필드
+  is_managed?: boolean;
+  has_recent_cbw?: boolean;
+  major_shareholder_pct?: number | null;
+  major_shareholder_delta?: number | null;
+  audit_opinion?: string | null;
+  has_treasury_buyback?: boolean;
+  revenue_growth_yoy?: number | null;
+  operating_profit_growth_yoy?: number | null;
+  // 신호/등급 관련 필드
+  signal_date?: string | null;
+  grade?: string;
+  characters?: string[];
+  recommendation?: string;
   // AI 추천 데이터 (ai_recommendations 있는 경우)
   ai?: {
     total_score: number;
@@ -84,6 +108,7 @@ function calcScore(
   stock: Omit<StockRankItem, 'score_total' | 'score_valuation' | 'score_supply' | 'score_signal' | 'score_momentum' | 'ai'>,
   todayStr: string,
   sectorAvgPct: number | null = null, // 같은 섹터 평균 등락률
+  scoringModel: string = 'standard', // 점수 계산 모델
 ) {
   // ── 밸류에이션 (0~100) ──
   const hasForward = stock.forward_per !== null || stock.target_price !== null || stock.invest_opinion !== null;
@@ -150,7 +175,14 @@ function calcScore(
     else if (stock.dividend_yield >= 3) vDiv = 10;
     else if (stock.dividend_yield >= 1.5) vDiv = 5;
   }
-  const score_valuation = Math.min(100, vPer + vPbr + vRoe + vDiv + vUpside + vOpinion);
+  let score_valuation = Math.min(100, vPer + vPbr + vRoe + vDiv + vUpside + vOpinion);
+
+  // 밸류에이션 추가 점수 (성장률 기반)
+  const valBonus = calcValuationAdditions({
+    revenue_growth_yoy: (stock as Record<string, unknown>).revenue_growth_yoy as number | null | undefined,
+    operating_profit_growth_yoy: (stock as Record<string, unknown>).operating_profit_growth_yoy as number | null | undefined,
+  });
+  score_valuation = Math.min(100, Math.max(0, score_valuation + valBonus));
 
   // ── 수급 (0~100) ──
   // 1일 순매수 + 5일 누적 + 연속성 복합 판단
@@ -197,6 +229,16 @@ function calcScore(
     else if (stock.short_sell_ratio < 1) score_supply += 5;
   }
   score_supply = Math.min(100, score_supply);
+
+  // 수급 추가 점수 (거래대금·회전율·자사주·대주주 기반)
+  const supplyBonus = calcSupplyAdditions({
+    daily_trading_value: (stock as Record<string, unknown>).trading_value as number | null | undefined,
+    avg_trading_value_20d: (stock as Record<string, unknown>).avg_trading_value_20d as number | null | undefined,
+    turnover_rate: (stock as Record<string, unknown>).turnover_rate as number | null | undefined,
+    has_treasury_buyback: (stock as Record<string, unknown>).has_treasury_buyback as boolean | undefined,
+    major_shareholder_delta: (stock as Record<string, unknown>).major_shareholder_delta as number | null | undefined,
+  });
+  score_supply = Math.min(100, Math.max(0, score_supply + supplyBonus));
 
   // ── 신호 신뢰도 (0~100) ──
   // 반복 추천 + 매수가 대비 현재가 위치
@@ -266,9 +308,28 @@ function calcScore(
   }
   score_momentum = Math.max(0, Math.min(100, score_momentum));
 
-  // total은 균등 평균 (클라이언트에서 가중치 적용하므로 여기선 단순 평균)
-  const score_total = Math.round((score_valuation + score_supply + score_signal + score_momentum) / 4);
-  return { score_total, score_valuation, score_supply, score_signal, score_momentum };
+  // ── 리스크 점수 (감점 방식, 0 이하) ──
+  const riskScore = calcRiskScore({
+    is_managed: (stock as Record<string, unknown>).is_managed as boolean | undefined,
+    audit_opinion: (stock as Record<string, unknown>).audit_opinion as string | null | undefined,
+    has_recent_cbw: (stock as Record<string, unknown>).has_recent_cbw as boolean | undefined,
+    major_shareholder_pct: (stock as Record<string, unknown>).major_shareholder_pct as number | null | undefined,
+    major_shareholder_delta: (stock as Record<string, unknown>).major_shareholder_delta as number | null | undefined,
+    daily_trading_value: (stock as Record<string, unknown>).trading_value as number | null | undefined,
+    avg_trading_value_20d: (stock as Record<string, unknown>).avg_trading_value_20d as number | null | undefined,
+    turnover_rate: (stock as Record<string, unknown>).turnover_rate as number | null | undefined,
+  }, scoringModel as 'standard' | 'short_term');
+
+  // 가중 합산: signal(10) + trend(35) + valuation(20) + supply(25) + risk(10) = 100
+  const riskNormalized = Math.max(0, 100 + riskScore); // 0~100 스케일로 변환
+  const score_total = Math.round(
+    (score_signal * 10 +
+     score_momentum * 35 +
+     score_valuation * 20 +
+     score_supply * 25 +
+     riskNormalized * 10) / 100
+  );
+  return { score_total, score_valuation, score_supply, score_signal, score_momentum, score_risk: riskScore };
 }
 
 /**
@@ -306,6 +367,67 @@ function kstDayRange(dateStr: string) {
   };
 }
 
+/**
+ * 스냅샷 테이블에서 캐싱된 랭킹 결과를 읽어온다.
+ * 스냅샷이 없으면 null 반환 → 실시간 계산으로 폴백
+ */
+async function readSnapshot(
+  supabase: ReturnType<typeof createServiceClient>,
+  model: string,
+  date: string,
+): Promise<{ items: StockRankItem[]; snapshot_time: string | null } | null> {
+  let query = supabase
+    .from('stock_ranking_snapshot')
+    .select('*')
+    .eq('model', model)
+
+  if (date === 'all' || date === 'signal_all') {
+    const { data: latest } = await supabase
+      .from('stock_ranking_snapshot')
+      .select('snapshot_date')
+      .eq('model', model)
+      .order('snapshot_date', { ascending: false })
+      .limit(1)
+      .single()
+
+    if (!latest) return null
+    query = query.eq('snapshot_date', latest.snapshot_date)
+  } else {
+    query = query.eq('snapshot_date', date)
+  }
+
+  const { data, error } = await query.order('score_total', { ascending: false })
+  if (error || !data?.length) return null
+
+  return {
+    items: data.map((row: Record<string, unknown>) => ({
+      ...(row.raw_data as Record<string, unknown> ?? {}),
+      symbol: row.symbol as string,
+      name: row.name as string,
+      market: row.market as string,
+      current_price: row.current_price as number,
+      market_cap: row.market_cap as number,
+      score_total: Number(row.score_total),
+      score_signal: Number(row.score_signal),
+      score_valuation: Number(row.score_valuation),
+      score_supply: Number(row.score_supply),
+      score_momentum: Number(row.score_momentum),
+      score_risk: Number(row.score_risk ?? 0),
+      daily_trading_value: row.daily_trading_value as number | null,
+      avg_trading_value_20d: row.avg_trading_value_20d as number | null,
+      turnover_rate: Number(row.turnover_rate ?? 0),
+      is_managed: row.is_managed as boolean,
+      has_recent_cbw: row.has_recent_cbw as boolean,
+      major_shareholder_pct: Number(row.major_shareholder_pct ?? 0),
+      signal_date: row.signal_date as string | null,
+      grade: row.grade as string,
+      characters: row.characters as string[],
+      recommendation: row.recommendation as string,
+    })) as StockRankItem[],
+    snapshot_time: (data[0] as Record<string, unknown>)?.snapshot_time as string ?? null,
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -314,6 +436,8 @@ export async function GET(request: NextRequest) {
     const limit = 99999;
     const q = searchParams.get('q')?.trim().toLowerCase() ?? '';
     const market = searchParams.get('market') ?? 'all';
+    const model = searchParams.get('model') || 'standard';
+    const refresh = searchParams.get('refresh') === 'true';
 
     const supabase = createServiceClient();
     const now = new Date();
@@ -322,6 +446,39 @@ export async function GET(request: NextRequest) {
     const showAll = !dateParam || dateParam === 'all';
     const showWeek = dateParam === 'week';
     const showSignalAll = dateParam === 'signal_all'; // 신호전체: 최근 30일 신호 있는 종목
+
+    // ── 스냅샷 캐시 읽기 (refresh가 아닐 때만) ──
+    if (!refresh) {
+      const snapshotDate = showAll || showSignalAll ? 'all' : (showWeek ? todayStr : (dateParam ?? todayStr));
+      const snapshot = await readSnapshot(supabase, model, snapshotDate);
+      if (snapshot) {
+        // 검색 필터 적용
+        const snapshotItems = q
+          ? snapshot.items.filter((s) => s.name?.toLowerCase().includes(q) || s.symbol?.toLowerCase().includes(q))
+          : snapshot.items;
+        // 마켓 필터 적용
+        const filteredItems = market !== 'all'
+          ? snapshotItems.filter((s) => s.market === market)
+          : snapshotItems;
+
+        const { data: status } = await supabase
+          .from('snapshot_update_status')
+          .select('updating, last_updated')
+          .single();
+
+        return NextResponse.json({
+          items: filteredItems,
+          total: filteredItems.length,
+          page: 1,
+          limit: 99999,
+          today: todayStr,
+          snapshot_time: snapshot.snapshot_time,
+          updating: status?.updating ?? false,
+        }, {
+          headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
+        });
+      }
+    }
 
     // 이번주(월~오늘) 범위 계산
     const weekStart = (() => {
@@ -369,12 +526,12 @@ export async function GET(request: NextRequest) {
     let from = 0;
 
     const aiSelect = 'symbol, total_score, signal_score, technical_score, valuation_score, supply_score, rsi, golden_cross, bollinger_bottom, phoenix_pattern, macd_cross, volume_surge, week52_low_near, double_top, disparity_rebound, volume_breakout, consecutive_drop_rebound, foreign_buying, institution_buying, volume_vs_sector, low_short_sell';
-    const [, aiRecsResult, sectorResult] = await Promise.all([
+    const [, aiRecsResult, sectorResult, dartResult] = await Promise.all([
       (async () => {
         while (true) {
           let query = supabase
             .from('stock_cache')
-            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, investor_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, latest_signal_price, high_52w, low_52w, dividend_yield, market_cap, forward_per, target_price, invest_opinion')
+            .select('symbol, name, market, current_price, price_change_pct, per, pbr, roe, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, short_sell_updated_at, investor_updated_at, signal_count_30d, latest_signal_type, latest_signal_date, latest_signal_price, high_52w, low_52w, dividend_yield, market_cap, forward_per, target_price, invest_opinion, float_shares, is_managed, volume')
             .not('current_price', 'is', null)
             .range(from, from + 999);
           if (market !== 'all') query = query.eq('market', market);
@@ -392,6 +549,9 @@ export async function GET(request: NextRequest) {
       supabase
         .from('stock_info')
         .select('symbol, sector'),
+      supabase
+        .from('stock_dart_info')
+        .select('*'),
     ]);
 
     const aiRecMap = new Map(
@@ -400,9 +560,32 @@ export async function GET(request: NextRequest) {
     const sectorMap = new Map(
       (sectorResult.data ?? []).map((r) => [r.symbol as string, r.sector as string | null])
     );
-    // sector 정보를 allRows에 병합
+
+    // DART 데이터 맵 생성
+    const dartMap = new Map<string, Record<string, unknown>>();
+    if (dartResult.data) {
+      for (const d of dartResult.data) {
+        dartMap.set(d.symbol as string, d as Record<string, unknown>);
+      }
+    }
+
+    // sector + DART 정보를 allRows에 병합
     for (const row of allRows) {
       row.sector = sectorMap.get(row.symbol as string) ?? null;
+
+      // DART 데이터 병합 (리스크/수급/밸류에이션 스코어링용)
+      const dart = dartMap.get(row.symbol as string) ?? {};
+      row.is_managed = (row.is_managed as boolean) ?? false;
+      const floatShares = row.float_shares as number | null;
+      const volume = row.volume as number | null;
+      row.turnover_rate = floatShares ? ((volume ?? 0) / floatShares) * 100 : null;
+      row.has_recent_cbw = (dart.has_recent_cbw as boolean) ?? false;
+      row.major_shareholder_pct = (dart.major_shareholder_pct as number) ?? null;
+      row.major_shareholder_delta = (dart.major_shareholder_delta as number) ?? null;
+      row.audit_opinion = (dart.audit_opinion as string) ?? null;
+      row.has_treasury_buyback = (dart.has_treasury_buyback as boolean) ?? false;
+      row.revenue_growth_yoy = (dart.revenue_growth_yoy as number) ?? null;
+      row.operating_profit_growth_yoy = (dart.operating_profit_growth_yoy as number) ?? null;
     }
 
     // ── 신호 종목 중 수급 stale인 종목 live 보강 ──
@@ -534,7 +717,7 @@ export async function GET(request: NextRequest) {
         }
         const sector = sectorMap.get(base.symbol) ?? null;
         const sectorAvgPct = sector ? (sectorAvgPctMap.get(sector) ?? null) : null;
-        const scores = calcScore(base, todayStr, sectorAvgPct);
+        const scores = calcScore(base, todayStr, sectorAvgPct, model);
         const aiRec = aiRecMap.get(base.symbol);
         const item: StockRankItem = {
           ...base,
@@ -769,6 +952,53 @@ export async function GET(request: NextRequest) {
     const total = filtered.length;
     const offset = (page - 1) * limit;
     const items = filtered.slice(offset, offset + limit);
+
+    // ── 비동기 스냅샷 저장 (다음 요청에서 캐시로 사용) ──
+    void (async () => {
+      try {
+        const snapshotRows = filtered.map((item: StockRankItem) => ({
+          snapshot_date: todayStr,
+          snapshot_time: new Date().toISOString(),
+          model: model || 'standard',
+          symbol: item.symbol,
+          name: item.name,
+          market: item.market,
+          current_price: item.current_price,
+          market_cap: item.market_cap,
+          daily_trading_value: item.trading_value ?? null,
+          avg_trading_value_20d: item.avg_trading_value_20d ?? null,
+          turnover_rate: item.turnover_rate ?? null,
+          is_managed: item.is_managed ?? false,
+          has_recent_cbw: item.has_recent_cbw ?? false,
+          major_shareholder_pct: item.major_shareholder_pct ?? null,
+          score_total: item.score_total,
+          score_signal: item.score_signal,
+          score_trend: item.score_momentum,
+          score_valuation: item.score_valuation,
+          score_supply: item.score_supply,
+          score_risk: item.score_risk ?? 0,
+          score_momentum: item.score_momentum,
+          score_catalyst: item.score_catalyst ?? 0,
+          grade: item.grade ?? null,
+          characters: item.characters ?? null,
+          recommendation: item.recommendation ?? null,
+          signal_date: item.latest_signal_date ?? null,
+          raw_data: item,
+        }));
+
+        // 500건씩 배치 upsert
+        for (let i = 0; i < snapshotRows.length; i += 500) {
+          await supabase
+            .from('stock_ranking_snapshot')
+            .upsert(snapshotRows.slice(i, i + 500), {
+              onConflict: 'snapshot_date,model,symbol',
+              ignoreDuplicates: false,
+            });
+        }
+      } catch (e) {
+        console.error('스냅샷 저장 실패:', e);
+      }
+    })();
 
     return NextResponse.json({ items, total, page, limit, today: todayStr }, {
       headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
