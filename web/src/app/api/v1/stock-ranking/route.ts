@@ -459,6 +459,21 @@ export async function GET(request: NextRequest) {
             (s.signal_count_30d ?? 0) > 0 || s.signal_date
           );
         }
+        // 특정 날짜(오늘 등): 해당 날짜 BUY 신호 있는 종목만
+        if (!showAll && !showSignalAll && !showWeek && dateParam) {
+          const { data: sigRows } = await supabase
+            .from('signals')
+            .select('symbol')
+            .gte('timestamp', `${dateParam}T00:00:00+09:00`)
+            .lte('timestamp', `${dateParam}T23:59:59+09:00`)
+            .in('signal_type', ['BUY', 'BUY_FORECAST']);
+          if (sigRows && sigRows.length > 0) {
+            const dateSigs = new Set(sigRows.map((r) => r.symbol as string));
+            snapshotItems = snapshotItems.filter((s) => dateSigs.has(s.symbol));
+          } else {
+            return NextResponse.json({ items: [], total: 0, page: 1, limit: 99999, today: todayStr });
+          }
+        }
         // 검색 필터 적용
         if (q) {
           snapshotItems = snapshotItems.filter((s) =>
