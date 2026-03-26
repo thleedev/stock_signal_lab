@@ -8,6 +8,8 @@ export interface RankingResponse {
   total: number;
   page: number;
   limit: number;
+  snapshot_time?: string | null; // 스냅샷 생성 시각
+  updating?: boolean;            // 스냅샷 갱신 진행 중 여부
 }
 
 // ── 모듈 레벨 캐시 — 같은 페이지의 여러 컴포넌트가 공유 ──
