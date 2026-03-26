@@ -987,7 +987,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
       const cbw = item.has_recent_cbw ?? false;
       const shRaw = item.major_shareholder_pct ?? null;
       const mc = item.market_cap ?? 0;
-      const isLargeCap = mc >= 1_000_000_000_000; // 시총 1조원 이상 대형주 (market_cap 단위: 원)
+      const isLargeCap = mc >= 10_000; // 시총 1조원(=10,000억) 이상 대형주 (market_cap 단위: 억원)
 
       // 데이터가 있을 때만 필터 적용 (null이면 미수집이므로 통과)
       if (tvRaw != null && tvRaw < 10_000_000_000) return false;

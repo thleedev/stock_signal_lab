@@ -811,7 +811,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       const cbw = (r.has_recent_cbw as boolean) ?? false;
       const shRaw = (r.major_shareholder_pct as number | null) ?? null;
       const mc = (r.market_cap as number) ?? 0;
-      const isLargeCap = mc >= 1_000_000_000_000; // 시총 1조원 이상 대형주 (market_cap 단위: 원)
+      const isLargeCap = mc >= 10_000; // 시총 1조원(=10,000억) 이상 대형주 (market_cap 단위: 억원)
 
       // 데이터가 있을 때만 필터 적용 (null이면 미수집이므로 통과)
       if (tvRaw != null && tvRaw < 10_000_000_000) return false;       // 거래대금 100억 미만

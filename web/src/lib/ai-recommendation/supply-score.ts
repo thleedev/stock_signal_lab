@@ -75,7 +75,7 @@ export function calcSupplyScore(
   institutionNet5d: number | null,   // 기관 5일 누적 순매수
   foreignStreak: number | null,      // 외국인 연속 매수일수
   institutionStreak: number | null,  // 기관 연속 매수일수
-  marketCap: number | null,          // 시가총액 (원)
+  marketCap: number | null,          // 시가총액 (억원)
 ): SupplyScoreResult {
   let score = 0;
   const tier = getMarketCapTier(marketCap);
