@@ -9,7 +9,7 @@ const SOURCE_META = Object.fromEntries(
   Object.entries(SOURCE_LABELS_EMOJI).map(([k, label]) => [k, { label, color: SOURCE_CARD_COLORS[k]?.text ?? "" }])
 ) as Record<string, { label: string; color: string }>;
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 export default async function SourcePortfolioPage({
   params,

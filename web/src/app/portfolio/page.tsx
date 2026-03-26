@@ -21,7 +21,7 @@ interface HoldingStock {
   created_at: string;
 }
 
-export const revalidate = 300;
+export const dynamic = 'force-dynamic';
 
 export default async function PortfolioPage({
   searchParams,

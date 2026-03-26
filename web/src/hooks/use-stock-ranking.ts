@@ -13,7 +13,7 @@ export interface RankingResponse {
 // ── 모듈 레벨 캐시 — 같은 페이지의 여러 컴포넌트가 공유 ──
 const cache = new Map<string, { data: RankingResponse; ts: number }>();
 const inflight = new Map<string, Promise<RankingResponse | null>>();
-const CACHE_TTL = 60_000; // 60초
+const CACHE_TTL = 15_000; // 15초
 
 /**
  * stock-ranking API 응답을 모듈 레벨 캐시로 공유하는 훅.

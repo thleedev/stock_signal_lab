@@ -33,9 +33,11 @@ let lastPriorityRefresh = 0;
 const PRIORITY_COOLDOWN = 10 * 60 * 1000;
 
 async function refreshPriorityData() {
-  // 장중(09:00~16:00 KST)에만 실행
-  const kstHour = new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCHours();
-  if (kstHour < 9 || kstHour >= 16) return;
+  // 장중(08:00~20:00 KST, 평일)에만 실행
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const kstHour = kst.getUTCHours();
+  const kstDay = kst.getUTCDay();
+  if (kstDay === 0 || kstDay === 6 || kstHour < 8 || kstHour >= 20) return;
 
   if (Date.now() - lastPriorityRefresh < PRIORITY_COOLDOWN) return;
   lastPriorityRefresh = Date.now();

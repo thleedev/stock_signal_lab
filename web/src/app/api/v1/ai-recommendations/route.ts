@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
       total_candidates: existing?.[0]?.total_candidates ?? 0,
       needs_refresh,
     }, {
-      headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+      headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
     });
   } catch (error) {
     console.error('[ai-recommendations GET]', error);

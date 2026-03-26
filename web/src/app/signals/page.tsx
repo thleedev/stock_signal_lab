@@ -9,7 +9,7 @@ import { SignalFilterBar } from "./signal-filter-bar";
 import RecommendationView from "@/components/signals/RecommendationView";
 import type { WatchlistGroup } from "@/types/stock";
 
-export const revalidate = 30;
+export const dynamic = 'force-dynamic';
 
 export default async function SignalsPage({
   searchParams,

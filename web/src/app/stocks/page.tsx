@@ -2,11 +2,33 @@ import { createServiceClient } from "@/lib/supabase";
 import StockListClient from "@/components/stocks/stock-list-client";
 import type { WatchlistGroup } from "@/types/stock";
 import { extractSignalPrice } from "@/lib/signal-constants";
+import { fetchAllStockPrices, type StockPriceData } from "@/lib/naver-stock-api";
 
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
+
+/** 장중(KST 08~20시, 평일) 여부 */
+function isMarketHours() {
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const h = kst.getUTCHours();
+  const d = kst.getUTCDay();
+  return d >= 1 && d <= 5 && h >= 8 && h < 20;
+}
+
+/** 타임아웃 래퍼 — 지정 시간 내 실패 시 빈 Map 반환 */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
 
 export default async function StocksPage() {
   const supabase = createServiceClient();
+
+  // 네이버 실시간 가격 요청을 DB 쿼리와 병렬로 시작 (장중에만, 4초 타임아웃)
+  const livePricePromise = isMarketHours()
+    ? withTimeout(fetchAllStockPrices(), 4000, new Map<string, StockPriceData>())
+    : Promise.resolve(new Map<string, StockPriceData>());
 
   const [
     { data: rawFavorites },
@@ -15,6 +37,7 @@ export default async function StocksPage() {
     { data: groupRows },
     { data: groupStockRows },
     { data: latestUpdate },
+    livePrices,
   ] = await Promise.all([
     supabase.from("stock_cache").select("*").eq("is_favorite", true).order("name"),
     supabase.from("stock_cache").select("*").order("name").limit(100),
@@ -24,6 +47,7 @@ export default async function StocksPage() {
     supabase.from("stock_cache").select("updated_at")
       .not("current_price", "is", null)
       .order("updated_at", { ascending: false }).limit(1).single(),
+    livePricePromise,
   ]);
 
   const watchlistSymbols = (watchlistItems ?? []).map((w) => w.symbol);
@@ -35,6 +59,22 @@ export default async function StocksPage() {
     if (!symbolGroups[r.symbol]) symbolGroups[r.symbol] = [];
     symbolGroups[r.symbol].push(r.group_id);
   }
+
+  // 실시간 가격이 있으면 stock_cache 데이터에 머지
+  const hasLive = livePrices.size > 0;
+  const applyLive = <T extends Record<string, unknown>>(row: T): T => {
+    if (!hasLive) return row;
+    const live = livePrices.get(row.symbol as string);
+    if (!live) return row;
+    return {
+      ...row,
+      current_price: live.current_price,
+      price_change: live.price_change,
+      price_change_pct: live.price_change_pct,
+      volume: live.volume > 0 ? live.volume : row.volume,
+      market_cap: live.market_cap || row.market_cap,
+    };
+  };
 
   const lastPriceUpdate = latestUpdate?.updated_at ?? null;
   const hasFavorites = (rawFavorites?.length ?? 0) > 0;
@@ -90,8 +130,8 @@ export default async function StocksPage() {
       ? { ...s, name: infoNameMap[s.symbol] }
       : s;
 
-  const favorites = (rawFavorites ?? []).map(fixName);
-  const stocks = (rawStocks ?? []).map(fixName);
+  const favorites = (rawFavorites ?? []).map(fixName).map(applyLive);
+  const stocks = (rawStocks ?? []).map(fixName).map(applyLive);
 
   const emptySignal = { type: null, price: null };
   const mergeSignals = (list: typeof stocks) =>
