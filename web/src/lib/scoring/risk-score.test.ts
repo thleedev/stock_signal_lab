@@ -52,14 +52,14 @@ describe('calcRiskScore', () => {
     expect(result).toBe(-10)
   })
 
-  it('거래대금 20억이면 -25 반환 (standard)', () => {
-    const result = calcRiskScore({ daily_trading_value: 2_000_000_000 }, 'standard')
-    expect(result).toBe(-25)
+  it('거래대금 5억이면 -20 반환 (standard)', () => {
+    const result = calcRiskScore({ daily_trading_value: 500_000_000 }, 'standard')
+    expect(result).toBe(-20)
   })
 
-  it('20일 평균 거래대금 40억이면 -15 반환 (standard)', () => {
-    const result = calcRiskScore({ avg_trading_value_20d: 4_000_000_000 }, 'standard')
-    expect(result).toBe(-15)
+  it('20일 평균 거래대금 10억이면 -10 반환 (standard)', () => {
+    const result = calcRiskScore({ avg_trading_value_20d: 1_000_000_000 }, 'standard')
+    expect(result).toBe(-10)
   })
 
   it('회전율 12%이면 -10 반환', () => {
@@ -72,10 +72,10 @@ describe('calcRiskScore', () => {
       has_recent_cbw: true,
       major_shareholder_pct: 5,
       market_cap: 500, // 500억원
-      daily_trading_value: 2_000_000_000,
+      daily_trading_value: 500_000_000,
     }, 'standard')
-    // -30 (CB/BW) + -20 (지분율<10%) + -25 (거래대금<30억) = -75
-    expect(result).toBe(-75)
+    // -30 (CB/BW) + -20 (지분율<10%) + -20 (거래대금<10억) = -70
+    expect(result).toBe(-70)
   })
 
   it('리스크 없으면 0 반환', () => {

@@ -157,12 +157,12 @@ function computeShortTermScores(item: StockRankItem): ShortTermScores {
   // D. 거래대금 (max 15)
   const tv = item.trading_value ?? 0;
   let tvScore = 0;
-  if (tv >= 1000_0000_0000) tvScore = 15;       // 1000억 이상
-  else if (tv >= 500_0000_0000) tvScore = 10;    // 500억 이상
-  else if (tv >= 200_0000_0000) tvScore = 5;     // 200억 이상
+  if (tv >= 500_0000_0000) tvScore = 15;        // 500억 이상
+  else if (tv >= 100_0000_0000) tvScore = 10;   // 100억 이상
+  else if (tv >= 30_0000_0000) tvScore = 5;     // 30억 이상
 
   const momentumRaw = matrixScore + closePosScore + gapScore + tvScore; // 범위 약 -10 ~ 85
-  const momentum = Math.max(0, Math.min(100, (momentumRaw + 10) / 95 * 100));
+  const momentum = Math.max(0, Math.min(100, (momentumRaw + 10) / 75 * 100));
 
   // ── 2. 수급 ──
   const fn = item.foreign_net_qty ?? 0;
@@ -178,7 +178,7 @@ function computeShortTermScores(item: StockRankItem): ShortTermScores {
   if (fn <= 0 && in_ <= 0 && (fn !== 0 || in_ !== 0)) supplyRaw -= 15; // 둘 다 매도
   if (fs <= -3) supplyRaw -= 10; // 외국인 3일 연속 매도
   if (is_ <= -3) supplyRaw -= 10; // 기관 3일 연속 매도
-  const supply = Math.max(0, Math.min(100, (supplyRaw + 25) / 80 * 100));
+  const supply = Math.max(0, Math.min(100, (supplyRaw + 25) / 60 * 100));
 
   // ── 3. 촉매 (신호 신선도 + 복수 소스) ──
   let catalystRaw = 0;
@@ -190,8 +190,9 @@ function computeShortTermScores(item: StockRankItem): ShortTermScores {
     else if (days <= 3) catalystRaw += 5;   // 3일 이내
   }
   const cnt = item.signal_count_30d ?? 0;
-  if (cnt >= 5) catalystRaw += 10;
-  else if (cnt >= 3) catalystRaw += 5;
+  if (cnt >= 5) catalystRaw += 15;
+  else if (cnt >= 3) catalystRaw += 10;
+  else if (cnt >= 1) catalystRaw += 5;  // 1회라도 있으면 기본 보너스
   const catalyst = Math.max(0, Math.min(100, (catalystRaw + 10) / 35 * 100));
 
   // ── 4. 밸류에이션 (설계 Section 4.4) ──
@@ -218,7 +219,7 @@ function computeShortTermScores(item: StockRankItem): ShortTermScores {
   if (roe > 15) valRaw += 20;
   else if (roe > 10) valRaw += 10;
   else if (roe > 5) valRaw += 5;
-  const valuation = Math.max(0, Math.min(100, valRaw / 75 * 100));
+  const valuation = Math.max(0, Math.min(100, valRaw / 55 * 100));
 
   // ── 5. 리스크 패널티 (설계 Section 4.5) ──
   let riskRaw = 0;

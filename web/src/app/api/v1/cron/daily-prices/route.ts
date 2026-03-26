@@ -101,38 +101,30 @@ export async function GET(request: Request) {
     ]);
     lap(`시세 ${priceMap.size} + 지표 ${indicatorMap.size} + 수급 ${investorMap.size} + 공매도 ${shortSellMap.size} 조회`);
 
-    // ═══ Step 3: stock_cache 일괄 업데이트 ═══
-    const stocks: { symbol: string }[] = [];
-    let from = 0;
-    while (true) {
-      const { data: page } = await supabase.from('stock_cache').select('symbol').range(from, from + 999);
-      if (!page || page.length === 0) break;
-      stocks.push(...page);
-      if (page.length < 1000) break;
-      from += 1000;
-    }
-
+    // ═══ Step 3: stock_cache 일괄 업데이트 (네이버 전종목 기준) ═══
+    // priceMap 기준으로 upsert → 신규 종목도 자동 추가됨
+    const allSymbols = [...priceMap.keys()];
     let updated = 0;
-    const targets = stocks.filter(({ symbol }) =>
-      priceMap.has(symbol) || indicatorMap.has(symbol) || investorMap.has(symbol) || shortSellMap.has(symbol)
-    );
 
-    for (let i = 0; i < targets.length; i += 500) {
-      const batch = targets.slice(i, i + 500);
-      const rows = batch.map(({ symbol }) => {
-        const price = priceMap.get(symbol);
+    for (let i = 0; i < allSymbols.length; i += 500) {
+      const batch = allSymbols.slice(i, i + 500);
+      const rows = batch.map((symbol) => {
+        const price = priceMap.get(symbol)!;
         const indicator = indicatorMap.get(symbol);
         const investor = investorMap.get(symbol);
-        const row: Record<string, unknown> = { symbol, updated_at: ts };
+        const row: Record<string, unknown> = {
+          symbol,
+          name: price.name,
+          market: price.market,
+          current_price: price.current_price,
+          market_cap: price.market_cap,
+          updated_at: ts,
+        };
 
-        if (price) {
-          row.current_price = price.current_price;
-          row.market_cap = price.market_cap;
-          if (price.volume > 0) {
-            row.volume = price.volume;
-            row.price_change = price.price_change;
-            row.price_change_pct = price.price_change_pct;
-          }
+        if (price.volume > 0) {
+          row.volume = price.volume;
+          row.price_change = price.price_change;
+          row.price_change_pct = price.price_change_pct;
         }
         if (indicator) {
           row.per = indicator.per || null;
@@ -171,7 +163,7 @@ export async function GET(request: Request) {
       if (!e) updated += batch.length;
       else console.error(`[daily-sync] Batch upsert error:`, e.message);
     }
-    lap(`stock_cache 업데이트: ${updated}종목`);
+    lap(`stock_cache 업데이트: ${updated}종목 (전종목 upsert)`);
 
     // ═══ Step 4: KIS API 일봉 수집 ═══
     let savedCount = 0;

@@ -73,14 +73,14 @@ export function calcRiskScore(input: RiskInput, model: Model = 'standard'): numb
     score += -10
   }
 
-  // 당일 거래대금 30억 미만: standard -25, short_term -15
-  if (input.daily_trading_value != null && input.daily_trading_value < 3_000_000_000) {
-    score += model === 'standard' ? -25 : -15
+  // 당일 거래대금 10억 미만: standard -20, short_term -15
+  if (input.daily_trading_value != null && input.daily_trading_value < 1_000_000_000) {
+    score += model === 'standard' ? -20 : -15
   }
 
-  // 20일 평균 거래대금 50억 미만: standard only -15
-  if (model === 'standard' && input.avg_trading_value_20d != null && input.avg_trading_value_20d < 5_000_000_000) {
-    score += -15
+  // 20일 평균 거래대금 20억 미만: standard only -10
+  if (model === 'standard' && input.avg_trading_value_20d != null && input.avg_trading_value_20d < 2_000_000_000) {
+    score += -10
   }
 
   // 회전율 10% 초과: -10 (과도한 단기 매매 신호)

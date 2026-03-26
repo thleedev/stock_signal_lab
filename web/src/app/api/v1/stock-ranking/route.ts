@@ -287,22 +287,23 @@ function calcScore(
   const cnt = stock.signal_count_30d ?? 0;
 
   // 신호 존재 자체가 핵심 — 반복될수록 확신
-  if (cnt >= 5) score_signal += 60;
-  else if (cnt >= 3) score_signal += 50;
+  if (cnt >= 5) score_signal += 55;
+  else if (cnt >= 3) score_signal += 45;
   else if (cnt >= 2) score_signal += 40;
-  else if (cnt >= 1) score_signal += 30;
+  else if (cnt >= 1) score_signal += 35;
 
-  // 매수가 대비 현재가 갭 (보조 지표, 최대 ±20점)
+  // 매수가 대비 현재가 갭 (변별력 핵심, 최대 ±30점)
   if (stock.latest_signal_price && stock.latest_signal_price > 0 && stock.current_price && stock.current_price > 0) {
     const gap = ((stock.current_price - stock.latest_signal_price) / stock.latest_signal_price) * 100;
-    if (gap <= 0) score_signal += 20;          // 매수가 이하: 진입 기회
-    else if (gap < 5) score_signal += 15;      // +5% 미만: 아직 초입
-    else if (gap < 10) score_signal += 10;     // +5~10%: 유효
-    else if (gap < 20) score_signal += 5;      // +10~20%: 상당 반영
-    else score_signal -= 10;                    // +20% 이상: 추격매수 감점
+    if (gap <= -3) score_signal += 30;         // 매수가 -3% 이하: 최적 진입
+    else if (gap <= 0) score_signal += 25;     // 매수가 이하: 진입 기회
+    else if (gap < 3) score_signal += 20;      // +3% 미만: 아직 초입
+    else if (gap < 7) score_signal += 12;      // +3~7%: 유효
+    else if (gap < 15) score_signal += 5;      // +7~15%: 상당 반영
+    else score_signal -= 10;                    // +15% 이상: 추격매수 감점
   } else {
-    // 매수가 정보 없으면 기본 가산
-    if (cnt >= 1) score_signal += 10;
+    // 매수가 정보 없으면 기본 가산 (갭 분석 불가 → 중간 보너스)
+    if (cnt >= 1) score_signal += 20;
   }
   score_signal = Math.max(0, Math.min(100, score_signal));
 
@@ -333,13 +334,13 @@ function calcScore(
       else if (position <= 0.50) score_momentum += 15;
       else score_momentum += 8;
     } else {
-      // 소형주: 기존 로직 (바닥 반등 기대)
+      // 소형주: 바닥 반등 기대 + 중간 구간 보강
       if (position <= 0.15) score_momentum += 40;
       else if (position <= 0.30) score_momentum += 35;
-      else if (position <= 0.50) score_momentum += 25;
-      else if (position <= 0.70) score_momentum += 15;
-      else if (position <= 0.85) score_momentum += 8;
-      else score_momentum += 3;
+      else if (position <= 0.50) score_momentum += 28;
+      else if (position <= 0.70) score_momentum += 20;
+      else if (position <= 0.85) score_momentum += 12;
+      else score_momentum += 5;
     }
   }
 
@@ -395,20 +396,20 @@ function calcScore(
     market_cap: (stock as Record<string, unknown>).market_cap as number | null | undefined,
   }, scoringModel as 'standard' | 'short_term');
 
-  // 티어별 가중 합산
-  const riskNormalized = Math.max(0, 100 + riskScore);
+  // 티어별 가중 합산 (risk는 비율 감산 방식)
   const tierWeights = {
-    large:  { signal: 5, momentum: 30, valuation: 20, supply: 30, risk: 15 },
-    mid:    { signal: 8, momentum: 32, valuation: 20, supply: 28, risk: 12 },
-    small:  { signal: 10, momentum: 35, valuation: 20, supply: 25, risk: 10 },
+    large:  { signal: 10, momentum: 30, valuation: 20, supply: 40 },
+    mid:    { signal: 10, momentum: 32, valuation: 22, supply: 36 },
+    small:  { signal: 12, momentum: 35, valuation: 23, supply: 30 },
   }[tier];
-  const score_total = Math.min(100, Math.max(0, Math.round(
-    (score_signal * tierWeights.signal +
+  const wSum = tierWeights.signal + tierWeights.momentum + tierWeights.valuation + tierWeights.supply;
+  const base = (score_signal * tierWeights.signal +
      score_momentum * tierWeights.momentum +
      score_valuation * tierWeights.valuation +
-     score_supply * tierWeights.supply +
-     riskNormalized * tierWeights.risk) / 100
-  )));
+     score_supply * tierWeights.supply) / wSum;
+  // risk 감산: 0이면 감산 없음, -100이면 15% 감산
+  const riskPenalty = Math.min(0.15, Math.abs(riskScore) / 100 * 0.15);
+  const score_total = Math.min(100, Math.max(0, Math.round(base * (1 - riskPenalty))));
   return { score_total, score_valuation, score_supply, score_signal, score_momentum, score_risk: riskScore };
 }
 
