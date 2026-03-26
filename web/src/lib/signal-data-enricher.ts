@@ -9,6 +9,8 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators } from '@/lib/krx-api';
 import { extractSignalPrice } from '@/lib/signal-constants';
+import { fetchBatchStockExtra } from '@/lib/naver-stock-extra';
+import { fetchDartInfo } from '@/lib/dart-api';
 
 export async function enrichSignalStocks(
   supabase: SupabaseClient,
@@ -71,6 +73,49 @@ export async function enrichSignalStocks(
       .upsert(cacheUpdates, { onConflict: 'symbol' });
     if (error) console.error('[signal-enricher] stock_cache upsert 실패:', error.message);
     else console.log(`[signal-enricher] stock_cache 갱신: ${cacheUpdates.length}종목 (investor:${investorMap.size}, indicator:${indicatorMap.size})`);
+  }
+
+  // 1-b. 네이버 상장주식수/관리종목 + DART 재무 데이터
+  try {
+    const extraMap = await fetchBatchStockExtra(unique, 10);
+    for (const [symbol, info] of extraMap.entries()) {
+      await supabase
+        .from('stock_cache')
+        .update({ float_shares: info.floatShares, is_managed: info.isManaged })
+        .eq('symbol', symbol);
+    }
+    console.log(`[signal-enricher] 네이버 추가: ${extraMap.size}종목`);
+
+    // DART — dart_corp_code가 있는 종목만
+    const { data: dartTargets } = await supabase
+      .from('stock_cache')
+      .select('symbol, dart_corp_code')
+      .in('symbol', unique)
+      .not('dart_corp_code', 'is', null);
+
+    if (dartTargets && dartTargets.length > 0) {
+      const dartResults = await Promise.allSettled(
+        dartTargets.map(async (s: { symbol: string; dart_corp_code: string }) => ({
+          symbol: s.symbol,
+          info: await fetchDartInfo(s.dart_corp_code),
+        })),
+      );
+
+      for (const r of dartResults) {
+        if (r.status === 'fulfilled') {
+          await supabase
+            .from('stock_dart_info')
+            .upsert({
+              symbol: r.value.symbol,
+              ...r.value.info,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'symbol', ignoreDuplicates: false });
+        }
+      }
+      console.log(`[signal-enricher] DART: ${dartTargets.length}종목`);
+    }
+  } catch (e) {
+    console.error('[signal-enricher] 네이버/DART 보강 실패:', e);
   }
 
   // 2. daily_prices 일봉 저장
