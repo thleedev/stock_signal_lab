@@ -92,13 +92,12 @@ export async function GET() {
           extraUpdates.push({ symbol, float_shares: info.floatShares, is_managed: info.isManaged });
         }
 
-        for (let i = 0; i < extraUpdates.length; i += BATCH) {
+        // upsert 대신 update — NOT NULL 컬럼 충돌 방지
+        for (const u of extraUpdates) {
           await supabase
             .from('stock_cache')
-            .upsert(extraUpdates.slice(i, i + BATCH), {
-              onConflict: 'symbol',
-              ignoreDuplicates: false,
-            });
+            .update({ float_shares: u.float_shares, is_managed: u.is_managed })
+            .eq('symbol', u.symbol);
         }
       }
     } catch (e) {

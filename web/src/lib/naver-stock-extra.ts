@@ -25,8 +25,8 @@ export function parseStockExtra(html: string): StockExtraInfo {
   let floatShares: number | null = null
   let isManaged = false
 
-  // 유통주식수 파싱: <th>유통주식수</th><td ...>12,345,678</td>
-  const floatMatch = html.match(/유통주식수<\/th>\s*<td[^>]*>([\d,]+)/)
+  // 상장주식수 파싱: <th ...>상장주식수</th><td><em>5,919,637,922</em></td>
+  const floatMatch = html.match(/상장주식수<\/th>\s*<td>\s*<em>([\d,]+)<\/em>/)
   if (floatMatch) {
     floatShares = parseInt(floatMatch[1].replace(/,/g, ''), 10)
   }
