@@ -349,7 +349,7 @@ function getSignalAge(dateStr: string | null): string {
 
 // ── RankCard 컴포넌트 (모바일 2줄 / 데스크탑 2줄+점수바) ──────────────────────
 function RankCard({
-  item, rank, weighted, favs, gapInfo, onClick, characters,
+  item, rank, weighted, favs, gapInfo, onClick, characters, isEtf = false,
 }: {
   item: StockRankItem;
   rank: number;
@@ -358,6 +358,7 @@ function RankCard({
   gapInfo: GapInfo | null;
   onClick: (e: React.MouseEvent) => void;
   characters: InvestmentCharacter[];
+  isEtf?: boolean;
 }) {
   const hasAi = !!item.ai;
   const isWarning = hasAi && item.ai!.double_top;
@@ -386,16 +387,24 @@ function RankCard({
         <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[6rem] sm:max-w-[10rem]">{item.name}</span>
         {favs.has(item.symbol) && <span className="text-yellow-400 text-xs shrink-0">★</span>}
 
-        {/* 등급 뱃지 + 툴팁 */}
-        <GradeTooltip weighted={weighted} grade={grade} gradeLabel={gradeLabel} gradeCls={gradeCls} scores={[
-          { label: '신호', value: sig, color: 'bg-amber-500' },
-          { label: '기술', value: tech, color: 'bg-emerald-500' },
-          { label: '밸류', value: val, color: 'bg-violet-500' },
-          { label: '수급', value: sup, color: 'bg-sky-500' },
-        ]} />
+        {/* 등급 뱃지 + 툴팁 — ETF 모드에서는 숨김 */}
+        {!isEtf && (
+          <GradeTooltip weighted={weighted} grade={grade} gradeLabel={gradeLabel} gradeCls={gradeCls} scores={[
+            { label: '신호', value: sig, color: 'bg-amber-500' },
+            { label: '기술', value: tech, color: 'bg-emerald-500' },
+            { label: '밸류', value: val, color: 'bg-violet-500' },
+            { label: '수급', value: sup, color: 'bg-sky-500' },
+          ]} />
+        )}
+        {/* ETF 모드: 간단한 점수 뱃지 */}
+        {isEtf && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+            {item.score_total}점
+          </span>
+        )}
 
-        {/* 성격 태그 — 데스크탑만 */}
-        {characters.length > 0 && (
+        {/* 성격 태그 — 데스크탑만, ETF에서는 숨김 */}
+        {!isEtf && characters.length > 0 && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             {characters.slice(0, 3).map(charKey => {
               const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
@@ -434,8 +443,8 @@ function RankCard({
 
       {/* ── 줄 2: 추천근거 + 모바일 성격태그 + 신호경과 ── */}
       <div className="flex items-start gap-1.5 mt-0.5 pl-8">
-        {/* 모바일 성격태그 */}
-        {characters.length > 0 && (
+        {/* 모바일 성격태그 — ETF에서는 숨김 */}
+        {!isEtf && characters.length > 0 && (
           <div className="sm:hidden flex items-center gap-0.5 shrink-0 pt-px">
             {characters.slice(0, 2).map(charKey => {
               const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
@@ -450,18 +459,33 @@ function RankCard({
         {/* 모바일 신호경과 */}
         {signalAge && <span className="sm:hidden text-[10px] text-[var(--muted)] shrink-0 pt-px">{signalAge}</span>}
 
-        {/* 추천근거 */}
-        <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
+        {/* 추천근거 — ETF 모드에서는 간결한 수급 정보 */}
+        {isEtf ? (
+          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">
+            {[
+              item.trading_value ? `거래대금 ${(item.trading_value / 100_000_000).toFixed(0)}억` : null,
+              item.foreign_net_qty != null && item.foreign_net_qty > 0 ? '외국인 순매수' : item.foreign_net_qty != null && item.foreign_net_qty < 0 ? '외국인 순매도' : null,
+              item.institution_net_qty != null && item.institution_net_qty > 0 ? '기관 순매수' : item.institution_net_qty != null && item.institution_net_qty < 0 ? '기관 순매도' : null,
+              item.sector ?? null,
+            ].filter(Boolean).join(' · ') || '-'}
+          </p>
+        ) : (
+          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
+        )}
       </div>
 
       {/* ── 줄 3 (데스크탑만): 세부 점수 미니바 ── */}
       <div className="hidden sm:flex items-center gap-3 mt-1 pl-8">
-        {[
+        {/* ETF: 모멘텀 + 수급만 표시, 일반: 4개 카테고리 */}
+        {(isEtf ? [
+          { label: '모멘텀', value: tech, color: 'bg-emerald-500' },
+          { label: '수급', value: sup, color: 'bg-sky-500' },
+        ] : [
           { label: '기술', value: tech, color: 'bg-emerald-500' },
           { label: '수급', value: sup, color: 'bg-sky-500' },
           { label: '신호', value: sig, color: 'bg-amber-500' },
           { label: '밸류', value: val, color: 'bg-violet-500' },
-        ].map(b => (
+        ]).map(b => (
           <div key={b.label} className="flex items-center gap-1">
             <span className="text-[10px] text-[var(--muted)] w-5">{b.label}</span>
             <div className="w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
@@ -535,7 +559,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [selectedDate, setSelectedDate] = useState<string>(() => getLastNWeekdays(7)[0]);
   const { data, loading, doFetch } = useStockRanking();
   const [q, setQ] = useState('');
-  const [market, setMarket] = useState<string>('all');
+  const [market, setMarket] = useState<'all' | 'KOSPI' | 'KOSDAQ' | 'ETF'>('all');
   const [visibleCount, setVisibleCount] = useState(50);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
@@ -597,7 +621,11 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     doFetch(date, 'all');
   };
   const handleSearch = (v: string) => { setQ(v); resetScroll(); };
-  const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(selectedDate, mkt); };
+  const handleMarket = (mkt: 'all' | 'KOSPI' | 'KOSDAQ' | 'ETF') => {
+    setMarket(mkt); resetScroll();
+    // ETF는 클라이언트 사이드에서 etf_items를 사용하므로 API에는 'all'로 요청
+    doFetch(selectedDate, mkt === 'ETF' ? 'all' : mkt);
+  };
   const handleSortChange = (by: SortMode) => {
     if (by === sort) {
       // 같은 정렬 기준 클릭 시 방향 토글
@@ -680,7 +708,9 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     }
   }, [menu, symGroups]);
 
-  const rawItems = data?.items ?? [];
+  // ETF 모드일 때는 etf_items, 아니면 일반 items 사용
+  const isEtfMode = market === 'ETF';
+  const rawItems = isEtfMode ? (data?.etf_items ?? []) : (data?.items ?? []);
 
   // ── 실시간 가격 반영 ─────────────────────────────────────────────────────────
   const liveItems = useMemo(() => {
@@ -853,8 +883,12 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
           onSearchChange={handleSearch}
           dateMode={dateMode}
           onDateChange={handleDateChange}
-          market={market as 'all' | 'KOSPI' | 'KOSDAQ'}
-          onMarketChange={(m) => { setMarket(m); resetScroll(); doFetch(dateMode === 'today' ? todayStr : dateMode, m); }}
+          market={market}
+          onMarketChange={(m) => {
+            setMarket(m); resetScroll();
+            // ETF는 클라이언트 사이드에서 etf_items를 사용하므로 API에는 'all'로 요청
+            doFetch(dateMode === 'today' ? todayStr : dateMode, m === 'ETF' ? 'all' : m);
+          }}
           sortBy={sort}
           sortDir={sortDir}
           onSortChange={handleSortChange}
@@ -863,11 +897,11 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
           onCharacterChange={(c) => { setCharFilter(c); resetScroll(); }}
           noiseFilter={noiseFilter}
           onNoiseFilterChange={setNoiseFilter}
-          onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market)}
+          onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market === 'ETF' ? 'all' : market)}
           refreshing={loading}
           updating={snapshotStatus.updating}
         />
-        {showWeights && (
+        {showWeights && !isEtfMode && (
           <WeightPopup
             weights={weights}
             onChange={setWeights}
@@ -909,9 +943,10 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
               rank={idx + 1}
               weighted={weightedMap.get(item.symbol) ?? 0}
               favs={favs}
-              gapInfo={getGapInfo(item, signalMap, sourceFilter, livePrices)}
+              gapInfo={isEtfMode ? null : getGapInfo(item, signalMap, sourceFilter, livePrices)}
               onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
-              characters={getInvestmentCharacters(item, weights)}
+              characters={isEtfMode ? [] : getInvestmentCharacters(item, weights)}
+              isEtf={isEtfMode}
             />
         ))}
       </div>

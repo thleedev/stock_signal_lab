@@ -493,7 +493,7 @@ function getSignalAge(dateStr: string | null): string {
 // ── RankCard 컴포넌트 (모바일 2줄 / 데스크탑 2줄+점수바) ──────────────────────
 // 단기추천 전용: 점수바 라벨이 모멘텀/수급/촉매/밸류
 function RankCard({
-  item, rank, weighted, favs, gapInfo, onClick, characters, stScores, badges,
+  item, rank, weighted, favs, gapInfo, onClick, characters, stScores, badges, isEtf = false,
 }: {
   item: StockRankItem;
   rank: number;
@@ -504,6 +504,7 @@ function RankCard({
   characters: ShortTermCharacter[];
   stScores: ShortTermScores;
   badges: { label: string; variant: BadgeVariant }[];
+  isEtf?: boolean;
 }) {
   const hasAi = !!item.ai;
   const isWarning = hasAi && item.ai!.double_top;
@@ -531,17 +532,25 @@ function RankCard({
         <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[6rem] sm:max-w-[10rem]">{item.name}</span>
         {favs.has(item.symbol) && <span className="text-yellow-400 text-xs shrink-0">★</span>}
 
-        {/* 등급 뱃지 + 툴팁 */}
-        <GradeTooltip weighted={weighted} grade={grade} gradeLabel={gradeLabel} gradeCls={gradeCls} scores={[
-          { label: '모멘텀', value: stScores.momentum, color: 'bg-emerald-500' },
-          { label: '수급', value: stScores.supply, color: 'bg-sky-500' },
-          { label: '촉매', value: stScores.catalyst, color: 'bg-amber-500' },
-          { label: '밸류', value: stScores.valuation, color: 'bg-violet-500' },
-          { label: '리스크', value: stScores.risk, color: 'bg-red-400' },
-        ]} />
+        {/* 등급 뱃지 + 툴팁 — ETF 모드에서는 숨김 */}
+        {!isEtf && (
+          <GradeTooltip weighted={weighted} grade={grade} gradeLabel={gradeLabel} gradeCls={gradeCls} scores={[
+            { label: '모멘텀', value: stScores.momentum, color: 'bg-emerald-500' },
+            { label: '수급', value: stScores.supply, color: 'bg-sky-500' },
+            { label: '촉매', value: stScores.catalyst, color: 'bg-amber-500' },
+            { label: '밸류', value: stScores.valuation, color: 'bg-violet-500' },
+            { label: '리스크', value: stScores.risk, color: 'bg-red-400' },
+          ]} />
+        )}
+        {/* ETF 모드: 간단한 점수 뱃지 */}
+        {isEtf && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+            {item.score_total}점
+          </span>
+        )}
 
-        {/* 성격 배지 — 데스크탑만 */}
-        {badges.length > 0 && (
+        {/* 성격 배지 — 데스크탑만, ETF에서는 숨김 */}
+        {!isEtf && badges.length > 0 && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
             {badges.slice(0, 3).map((b, i) => (
               <span key={i} className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${BADGE_CLS[b.variant]}`}>
@@ -577,8 +586,8 @@ function RankCard({
 
       {/* ── 줄 2: 추천근거 + 모바일 성격태그 + 신호경과 ── */}
       <div className="flex items-start gap-1.5 mt-0.5 pl-8">
-        {/* 모바일 성격배지 */}
-        {badges.length > 0 && (
+        {/* 모바일 성격배지 — ETF에서는 숨김 */}
+        {!isEtf && badges.length > 0 && (
           <div className="sm:hidden flex items-center gap-0.5 shrink-0 pt-px">
             {badges.slice(0, 2).map((b, i) => (
               <span key={i} className={`px-1 py-px rounded text-[9px] font-bold leading-none ${BADGE_CLS[b.variant]}`}>
@@ -590,19 +599,34 @@ function RankCard({
         {/* 모바일 신호경과 */}
         {signalAge && <span className="sm:hidden text-[10px] text-[var(--muted)] shrink-0 pt-px">{signalAge}</span>}
 
-        {/* 추천근거 */}
-        <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
+        {/* 추천근거 — ETF 모드에서는 간결한 수급 정보 */}
+        {isEtf ? (
+          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">
+            {[
+              item.trading_value ? `거래대금 ${(item.trading_value / 100_000_000).toFixed(0)}억` : null,
+              item.foreign_net_qty != null && item.foreign_net_qty > 0 ? '외국인 순매수' : item.foreign_net_qty != null && item.foreign_net_qty < 0 ? '외국인 순매도' : null,
+              item.institution_net_qty != null && item.institution_net_qty > 0 ? '기관 순매수' : item.institution_net_qty != null && item.institution_net_qty < 0 ? '기관 순매도' : null,
+              item.sector ?? null,
+            ].filter(Boolean).join(' · ') || '-'}
+          </p>
+        ) : (
+          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
+        )}
       </div>
 
-      {/* ── 줄 3 (데스크탑만): 단기 5카테고리 점수 미니바 ── */}
+      {/* ── 줄 3 (데스크탑만): 단기 점수 미니바 ── */}
       <div className="hidden sm:flex items-center gap-3 mt-1 pl-8">
-        {[
+        {/* ETF: 모멘텀 + 수급만 표시, 일반: 5개 카테고리 */}
+        {(isEtf ? [
+          { label: '모멘텀', value: stScores.momentum, color: 'bg-emerald-500' },
+          { label: '수급', value: stScores.supply, color: 'bg-sky-500' },
+        ] : [
           { label: '모멘텀', value: stScores.momentum, color: 'bg-emerald-500' },
           { label: '수급', value: stScores.supply, color: 'bg-sky-500' },
           { label: '촉매', value: stScores.catalyst, color: 'bg-amber-500' },
           { label: '밸류', value: stScores.valuation, color: 'bg-violet-500' },
           { label: '리스크', value: stScores.risk, color: 'bg-red-400' },
-        ].map(b => (
+        ]).map(b => (
           <div key={b.label} className="flex items-center gap-1">
             <span className="text-[10px] text-[var(--muted)] w-8">{b.label}</span>
             <div className="w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
@@ -689,7 +713,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
   const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>('today');
   const { data, loading, doFetch } = useStockRanking();
   const [q, setQ] = useState('');
-  const [market, setMarket] = useState<string>('all');
+  const [market, setMarket] = useState<'all' | 'KOSPI' | 'KOSDAQ' | 'ETF'>('all');
   const [noiseFilter, setNoiseFilter] = useState(false);
   const snapshotStatus = useSnapshotStatus();
   const [visibleCount, setVisibleCount] = useState(50);
@@ -774,7 +798,11 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
   };
 
   const handleSearch = (v: string) => { setQ(v); resetScroll(); };
-  const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(dateMode === 'today' ? todayStr : dateMode, mkt); };
+  const handleMarket = (mkt: 'all' | 'KOSPI' | 'KOSDAQ' | 'ETF') => {
+    setMarket(mkt); resetScroll();
+    // ETF는 클라이언트 사이드에서 etf_items를 사용하므로 API에는 'all'로 요청
+    doFetch(dateMode === 'today' ? todayStr : dateMode, mkt === 'ETF' ? 'all' : mkt);
+  };
 
   const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
     e.stopPropagation();
@@ -848,7 +876,9 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     }
   }, [menu, symGroups]);
 
-  const rawItems = data?.items ?? [];
+  // ETF 모드일 때는 etf_items, 아니면 일반 items 사용
+  const isEtfMode = market === 'ETF';
+  const rawItems = isEtfMode ? (data?.etf_items ?? []) : (data?.items ?? []);
 
   // ── 실시간 가격 반영 ─────────────────────────────────────────────────────────
   const liveItems = useMemo(() => {
@@ -1026,8 +1056,12 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
           onSearchChange={handleSearch}
           dateMode={dateMode}
           onDateChange={handleDateChange}
-          market={market as 'all' | 'KOSPI' | 'KOSDAQ'}
-          onMarketChange={(m) => { setMarket(m); resetScroll(); doFetch(dateMode === 'today' ? todayStr : dateMode, m); }}
+          market={market}
+          onMarketChange={(m) => {
+            setMarket(m); resetScroll();
+            // ETF는 클라이언트 사이드에서 etf_items를 사용하므로 API에는 'all'로 요청
+            doFetch(dateMode === 'today' ? todayStr : dateMode, m === 'ETF' ? 'all' : m);
+          }}
           sortBy={sort}
           sortDir={sortDir}
           onSortChange={handleSortChange}
@@ -1036,11 +1070,11 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
           onCharacterChange={(c) => { setCharFilter(c); resetScroll(); }}
           noiseFilter={noiseFilter}
           onNoiseFilterChange={setNoiseFilter}
-          onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market)}
+          onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market === 'ETF' ? 'all' : market)}
           refreshing={loading}
           updating={snapshotStatus.updating}
         />
-        {showWeights && (
+        {showWeights && !isEtfMode && (
           <WeightPopup
             weights={weights}
             onChange={setWeights}
@@ -1084,11 +1118,12 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
               rank={idx + 1}
               weighted={pc?.weighted ?? 0}
               favs={favs}
-              gapInfo={getGapInfo(item, signalMap, sourceFilter, livePrices)}
+              gapInfo={isEtfMode ? null : getGapInfo(item, signalMap, sourceFilter, livePrices)}
               onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
-              characters={pc?.characters ?? []}
+              characters={isEtfMode ? [] : (pc?.characters ?? [])}
               stScores={pc?.scores ?? { momentum: 0, supply: 0, catalyst: 0, valuation: 0, risk: 0 }}
-              badges={pc?.badges ?? []}
+              badges={isEtfMode ? [] : (pc?.badges ?? [])}
+              isEtf={isEtfMode}
             />
           );
         })}

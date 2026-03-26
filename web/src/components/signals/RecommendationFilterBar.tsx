@@ -11,8 +11,8 @@ interface RecommendationFilterBarProps {
   onSearchChange: (q: string) => void;
   dateMode: 'today' | 'signal_all' | 'all';
   onDateChange: (mode: 'today' | 'signal_all' | 'all') => void;
-  market: 'all' | 'KOSPI' | 'KOSDAQ';
-  onMarketChange: (m: 'all' | 'KOSPI' | 'KOSDAQ') => void;
+  market: 'all' | 'KOSPI' | 'KOSDAQ' | 'ETF';
+  onMarketChange: (m: 'all' | 'KOSPI' | 'KOSDAQ' | 'ETF') => void;
   sortBy: 'score' | 'name' | 'updated' | 'gap';
   sortDir: 'asc' | 'desc';
   onSortChange: (by: 'score' | 'name' | 'updated' | 'gap') => void;
@@ -39,6 +39,7 @@ const MARKET_OPTIONS = [
   { key: 'all', label: '전체' },
   { key: 'KOSPI', label: 'KOSPI' },
   { key: 'KOSDAQ', label: 'KOSDAQ' },
+  { key: 'ETF', label: 'ETF' },
 ] as const;
 
 const SORT_OPTIONS = [

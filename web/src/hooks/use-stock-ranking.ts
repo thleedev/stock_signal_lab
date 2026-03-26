@@ -5,7 +5,9 @@ import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 
 export interface RankingResponse {
   items: StockRankItem[];
+  etf_items?: StockRankItem[];   // ETF 종목 (모멘텀+수급 기반 별도 스코어링)
   total: number;
+  etf_total?: number;            // ETF 종목 수
   page: number;
   limit: number;
   snapshot_time?: string | null; // 스냅샷 생성 시각

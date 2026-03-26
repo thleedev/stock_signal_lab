@@ -497,6 +497,16 @@ export async function GET(request: NextRequest) {
           ? snapshotItems.filter((s) => s.market === market)
           : snapshotItems;
 
+        // ETF 분리 — market='ETF'인 종목은 별도 스코어링 (모멘텀 60% + 수급 40%)
+        const regularFiltered = filteredItems.filter(s => s.market !== 'ETF');
+        const etfFiltered = filteredItems.filter(s => s.market === 'ETF');
+        for (const item of etfFiltered) {
+          item.score_total = Math.round(
+            (item.score_momentum * 60 + item.score_supply * 40) / 100
+          );
+        }
+        etfFiltered.sort((a, b) => b.score_total - a.score_total);
+
         const { data: status } = await supabase
           .from('snapshot_update_status')
           .select('updating, last_updated')
@@ -509,8 +519,10 @@ export async function GET(request: NextRequest) {
         const isStale = snapshotAge > 30 * 60 * 1000;
 
         return NextResponse.json({
-          items: filteredItems,
-          total: filteredItems.length,
+          items: regularFiltered,
+          etf_items: etfFiltered,
+          total: regularFiltered.length,
+          etf_total: etfFiltered.length,
           page: 1,
           limit: 99999,
           today: todayStr,
@@ -984,19 +996,34 @@ export async function GET(request: NextRequest) {
       ? scored.filter((s) => s.name?.toLowerCase().includes(q) || s.symbol?.toLowerCase().includes(q))
       : scored;
 
+    // ── ETF 분리 — market='ETF'인 종목은 모멘텀(60%) + 수급(40%)으로 재계산 ──
+    const regularItems: StockRankItem[] = [];
+    const etfItems: StockRankItem[] = [];
+    for (const item of filtered) {
+      if (item.market === 'ETF') {
+        const etfTotal = Math.round(
+          (item.score_momentum * 60 + item.score_supply * 40) / 100
+        );
+        etfItems.push({ ...item, score_total: etfTotal });
+      } else {
+        regularItems.push(item);
+      }
+    }
+
     // ── 정렬: AI 우선, 그 다음 score_total 내림차순
-    filtered.sort((a, b) => {
+    regularItems.sort((a, b) => {
       const aHasAi = a.ai ? 1 : 0;
       const bHasAi = b.ai ? 1 : 0;
       if (aHasAi !== bHasAi) return bHasAi - aHasAi;
       return b.score_total - a.score_total;
     });
+    etfItems.sort((a, b) => b.score_total - a.score_total);
 
-    const total = filtered.length;
+    const total = regularItems.length;
     const offset = (page - 1) * limit;
-    const items = filtered.slice(offset, offset + limit);
+    const items = regularItems.slice(offset, offset + limit);
 
-    // ── 비동기 스냅샷 저장 (다음 요청에서 캐시로 사용) ──
+    // ── 비동기 스냅샷 저장 (ETF 포함 전체 저장 — ETF 재스코어링은 읽기 시점) ──
     void (async () => {
       try {
         const snapshotRows = filtered.map((item: StockRankItem) => ({
@@ -1043,7 +1070,10 @@ export async function GET(request: NextRequest) {
       }
     })();
 
-    return NextResponse.json({ items, total, page, limit, today: todayStr }, {
+    return NextResponse.json({
+      items, total, page, limit, today: todayStr,
+      etf_items: etfItems, etf_total: etfItems.length,
+    }, {
       headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60' },
     });
   } catch (e) {
