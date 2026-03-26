@@ -6,6 +6,7 @@ import { fetchBulkIndicators } from '@/lib/krx-api';
 import { calcRiskScore } from '@/lib/scoring/risk-score';
 import { calcSupplyAdditions } from '@/lib/scoring/supply-score-additions';
 import { calcValuationAdditions } from '@/lib/scoring/valuation-score-additions';
+import { getMarketCapTier, type MarketCapTier } from '@/lib/ai-recommendation/market-cap-tier';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,20 +111,40 @@ function calcScore(
   sectorAvgPct: number | null = null, // 같은 섹터 평균 등락률
   scoringModel: string = 'standard', // 점수 계산 모델
 ) {
-  // ── 밸류에이션 (0~100) ──
+  // ── 시총 티어 결정 (전체 스코어링에서 참조) ──
+  const tier: MarketCapTier = getMarketCapTier(stock.market_cap ?? null);
+
+  // ── 밸류에이션 (0~100) ── 대형주/중형주: PEG 기반 추가
   const hasForward = stock.forward_per !== null || stock.target_price !== null || stock.invest_opinion !== null;
   let vPer = 0, vPbr = 0, vRoe = 0, vUpside = 0, vOpinion = 0;
 
   if (hasForward) {
-    // Forward PER (0~35)
-    if (stock.forward_per !== null && stock.forward_per > 0) {
+    const usePeg = tier !== 'small' && stock.forward_per && stock.per && stock.per > 0 && stock.forward_per > 0;
+
+    if (usePeg) {
+      // 대형주/중형주: PEG 기반 (성장 대비 저평가)
+      const epsGrowth = ((stock.per! / stock.forward_per!) - 1) * 100;
+      if (epsGrowth > 0) {
+        const peg = stock.forward_per! / epsGrowth;
+        if (peg < 0.5) vPer = 35;
+        else if (peg < 0.8) vPer = 30;
+        else if (peg < 1.0) vPer = 22;
+        else if (peg < 1.5) vPer = 12;
+        else if (peg < 2.0) vPer = 5;
+      } else {
+        // 역성장: Forward PER 절대값 폴백
+        if (stock.forward_per! < 8) vPer = 18;
+        else if (stock.forward_per! < 12) vPer = 8;
+        else if (stock.forward_per! < 15) vPer = 3;
+      }
+    } else if (stock.forward_per !== null && stock.forward_per > 0) {
+      // Forward PER 절대값 기준 (소형주 또는 PEG 계산 불가)
       if (stock.forward_per < 5) vPer = 35;
       else if (stock.forward_per < 8) vPer = 28;
       else if (stock.forward_per < 12) vPer = 18;
       else if (stock.forward_per < 15) vPer = 8;
       else if (stock.forward_per < 20) vPer = 3;
     } else if (stock.per !== null && stock.per > 0) {
-      // forward PER 없으면 trailing 폴백
       if (stock.per < 5) vPer = 35;
       else if (stock.per < 8) vPer = 28;
       else if (stock.per < 12) vPer = 18;
@@ -184,8 +205,7 @@ function calcScore(
   });
   score_valuation = Math.min(100, Math.max(0, score_valuation + valBonus));
 
-  // ── 수급 (0~100) ──
-  // 1일 순매수 + 5일 누적 + 연속성 복합 판단
+  // ── 수급 (0~100) ── 시총 티어별 차등 스코어링
   let score_supply = 0;
   const foreignBuying = stock.foreign_net_qty !== null && stock.foreign_net_qty > 0;
   const instBuying = stock.institution_net_qty !== null && stock.institution_net_qty > 0;
@@ -193,16 +213,45 @@ function calcScore(
   const inst5d = stock.institution_net_5d ?? 0;
   const foreignStreak = stock.foreign_streak ?? 0;
   const instStreak = stock.institution_streak ?? 0;
+  const mcap = stock.market_cap ?? 0;
+  const price = stock.current_price ?? 0;
 
-  // 오늘 순매수 (기본 시그널)
-  if (foreignBuying) score_supply += 20;
-  if (instBuying) score_supply += 20;
+  if (tier === 'small') {
+    // 소형주: 기존 절대값 기준 유지
+    if (foreignBuying) score_supply += 20;
+    if (instBuying) score_supply += 20;
+    if (foreign5d > 0) score_supply += 12;
+    if (inst5d > 0) score_supply += 12;
+  } else {
+    // 대형주/중형주: 시총 대비 비율 기반
+    const calcRatioScore = (netQty: number, mc: number, pr: number, t: MarketCapTier): number => {
+      if (mc <= 0 || pr <= 0) return 0;
+      const ratio = (netQty * pr) / mc;
+      if (t === 'large') {
+        if (ratio >= 0.003) return 20; if (ratio >= 0.001) return 15;
+        if (ratio >= 0.0005) return 8; if (ratio > 0) return 4; return 0;
+      }
+      if (ratio >= 0.005) return 20; if (ratio >= 0.001) return 15;
+      if (ratio >= 0.0005) return 8; if (ratio > 0) return 4; return 0;
+    };
+    score_supply += calcRatioScore(stock.foreign_net_qty ?? 0, mcap, price, tier);
+    score_supply += calcRatioScore(stock.institution_net_qty ?? 0, mcap, price, tier);
+    // 5일 누적도 비율 기반
+    const calc5dRatio = (net5d: number, mc: number, pr: number, t: MarketCapTier): number => {
+      if (mc <= 0 || pr <= 0 || net5d <= 0) return 0;
+      const ratio = (net5d * pr) / mc;
+      if (t === 'large') {
+        if (ratio >= 0.003) return 12; if (ratio >= 0.001) return 8;
+        if (ratio >= 0.0005) return 4; return 0;
+      }
+      if (ratio >= 0.005) return 12; if (ratio >= 0.002) return 8;
+      if (ratio >= 0.001) return 4; return 0;
+    };
+    score_supply += calc5dRatio(foreign5d, mcap, price, tier);
+    score_supply += calc5dRatio(inst5d, mcap, price, tier);
+  }
 
-  // 5일 누적 순매수 (추세 확인)
-  if (foreign5d > 0) score_supply += 12;
-  if (inst5d > 0) score_supply += 12;
-
-  // 연속 매수 (강한 의지 = 높은 가산점)
+  // 연속 매수 (전 티어 공통)
   if (foreignStreak >= 5) score_supply += 20;
   else if (foreignStreak >= 3) score_supply += 15;
   else if (foreignStreak >= 2) score_supply += 8;
@@ -211,16 +260,8 @@ function calcScore(
   else if (instStreak >= 3) score_supply += 15;
   else if (instStreak >= 2) score_supply += 8;
 
-  // 동반매수 시너지 (외국인+기관 동시 5일 순매수)
+  // 동반매수 시너지
   if (foreign5d > 0 && inst5d > 0) score_supply += 10;
-
-  // 시총 대비 순매수 비율 (유의미한 규모인지)
-  if (stock.market_cap && stock.market_cap > 0 && stock.current_price && stock.current_price > 0) {
-    const totalNetAmount = ((stock.foreign_net_qty ?? 0) + (stock.institution_net_qty ?? 0)) * stock.current_price;
-    const ratio = totalNetAmount / stock.market_cap;
-    if (ratio > 0.001) score_supply += 8;        // 시총 대비 0.1% 이상
-    else if (ratio > 0.0005) score_supply += 4;  // 0.05% 이상
-  }
 
   // 공매도
   const shortSellFresh = stock.short_sell_updated_at?.slice(0, 10) === todayStr;
@@ -269,33 +310,66 @@ function calcScore(
   // 52주 범위 내 상대 위치(하단일수록 유리) + 단기 등락률(과열 감점)
   let score_momentum = 0;
 
-  // 52주 범위 내 상대 위치: 하단일수록 상승 여력
+  // 52주 범위 내 상대 위치: 티어별 차등
   if (stock.current_price && stock.high_52w && stock.low_52w &&
       stock.high_52w > stock.low_52w) {
     const range = stock.high_52w - stock.low_52w;
     const position = (stock.current_price - stock.low_52w) / range; // 0=저점, 1=고점
-    if (position <= 0.15) score_momentum += 40;       // 바닥권: 강한 반등 기대
-    else if (position <= 0.30) score_momentum += 35;  // 저점 이탈 초기
-    else if (position <= 0.50) score_momentum += 25;  // 중간 하단: 상승 여력
-    else if (position <= 0.70) score_momentum += 15;  // 중간 상단
-    else if (position <= 0.85) score_momentum += 8;   // 고점 접근
-    else score_momentum += 3;                          // 52주 고점 근접 (상승 추세 유지)
+
+    if (tier === 'large') {
+      // 대형주: 52주 신고가 돌파가 강한 매수 시그널
+      if (position >= 0.95) score_momentum += 40;       // 신고가 돌파: 기관 매집 증거
+      else if (position >= 0.85) score_momentum += 30;
+      else if (position >= 0.70) score_momentum += 20;
+      else if (position >= 0.50) score_momentum += 12;
+      else if (position >= 0.30) score_momentum += 5;
+      else score_momentum += 2;                          // 대형주 52주 저점 = 위험 신호
+    } else if (tier === 'mid') {
+      // 중형주: 균형 잡힌 관점
+      if (position >= 0.95) score_momentum += 30;
+      else if (position <= 0.15) score_momentum += 30;
+      else if (position <= 0.30) score_momentum += 25;
+      else if (position >= 0.85) score_momentum += 20;
+      else if (position <= 0.50) score_momentum += 15;
+      else score_momentum += 8;
+    } else {
+      // 소형주: 기존 로직 (바닥 반등 기대)
+      if (position <= 0.15) score_momentum += 40;
+      else if (position <= 0.30) score_momentum += 35;
+      else if (position <= 0.50) score_momentum += 25;
+      else if (position <= 0.70) score_momentum += 15;
+      else if (position <= 0.85) score_momentum += 8;
+      else score_momentum += 3;
+    }
   }
 
-  // 단기 등락률: 상승 초입에 가점, 과열에 감점
+  // 단기 등락률: 티어별 차등 (대형주는 안정적 상승이 최적)
   if (stock.price_change_pct !== null) {
     const pct = stock.price_change_pct;
-    if (pct >= 1 && pct < 3) score_momentum += 30;       // 완만 상승: 진입 적기
-    else if (pct >= 3 && pct < 5) score_momentum += 40;   // 상승 초입: 최적 모멘텀
-    else if (pct >= 5 && pct < 10) score_momentum += 25;  // 상승 진행
-    else if (pct >= 10 && pct < 15) score_momentum += 10; // 강한 상승
-    else if (pct >= 15 && pct < 25) score_momentum -= 5;  // 과열 주의
-    else if (pct >= 25) score_momentum -= 20;              // 극단적 급등: 강한 감점
-    else if (pct >= 0 && pct < 1) score_momentum += 15;   // 보합~미약 상승
-    else if (pct > -3) score_momentum += 5;                // 소폭 하락: 눌림목 가능
-    else if (pct > -5) score_momentum += 3;                // 조정: 바닥 탐색
-    else if (pct > -10) score_momentum += 0;               // 급락: 중립
-    else score_momentum -= 10;                              // 폭락: 감점
+    if (tier === 'large') {
+      // 대형주: 완만한 상승이 최적, 급등은 오히려 경계
+      if (pct >= 0.5 && pct < 2) score_momentum += 40;     // 안정적 상승: 최적
+      else if (pct >= 2 && pct < 4) score_momentum += 30;  // 상승 진행
+      else if (pct >= 4 && pct < 7) score_momentum += 15;  // 강한 상승
+      else if (pct >= 7) score_momentum -= 5;               // 대형주 급등 = 이벤트성
+      else if (pct >= 0 && pct < 0.5) score_momentum += 25; // 보합: 안정
+      else if (pct > -2) score_momentum += 10;              // 소폭 조정
+      else if (pct > -5) score_momentum += 3;
+      else score_momentum -= 10;
+    } else {
+      // 중형주/소형주: 기존 로직 유지
+      if (pct >= 1 && pct < 3) score_momentum += 30;
+      else if (pct >= 3 && pct < 5) score_momentum += 40;
+      else if (pct >= 5 && pct < 10) score_momentum += 25;
+      else if (pct >= 10 && pct < 15) score_momentum += 10;
+      else if (pct >= 15 && pct < 25) score_momentum -= 5;
+      else if (pct >= 25) score_momentum -= 20;
+      else if (pct >= 0 && pct < 1) score_momentum += 15;
+      else if (pct > -3) score_momentum += 5;
+      else if (pct > -5) score_momentum += 3;
+      else if (pct > -10) score_momentum += 0;
+      else score_momentum -= 10;
+    }
   }
 
   // 섹터 상대강도: 같은 섹터 평균 대비 얼마나 강한지
@@ -321,15 +395,20 @@ function calcScore(
     market_cap: (stock as Record<string, unknown>).market_cap as number | null | undefined,
   }, scoringModel as 'standard' | 'short_term');
 
-  // 가중 합산: signal(10) + trend(35) + valuation(20) + supply(25) + risk(10) = 100
-  const riskNormalized = Math.max(0, 100 + riskScore); // 0~100 스케일로 변환
-  const score_total = Math.round(
-    (score_signal * 10 +
-     score_momentum * 35 +
-     score_valuation * 20 +
-     score_supply * 25 +
-     riskNormalized * 10) / 100
-  );
+  // 티어별 가중 합산
+  const riskNormalized = Math.max(0, 100 + riskScore);
+  const tierWeights = {
+    large:  { signal: 5, momentum: 30, valuation: 20, supply: 30, risk: 15 },
+    mid:    { signal: 8, momentum: 32, valuation: 20, supply: 28, risk: 12 },
+    small:  { signal: 10, momentum: 35, valuation: 20, supply: 25, risk: 10 },
+  }[tier];
+  const score_total = Math.min(100, Math.max(0, Math.round(
+    (score_signal * tierWeights.signal +
+     score_momentum * tierWeights.momentum +
+     score_valuation * tierWeights.valuation +
+     score_supply * tierWeights.supply +
+     riskNormalized * tierWeights.risk) / 100
+  )));
   return { score_total, score_valuation, score_supply, score_signal, score_momentum, score_risk: riskScore };
 }
 
@@ -454,6 +533,75 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceClient();
     const now = new Date();
     const todayStr = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    // ── 단일 종목 경량 경로: symbol 파라미터 시 스냅샷 로드 없이 즉시 응답 ──
+    const singleSymbol = searchParams.get('symbol');
+    if (singleSymbol) {
+      const { data: row } = await supabase
+        .from('stock_cache')
+        .select('*')
+        .eq('symbol', singleSymbol)
+        .single();
+      if (!row) return NextResponse.json({ items: [], total: 0 });
+
+      // DART 데이터
+      const { data: dart } = await supabase
+        .from('stock_dart_info')
+        .select('*')
+        .eq('symbol', singleSymbol)
+        .maybeSingle();
+
+      // 수급 + 지표 실시간 fetch (병렬)
+      const [invMap, indMap] = await Promise.all([
+        fetchBulkInvestorData([singleSymbol], 1),
+        fetchBulkIndicators([singleSymbol], 1),
+      ]);
+
+      const inv = invMap.get(singleSymbol);
+      if (inv) {
+        row.foreign_net_qty = inv.foreign_net;
+        row.institution_net_qty = inv.institution_net;
+        row.foreign_net_5d = inv.foreign_net_5d;
+        row.institution_net_5d = inv.institution_net_5d;
+        row.foreign_streak = inv.foreign_streak;
+        row.institution_streak = inv.institution_streak;
+      }
+      const ind = indMap.get(singleSymbol);
+      if (ind) {
+        if (ind.per !== null) row.per = ind.per;
+        if (ind.pbr !== null) row.pbr = ind.pbr;
+        if (ind.roe !== null) row.roe = ind.roe;
+        if (ind.high_52w !== null) row.high_52w = ind.high_52w;
+        if (ind.low_52w !== null) row.low_52w = ind.low_52w;
+        if (ind.dividend_yield !== null) row.dividend_yield = ind.dividend_yield;
+        if (ind.forward_per !== null) row.forward_per = ind.forward_per;
+        if (ind.target_price !== null) row.target_price = ind.target_price;
+        if (ind.invest_opinion !== null) row.invest_opinion = ind.invest_opinion;
+      }
+
+      // DART 병합
+      if (dart) {
+        row.is_managed = row.is_managed ?? false;
+        row.has_recent_cbw = dart.has_recent_cbw ?? false;
+        row.major_shareholder_pct = dart.major_shareholder_pct ?? null;
+        row.major_shareholder_delta = dart.major_shareholder_delta ?? null;
+        row.audit_opinion = dart.audit_opinion ?? null;
+        row.has_treasury_buyback = dart.has_treasury_buyback ?? false;
+        row.revenue_growth_yoy = dart.revenue_growth_yoy ?? null;
+        row.operating_profit_growth_yoy = dart.operating_profit_growth_yoy ?? null;
+      }
+
+      // 회전율 계산
+      const floatShares = row.float_shares as number | null;
+      const volume = row.volume as number | null;
+      row.turnover_rate = floatShares ? ((volume ?? 0) / floatShares) * 100 : null;
+
+      const scores = calcScore(row as Parameters<typeof calcScore>[0], todayStr, null, model);
+      const item: StockRankItem = { ...row, ...scores, volume_ratio: null, close_position: null, trading_value: null, gap_pct: null, cum_return_3d: null } as unknown as StockRankItem;
+
+      return NextResponse.json({ items: [item], total: 1, today: todayStr });
+    }
+
     const dateParam = searchParams.get('date');
     const showAll = !dateParam || dateParam === 'all';
     const showWeek = dateParam === 'week';
@@ -465,7 +613,54 @@ export async function GET(request: NextRequest) {
       const snapshot = await readSnapshot(supabase, model, snapshotDate);
       if (snapshot) {
         let snapshotItems = snapshot.items;
-        // signal_all: 신호 있는 종목만
+
+        // ── 스냅샷 신호 데이터 실시간 보강 (필터링 전에 먼저 실행) ──
+        // stock_cache가 stale일 수 있으므로 signals 테이블에서 직접 집계
+        {
+          const thirtyDaysAgo = new Date(new Date().getTime() + 9 * 60 * 60 * 1000 - 30 * 86400000)
+            .toISOString().slice(0, 10);
+          // 최근 30일 BUY 신호를 signals 테이블에서 직접 조회
+          const allSignalRows: Record<string, unknown>[] = [];
+          const { data: sigData } = await supabase
+            .from('signals')
+            .select('symbol, timestamp, signal_type, raw_data')
+            .in('signal_type', ['BUY', 'BUY_FORECAST'])
+            .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`)
+            .order('timestamp', { ascending: false })
+            .limit(5000);
+          if (sigData) allSignalRows.push(...sigData);
+
+          // 종목별 집계
+          const sigAggMap = new Map<string, { count: number; latestDate: string; latestPrice: number | null }>();
+          for (const row of allSignalRows) {
+            const sym = row.symbol as string;
+            const existing = sigAggMap.get(sym);
+            if (!existing) {
+              sigAggMap.set(sym, {
+                count: 1,
+                latestDate: row.timestamp as string,
+                latestPrice: null, // 매수가 추출은 생략 (성능)
+              });
+            } else {
+              existing.count++;
+            }
+          }
+
+          // 스냅샷 아이템에 반영
+          for (const item of snapshotItems) {
+            const agg = sigAggMap.get(item.symbol);
+            if (agg) {
+              item.signal_count_30d = agg.count;
+              item.latest_signal_date = agg.latestDate;
+              if (agg.latestDate) {
+                (item as unknown as Record<string, unknown>).signal_date = agg.latestDate.slice(0, 10);
+              }
+            }
+            // stock_cache도 보조적으로 확인 (signals에 없지만 cache에 있는 경우)
+          }
+        }
+
+        // signal_all: 신호 있는 종목만 (보강 후 필터)
         if (showSignalAll) {
           snapshotItems = snapshotItems.filter((s) =>
             (s.signal_count_30d ?? 0) > 0 || s.signal_date
@@ -486,6 +681,77 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ items: [], total: 0, page: 1, limit: 99999, today: todayStr });
           }
         }
+
+        // ── 스냅샷 live 보강: 수급/지표 stale 종목 실시간 업데이트 ──
+        // q 검색이면 해당 종목만, 아니면 30개 제한
+        const staleSymbols = snapshotItems.filter((s) => {
+          const invDate = ((s as unknown as Record<string, unknown>).investor_updated_at as string | undefined)?.slice(0, 10);
+          return invDate !== todayStr;
+        }).map((s) => s.symbol);
+        const indNullSymbols = snapshotItems.filter((s) =>
+          s.per == null || s.high_52w == null
+        ).map((s) => s.symbol);
+
+        // q 검색(상세패널 단일 종목 등)이면 제한 없이 개별 boost
+        const isTargetedQuery = !!q && snapshotItems.length <= 5;
+        const doInvFetch = staleSymbols.length > 0 && (isTargetedQuery || staleSymbols.length <= 30);
+        const doIndFetch = indNullSymbols.length > 0 && (isTargetedQuery || indNullSymbols.length <= 30);
+
+        if (doInvFetch || doIndFetch) {
+          const [liveInvMap, liveIndMap] = await Promise.all([
+            doInvFetch
+              ? (async () => {
+                  const m = new Map<string, StockInvestorData>();
+                  const chunks = [];
+                  for (let i = 0; i < staleSymbols.length; i += 200)
+                    chunks.push(staleSymbols.slice(i, i + 200));
+                  const results = await Promise.all(chunks.map(c => fetchBulkInvestorData(c, 20)));
+                  for (const r of results) for (const [k, v] of r) m.set(k, v);
+                  return m;
+                })()
+              : Promise.resolve(new Map<string, StockInvestorData>()),
+            doIndFetch
+              ? fetchBulkIndicators(indNullSymbols, 20)
+              : Promise.resolve(new Map()),
+          ]);
+
+          for (const item of snapshotItems) {
+            const inv = liveInvMap.get(item.symbol);
+            if (inv) {
+              item.foreign_net_qty = inv.foreign_net;
+              item.institution_net_qty = inv.institution_net;
+              item.foreign_net_5d = inv.foreign_net_5d;
+              item.institution_net_5d = inv.institution_net_5d;
+              item.foreign_streak = inv.foreign_streak;
+              item.institution_streak = inv.institution_streak;
+              (item as unknown as Record<string, unknown>).investor_updated_at = todayStr;
+            }
+            const ind = liveIndMap.get(item.symbol);
+            if (ind) {
+              if (ind.per !== null) item.per = ind.per;
+              if (ind.pbr !== null) item.pbr = ind.pbr;
+              if (ind.roe !== null) item.roe = ind.roe;
+              if (ind.high_52w !== null) item.high_52w = ind.high_52w;
+              if (ind.low_52w !== null) item.low_52w = ind.low_52w;
+              if (ind.dividend_yield !== null) item.dividend_yield = ind.dividend_yield;
+              if (ind.forward_per !== null) item.forward_per = ind.forward_per;
+              if (ind.target_price !== null) item.target_price = ind.target_price;
+              if (ind.invest_opinion !== null) item.invest_opinion = ind.invest_opinion;
+            }
+          }
+        }
+
+        // ── 전체 종목 점수 재계산 (수급/지표 보강 + 신호 보강 반영) ──
+        for (const item of snapshotItems) {
+          const scores = calcScore(item as Parameters<typeof calcScore>[0], todayStr, null, model);
+          item.score_signal = scores.score_signal;
+          item.score_momentum = scores.score_momentum;
+          item.score_valuation = scores.score_valuation;
+          item.score_supply = scores.score_supply;
+          item.score_risk = scores.score_risk;
+          item.score_total = scores.score_total;
+        }
+
         // 검색 필터 적용
         if (q) {
           snapshotItems = snapshotItems.filter((s) =>
@@ -656,20 +922,34 @@ export async function GET(request: NextRequest) {
       })
       .map((r) => r.symbol as string);
 
-    // 지표(PER/52주 등) null인 종목도 보강 대상에 포함
-    const indicatorNullSymbols = signalSymbols.filter((sym) => {
+    // 지표 null 종목: 검색 대상 + 신호 종목 중 지표 없는 것 보강
+    const relevantForIndicators = new Set<string>([
+      ...signalSymbols,
+      // q 검색으로 직접 조회한 종목도 포함
+      ...(q ? allRows.filter(r => (r.symbol as string).includes(q) || (r.name as string)?.toLowerCase().includes(q)).map(r => r.symbol as string) : []),
+    ]);
+    const indicatorNullSymbols = [...relevantForIndicators].filter((sym) => {
       const r = allRows.find((row) => row.symbol === sym);
       return r && (r.per === null || r.high_52w === null);
     });
 
+    // q 검색 종목도 수급 fetch 대상에 추가
+    const invFetchSymbols = [...new Set([
+      ...signalSymbols,
+      ...(q ? allRows.filter(r => {
+        const sym = r.symbol as string;
+        const name = (r.name as string)?.toLowerCase() ?? '';
+        return (sym.includes(q) || name.includes(q)) && !(r.investor_updated_at as string)?.startsWith(todayStr);
+      }).map(r => r.symbol as string) : []),
+    ])];
     // 수급 + 지표 병렬 live 조회
     const [liveInvMap, liveIndMap] = await Promise.all([
-      signalSymbols.length > 0
+      invFetchSymbols.length > 0
         ? (async () => {
             const m = new Map<string, StockInvestorData>();
             const chunks = [];
-            for (let i = 0; i < signalSymbols.length; i += 200)
-              chunks.push(signalSymbols.slice(i, i + 200));
+            for (let i = 0; i < invFetchSymbols.length; i += 200)
+              chunks.push(invFetchSymbols.slice(i, i + 200));
             const results = await Promise.all(chunks.map(c => fetchBulkInvestorData(c, 20)));
             for (const r of results) for (const [k, v] of r) m.set(k, v);
             return m;
@@ -695,12 +975,12 @@ export async function GET(request: NextRequest) {
       }
       const ind = liveIndMap.get(sym);
       if (ind) {
-        if (ind.per > 0) row.per = ind.per;
-        if (ind.pbr > 0) row.pbr = ind.pbr;
-        if (ind.roe !== 0) row.roe = ind.roe;
-        if (ind.high_52w > 0) row.high_52w = ind.high_52w;
-        if (ind.low_52w > 0) row.low_52w = ind.low_52w;
-        if (ind.dividend_yield > 0) row.dividend_yield = ind.dividend_yield;
+        if (ind.per !== null) row.per = ind.per;
+        if (ind.pbr !== null) row.pbr = ind.pbr;
+        if (ind.roe !== null) row.roe = ind.roe;
+        if (ind.high_52w !== null) row.high_52w = ind.high_52w;
+        if (ind.low_52w !== null) row.low_52w = ind.low_52w;
+        if (ind.dividend_yield !== null) row.dividend_yield = ind.dividend_yield;
         if (ind.forward_per !== null) row.forward_per = ind.forward_per;
         if (ind.target_price !== null) row.target_price = ind.target_price;
         if (ind.invest_opinion !== null) row.invest_opinion = ind.invest_opinion;
@@ -724,10 +1004,10 @@ export async function GET(request: NextRequest) {
         }
         const ind = liveIndMap.get(sym);
         if (ind) {
-          if (ind.per > 0) update.per = ind.per;
-          if (ind.pbr > 0) update.pbr = ind.pbr;
-          if (ind.high_52w > 0) update.high_52w = ind.high_52w;
-          if (ind.low_52w > 0) update.low_52w = ind.low_52w;
+          if (ind.per !== null) update.per = ind.per;
+          if (ind.pbr !== null) update.pbr = ind.pbr;
+          if (ind.high_52w !== null) update.high_52w = ind.high_52w;
+          if (ind.low_52w !== null) update.low_52w = ind.low_52w;
           if (ind.forward_per !== null) update.forward_per = ind.forward_per;
           if (ind.target_price !== null) update.target_price = ind.target_price;
           if (ind.invest_opinion !== null) update.invest_opinion = ind.invest_opinion;
@@ -784,19 +1064,11 @@ export async function GET(request: NextRequest) {
           cum_return_3d: null,
         };
         if (aiRec) {
-          // AI 점수를 0~100으로 정규화하여 score_* 필드도 통일 (이중 체계 제거)
-          const clamp100 = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
-          item.score_signal = clamp100((aiRec.signal_score ?? 0) / 30 * 100);
-          item.score_momentum = clamp100((aiRec.technical_score ?? 0) / 58 * 100);
-          item.score_valuation = clamp100((aiRec.valuation_score ?? 0) / 25 * 100);
-          item.score_supply = clamp100(((aiRec.supply_score ?? 0) + 10) / 55 * 100);
-          item.score_total = Math.round(
-            (item.score_signal + item.score_momentum + item.score_valuation + item.score_supply) / 4
-          );
+          // AI 추천 데이터는 패턴 정보만 보존 (점수는 calcScore 결과 사용)
           item.ai = {
             total_score: aiRec.total_score ?? 0,
             signal_score: aiRec.signal_score ?? 0,
-            trend_score: aiRec.technical_score ?? 0, // DB 컬럼은 아직 technical_score (Task 7 마이그레이션 후 변경)
+            trend_score: aiRec.technical_score ?? 0,
             valuation_score: aiRec.valuation_score ?? 0,
             supply_score: aiRec.supply_score ?? 0,
             rsi: aiRec.rsi ?? null,
@@ -1010,13 +1282,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ── 정렬: AI 우선, 그 다음 score_total 내림차순
-    regularItems.sort((a, b) => {
-      const aHasAi = a.ai ? 1 : 0;
-      const bHasAi = b.ai ? 1 : 0;
-      if (aHasAi !== bHasAi) return bHasAi - aHasAi;
-      return b.score_total - a.score_total;
-    });
+    // ── 정렬: score_total 내림차순
+    regularItems.sort((a, b) => b.score_total - a.score_total);
     etfItems.sort((a, b) => b.score_total - a.score_total);
 
     const total = regularItems.length;

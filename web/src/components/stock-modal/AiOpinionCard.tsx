@@ -4,8 +4,21 @@
 import type { StockRankItem } from "@/app/api/v1/stock-ranking/route";
 import { SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
 
+/** 단기추천 점수 (ShortTermRecommendationSection에서 전달) */
+export interface ShortTermDisplayScores {
+  momentum: number;
+  supply: number;
+  catalyst: number;
+  valuation: number;
+  risk: number;
+}
+
 interface Props {
   data: StockRankItem;
+  /** 'short_term'이면 단기추천 점수 바 표시 */
+  scoreMode?: 'standard' | 'short_term';
+  /** 단기추천 점수 (scoreMode='short_term'일 때 사용) */
+  shortTermScores?: ShortTermDisplayScores;
 }
 
 /** 기술적 패턴 키 → 한국어 레이블 */
@@ -73,18 +86,28 @@ function ScoreBar({
  * 5개 항목(신호 신뢰도·기술적 모멘텀·밸류에이션·수급 동향·리스크)별 점수바와
  * 세부 근거 텍스트를 표시한다.
  */
-export function AiOpinionCard({ data }: Props) {
+/** score_total 기준 등급 산출 (리스트 뷰와 동일 기준) */
+function deriveGrade(score: number): { grade: string; label: string } {
+  if (score >= 90) return { grade: 'A+', label: '적극매수' };
+  if (score >= 80) return { grade: 'A', label: '매수' };
+  if (score >= 65) return { grade: 'B+', label: '관심' };
+  if (score >= 50) return { grade: 'B', label: '보통' };
+  if (score >= 35) return { grade: 'C', label: '관망' };
+  return { grade: 'D', label: '주의' };
+}
+
+export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }: Props) {
   const {
-    score_total,
+    score_total: rawTotal,
     score_signal,
     score_momentum,
     score_valuation,
     score_supply,
     score_risk = 0,
-    grade,
-    recommendation,
     characters,
   } = data;
+  const score_total = Math.min(100, Math.max(0, rawTotal));
+  const { grade, label: recommendation } = deriveGrade(score_total);
 
   // 총점 색상
   const gaugeColor =
@@ -108,7 +131,7 @@ export function AiOpinionCard({ data }: Props) {
   const riskItems: string[] = [];
   if (data.is_managed) riskItems.push("관리종목");
   if (data.has_recent_cbw) riskItems.push("CB/BW 최근 발행");
-  if (data.major_shareholder_pct != null && data.major_shareholder_pct < 20) {
+  if (data.major_shareholder_pct != null && data.major_shareholder_pct > 0 && data.major_shareholder_pct < 20) {
     riskItems.push(`대주주 지분 ${data.major_shareholder_pct.toFixed(1)}%`);
   }
   if (data.audit_opinion && data.audit_opinion !== "적정") {
@@ -153,6 +176,43 @@ export function AiOpinionCard({ data }: Props) {
 
       {/* 항목별 점수 바 */}
       <div className="space-y-3">
+        {scoreMode === 'short_term' && shortTermScores ? (
+          <>
+            <ScoreBar label="모멘텀" score={shortTermScores.momentum}>
+              {data.price_change_pct != null && (
+                <p>당일 등락률{" "}
+                  <span className={data.price_change_pct >= 0 ? "text-[var(--buy)]" : "text-[var(--sell)]"}>
+                    {data.price_change_pct >= 0 ? "+" : ""}{data.price_change_pct.toFixed(2)}%
+                  </span>
+                </p>
+              )}
+            </ScoreBar>
+            <ScoreBar label="수급" score={shortTermScores.supply}>
+              {data.foreign_net_qty != null && (
+                <p>외국인{" "}
+                  <span className={data.foreign_net_qty >= 0 ? "text-[var(--buy)]" : "text-[var(--sell)]"}>
+                    {data.foreign_net_qty >= 0 ? "순매수" : "순매도"} {Math.abs(data.foreign_net_qty).toLocaleString()}주
+                  </span>
+                </p>
+              )}
+            </ScoreBar>
+            <ScoreBar label="촉매" score={shortTermScores.catalyst}>
+              <p>30일간 매수신호 {data.signal_count_30d ?? 0}회</p>
+            </ScoreBar>
+            <ScoreBar label="밸류에이션" score={shortTermScores.valuation}>
+              <p>PER {data.per?.toFixed(1) ?? "—"} / PBR {data.pbr?.toFixed(2) ?? "—"}</p>
+            </ScoreBar>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">리스크</span>
+                <span className={`tabular-nums font-bold ${shortTermScores.risk > 0 ? "text-[var(--danger)]" : "text-[var(--success)]"}`}>
+                  {shortTermScores.risk === 0 ? "없음" : `${shortTermScores.risk.toFixed(0)}점`}
+                </span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
         {/* 1. 신호 신뢰도 */}
         <ScoreBar label="신호 신뢰도" score={score_signal}>
           <p>30일간 매수신호 {data.signal_count_30d ?? 0}회</p>
@@ -317,6 +377,8 @@ export function AiOpinionCard({ data }: Props) {
             <p className="text-xs text-[var(--success)]">리스크 요인 없음</p>
           )}
         </div>
+          </>
+        )}
       </div>
     </div>
   );

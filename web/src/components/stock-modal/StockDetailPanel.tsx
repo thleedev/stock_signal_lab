@@ -91,7 +91,20 @@ export function StockDetailPanel() {
   const livePrice = modal ? livePrices[modal.symbol] : null;
 
   // 데이터 우선순위: livePrice > metrics > initialData
-  const data = modal?.initialData ?? rankingData;
+  const baseData = modal?.initialData ?? rankingData;
+  // metrics로 빈 필드 보강 (stock_cache 미수집 종목 대응)
+  const data = baseData && metrics ? {
+    ...baseData,
+    per: baseData.per ?? metrics.per ?? null,
+    pbr: baseData.pbr ?? metrics.pbr ?? null,
+    roe: baseData.roe ?? metrics.roe ?? null,
+    high_52w: baseData.high_52w ?? metrics.high_52w ?? null,
+    low_52w: baseData.low_52w ?? metrics.low_52w ?? null,
+    dividend_yield: baseData.dividend_yield ?? metrics.dividend_yield ?? null,
+    foreign_net_qty: baseData.foreign_net_qty ?? (metrics as unknown as Record<string, unknown>)?.foreign_net_qty as number | null ?? null,
+    institution_net_qty: baseData.institution_net_qty ?? (metrics as unknown as Record<string, unknown>)?.institution_net_qty as number | null ?? null,
+    current_price: metrics.current_price ?? baseData.current_price,
+  } as StockRankItem : baseData;
   const currentPrice = livePrice?.current_price ?? metrics?.current_price ?? data?.current_price ?? 0;
   const changeAmount = livePrice?.price_change ?? metrics?.price_change ?? 0;
   const changePct = livePrice?.price_change_pct ?? metrics?.price_change_pct ?? data?.price_change_pct ?? 0;
@@ -130,7 +143,7 @@ export function StockDetailPanel() {
         fetch(`/api/v1/stock/${symbol}/daily-prices`),
       ];
 
-      // initialData 없을 때 랭킹 API 추가 호출
+      // initialData 없을 때 단일 종목 경량 경로로 호출
       if (!hasInitialData) {
         fetches.push(fetch(`/api/v1/stock-ranking?symbol=${symbol}`));
       }
@@ -239,7 +252,7 @@ export function StockDetailPanel() {
           <div className="md:w-[55%] overflow-y-auto border-r border-[var(--border)] max-md:border-r-0">
             {data ? (
               <div className="space-y-0 divide-y divide-[var(--border)]">
-                <AiOpinionCard data={data} />
+                <AiOpinionCard data={data} scoreMode={modal?.scoreMode} shortTermScores={modal?.shortTermScores} />
                 <SupplyDemandSection data={data} />
                 <TechnicalSignalSection
                   data={data}

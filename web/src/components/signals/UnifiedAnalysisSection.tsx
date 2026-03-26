@@ -40,6 +40,7 @@ interface MenuState {
   currentPrice: number | null;
   isFavorite: boolean;
   position: { x: number; y: number };
+  initialData?: StockRankItem;
 }
 
 interface Weights {
@@ -349,7 +350,7 @@ function getSignalAge(dateStr: string | null): string {
 
 // ── RankCard 컴포넌트 (모바일 2줄 / 데스크탑 2줄+점수바) ──────────────────────
 function RankCard({
-  item, rank, weighted, favs, gapInfo, onClick, characters, isEtf = false,
+  item, rank, weighted, favs, gapInfo, onClick, characters, isEtf = false, useWeighted = false,
 }: {
   item: StockRankItem;
   rank: number;
@@ -359,13 +360,15 @@ function RankCard({
   onClick: (e: React.MouseEvent) => void;
   characters: InvestmentCharacter[];
   isEtf?: boolean;
+  useWeighted?: boolean;
 }) {
   const hasAi = !!item.ai;
   const isWarning = hasAi && item.ai!.double_top;
   const pct = item.price_change_pct;
   const { sig, tech, val, sup } = normScores(item);
   const reason = getRecommendReason(item);
-  const { grade, label: gradeLabel, cls: gradeCls } = getGrade(weighted);
+  const displayScore = useWeighted ? weighted : item.score_total;
+  const { grade, label: gradeLabel, cls: gradeCls } = getGrade(displayScore);
   const signalAge = getSignalAge(item.latest_signal_date);
   const pctCls = pct != null && pct > 0 ? 'text-red-500' : pct != null && pct < 0 ? 'text-blue-500' : 'text-[var(--muted)]';
 
@@ -563,7 +566,9 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [visibleCount, setVisibleCount] = useState(50);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
-  const [weights, setWeights] = useState<Weights>({ signal: 10, trend: 35, valuation: 20, supply: 25, risk: 10 });
+  const DEFAULT_WEIGHTS: Weights = { signal: 10, trend: 35, valuation: 20, supply: 25, risk: 10 };
+  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  const isCustomWeights = JSON.stringify(weights) !== JSON.stringify(DEFAULT_WEIGHTS);
   const [sort, setSort] = useState<SortMode>('score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
@@ -636,9 +641,9 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     }
   };
 
-  const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
+  const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null, itemData?: StockRankItem) => {
     e.stopPropagation();
-    setMenu({ isOpen: true, symbol, name, currentPrice, isFavorite: favs.has(symbol), position: { x: e.clientX, y: e.clientY } });
+    setMenu({ isOpen: true, symbol, name, currentPrice, isFavorite: favs.has(symbol), position: { x: e.clientX, y: e.clientY }, initialData: itemData });
   };
   const closeMenu = () => setMenu((m) => ({ ...m, isOpen: false }));
   const handleToggleFavorite = useCallback(async () => {
@@ -722,46 +727,8 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       const pct = live.price_change_pct ?? item.price_change_pct;
       const cp = live.current_price;
 
-      // AI 종목: 서버 기술점수 유지하되, 실시간 등락률로 모멘텀 보정
-      if (item.ai) {
-        let momBonus = 0;
-        if (pct !== null && pct !== undefined) {
-          if (pct >= 5) momBonus = 15;          // 급등: 강한 모멘텀
-          else if (pct >= 3) momBonus = 10;     // 상승 초입
-          else if (pct >= 1) momBonus = 5;      // 완만 상승
-          else if (pct <= -5) momBonus = -10;   // 급락
-          else if (pct <= -3) momBonus = -5;    // 조정
-        }
-        const adjMomentum = Math.max(0, Math.min(100, item.score_momentum + momBonus));
-        const adjTotal = item.score_valuation + item.score_supply + item.score_signal + adjMomentum;
-        return { ...item, current_price: cp, price_change_pct: pct, score_momentum: adjMomentum, score_total: adjTotal };
-      }
-
-      let score_momentum = 0;
-      if (cp && item.high_52w && item.low_52w && item.high_52w > item.low_52w) {
-        const range = item.high_52w - item.low_52w;
-        const position = (cp - item.low_52w) / range;
-        if (position <= 0.15) score_momentum += 40;
-        else if (position <= 0.30) score_momentum += 35;
-        else if (position <= 0.50) score_momentum += 25;
-        else if (position <= 0.70) score_momentum += 15;
-        else if (position <= 0.85) score_momentum += 8;
-        else score_momentum += 3;
-      }
-      if (pct !== null && pct !== undefined) {
-        if (pct >= 1 && pct < 3) score_momentum += 30;
-        else if (pct >= 3 && pct < 5) score_momentum += 40;
-        else if (pct >= 5 && pct < 10) score_momentum += 25;
-        else if (pct >= 10 && pct < 15) score_momentum += 10;
-        else if (pct >= 15 && pct < 25) score_momentum -= 5;
-        else if (pct >= 25) score_momentum -= 20;
-        else if (pct >= 0 && pct < 1) score_momentum += 15;
-        else if (pct < 0 && pct > -3) score_momentum += 5;
-      }
-      score_momentum = Math.max(0, Math.min(100, score_momentum));
-
-      const score_total = item.score_valuation + item.score_supply + item.score_signal + score_momentum;
-      return { ...item, current_price: cp, price_change_pct: pct, score_momentum, score_total };
+      // 실시간 가격만 반영, 점수는 서버 calcScore 결과 유지
+      return { ...item, current_price: cp, price_change_pct: pct };
     });
   }, [rawItems, livePrices]);
 
@@ -802,15 +769,17 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
         });
         break;
       default:
-        // score — 캐시된 점수 사용
+        // score — 기본 가중치면 서버 score_total, 커스텀이면 UI 가중치 사용
         filtered.sort((a, b) => {
-          const diff = (weightedMap.get(b.symbol) ?? 0) - (weightedMap.get(a.symbol) ?? 0);
+          const scoreA = isCustomWeights ? (weightedMap.get(a.symbol) ?? 0) : a.score_total;
+          const scoreB = isCustomWeights ? (weightedMap.get(b.symbol) ?? 0) : b.score_total;
+          const diff = scoreB - scoreA;
           return sortDir === 'desc' ? diff : -diff;
         });
         break;
     }
     return filtered;
-  }, [liveItems, sort, sortDir, weightedMap, sourceFilter, signalMap, livePrices]);
+  }, [liveItems, sort, sortDir, weightedMap, isCustomWeights, sourceFilter, signalMap, livePrices]);
 
   // ── 투자성격 필터 ────────────────────────────────────────────────────────────
   const filteredByChar = useMemo(() => {
@@ -835,19 +804,22 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     if (!noiseFilter) return filteredBySearch;
     return filteredBySearch.filter((item) => {
       const r = item as unknown as Record<string, unknown>;
-      const tv = (r.daily_trading_value as number) ?? (r.trading_value as number) ?? 0;
-      const avgTv = (r.avg_trading_value_20d as number) ?? 0;
+      const tvRaw = (r.daily_trading_value as number | null) ?? (r.trading_value as number | null) ?? null;
+      const avgTvRaw = (r.avg_trading_value_20d as number | null) ?? null;
       const tr = (r.turnover_rate as number) ?? 0;
       const managed = (r.is_managed as boolean) ?? false;
       const cbw = (r.has_recent_cbw as boolean) ?? false;
-      const shareholder = (r.major_shareholder_pct as number) ?? 100;
+      const shRaw = (r.major_shareholder_pct as number | null) ?? null;
+      const mc = (r.market_cap as number) ?? 0;
+      const isLargeCap = mc >= 1_000_000_000_000; // 시총 1조원 이상 대형주 (market_cap 단위: 원)
 
-      if (tv < 10_000_000_000) return false;       // 거래대금 100억 미만
-      if (avgTv > 0 && avgTv < 5_000_000_000) return false;  // 20일 평균 50억 미만
-      if (tr > 0 && tr < 1) return false;           // 회전율 1% 미만
+      // 데이터가 있을 때만 필터 적용 (null이면 미수집이므로 통과)
+      if (tvRaw != null && tvRaw < 10_000_000_000) return false;       // 거래대금 100억 미만
+      if (avgTvRaw != null && avgTvRaw > 0 && avgTvRaw < 5_000_000_000) return false;  // 20일 평균 50억 미만
+      if (!isLargeCap && tr > 0 && tr < 1) return false;     // 대형주는 회전율 면제
       if (managed) return false;
       if (cbw) return false;
-      if (shareholder < 20) return false;
+      if (shRaw != null && shRaw > 0 && shRaw < 20) return false; // 0은 미수집
       return true;
     });
   }, [filteredBySearch, noiseFilter]);
@@ -900,6 +872,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
           onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market === 'ETF' ? 'all' : market)}
           refreshing={loading}
           updating={snapshotStatus.updating}
+          onWeightClick={() => setShowWeights(v => !v)}
         />
         {showWeights && !isEtfMode && (
           <WeightPopup
@@ -942,9 +915,15 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
               item={item}
               rank={idx + 1}
               weighted={weightedMap.get(item.symbol) ?? 0}
+              useWeighted={isCustomWeights}
               favs={favs}
               gapInfo={isEtfMode ? null : getGapInfo(item, signalMap, sourceFilter, livePrices)}
-              onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
+              onClick={(e) => {
+                const displayTotal = isCustomWeights
+                  ? Math.round(weightedMap.get(item.symbol) ?? item.score_total)
+                  : item.score_total;
+                openMenu(e, item.symbol, item.name, item.current_price, { ...item, score_total: displayTotal } as unknown as StockRankItem);
+              }}
               characters={isEtfMode ? [] : getInvestmentCharacters(item, weights)}
               isEtf={isEtfMode}
             />
@@ -969,6 +948,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
         groups={groups}
         symbolGroupIds={symGroups[menu.symbol] ?? []}
         onGroupToggle={handleGroupToggle}
+        initialData={menu.initialData}
       />
     </div>
   );

@@ -22,28 +22,28 @@ describe('calcRiskScore', () => {
     expect(result).toBe(-20)
   })
 
-  it('소형주(3000억 미만) 지분율 5%이면 -20 (standard)', () => {
-    const result = calcRiskScore({ major_shareholder_pct: 5, market_cap: 1000 }, 'standard')
+  it('소형주(3000억원 미만) 지분율 5%이면 -20 (standard)', () => {
+    const result = calcRiskScore({ major_shareholder_pct: 5, market_cap: 100_000_000_000 }, 'standard') // 1000억원
     expect(result).toBe(-20)
   })
 
   it('소형주 지분율 12%이면 감점 없음', () => {
-    const result = calcRiskScore({ major_shareholder_pct: 12, market_cap: 1000 })
+    const result = calcRiskScore({ major_shareholder_pct: 12, market_cap: 100_000_000_000 }) // 1000억원
     expect(result).toBe(0)
   })
 
-  it('중형주(3000억~1조) 지분율 3%이면 -20 (standard)', () => {
-    const result = calcRiskScore({ major_shareholder_pct: 3, market_cap: 5000 }, 'standard')
+  it('중형주(3000억~1조원) 지분율 3%이면 -20 (standard)', () => {
+    const result = calcRiskScore({ major_shareholder_pct: 3, market_cap: 500_000_000_000 }, 'standard') // 5000억원
     expect(result).toBe(-20)
   })
 
   it('중형주 지분율 8%이면 감점 없음', () => {
-    const result = calcRiskScore({ major_shareholder_pct: 8, market_cap: 5000 })
+    const result = calcRiskScore({ major_shareholder_pct: 8, market_cap: 500_000_000_000 }) // 5000억원
     expect(result).toBe(0)
   })
 
-  it('대형주(1조 이상) 지분율 5%이면 감점 없음', () => {
-    const result = calcRiskScore({ major_shareholder_pct: 5, market_cap: 20000 })
+  it('대형주(1조원 이상) 지분율 5%이면 감점 없음', () => {
+    const result = calcRiskScore({ major_shareholder_pct: 5, market_cap: 2_000_000_000_000 }) // 2조원
     expect(result).toBe(0)
   })
 
@@ -71,7 +71,7 @@ describe('calcRiskScore', () => {
     const result = calcRiskScore({
       has_recent_cbw: true,
       major_shareholder_pct: 5,
-      market_cap: 500,
+      market_cap: 50_000_000_000, // 500억원
       daily_trading_value: 2_000_000_000,
     }, 'standard')
     // -30 (CB/BW) + -20 (지분율<10%) + -25 (거래대금<30억) = -75

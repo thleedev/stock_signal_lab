@@ -9,6 +9,7 @@ export interface TechnicalScoreResult {
   double_top: boolean;
   volume_surge: boolean;
   week52_low_near: boolean;
+  week52_high_near: boolean;
   ma_aligned: boolean;
   disparity_rebound: boolean;   // 이격도 반등 (20일선 저이격 + 양봉)
   volume_breakout: boolean;     // 거래량 바닥 탈출
@@ -79,7 +80,8 @@ export function calcBollingerUpper(closes: number[], period = 20, stdMultiplier 
 export function calcTechnicalScore(
   prices: DailyPrice[],
   high52w: number | null,
-  low52w: number | null
+  low52w: number | null,
+  marketCapTier: 'large' | 'mid' | 'small' = 'small',
 ): TechnicalScoreResult {
   const empty: TechnicalScoreResult = {
     score: 0,
@@ -92,6 +94,7 @@ export function calcTechnicalScore(
     double_top: false,
     volume_surge: false,
     week52_low_near: false,
+    week52_high_near: false,
     ma_aligned: false,
     disparity_rebound: false,
     volume_breakout: false,
@@ -223,13 +226,43 @@ export function calcTechnicalScore(
     }
   }
 
-  // 52주 저점 근처 (±5%)
+  // 52주 위치 점수 (티어별 차등)
   let week52LowNear = false;
-  if (low52w && low52w > 0 && currentPrice > 0) {
-    const ratio = currentPrice / low52w;
-    if (ratio >= 0.95 && ratio <= 1.05) week52LowNear = true;
+  let week52HighNear = false;
+  if (high52w && low52w && high52w > low52w && currentPrice > 0) {
+    const range52 = high52w - low52w;
+    const position52 = (currentPrice - low52w) / range52; // 0=저점, 1=고점
+
+    if (marketCapTier === 'large') {
+      // 대형주: 52주 신고가 돌파가 강한 매수 시그널
+      if (position52 >= 0.95) { score += 8; week52HighNear = true; }
+      else if (position52 >= 0.85) score += 6;
+      else if (position52 >= 0.70) score += 4;
+      else if (position52 >= 0.50) score += 2;
+      else if (position52 <= 0.15) { score += 1; week52LowNear = true; }
+      // 대형주가 52주 저점이면 펀더멘털 악화 가능성 → 낮은 가점
+    } else if (marketCapTier === 'mid') {
+      // 중형주: 균형 잡힌 관점
+      if (position52 >= 0.95) { score += 5; week52HighNear = true; }
+      else if (position52 <= 0.15) { score += 5; week52LowNear = true; }
+      else if (position52 <= 0.30) score += 3;
+      else if (position52 >= 0.85) score += 3;
+    } else {
+      // 소형주: 기존 로직 유지 (바닥 반등 기대)
+      const ratioLow = currentPrice / low52w;
+      if (ratioLow >= 0.95 && ratioLow <= 1.05) {
+        week52LowNear = true;
+        score += 2;
+      }
+    }
+  } else if (low52w && low52w > 0 && currentPrice > 0) {
+    // high52w 없는 경우 기존 로직
+    const ratioLow = currentPrice / low52w;
+    if (ratioLow >= 0.95 && ratioLow <= 1.05) {
+      week52LowNear = true;
+      score += 2;
+    }
   }
-  if (week52LowNear) score += 2;
 
   // ── 단기 상승 임박 지표 ──
 
@@ -344,6 +377,7 @@ export function calcTechnicalScore(
     double_top: doubleTop,
     volume_surge: volumeSurge,
     week52_low_near: week52LowNear,
+    week52_high_near: week52HighNear ?? false,
     ma_aligned: maAligned,
     disparity_rebound: disparityRebound,
     volume_breakout: volumeBreakout,

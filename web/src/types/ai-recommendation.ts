@@ -11,15 +11,18 @@ export interface AiRecommendation {
   weight_trend: number; // weight_technical → weight_trend
   weight_valuation: number;
   weight_supply: number;
-  weight_risk: number; // 신규: 리스크 감산 가중치
+  weight_earnings_momentum: number; // 이익모멘텀 가중치
+  weight_risk: number; // 리스크 감산 가중치
+  market_cap_tier: 'large' | 'mid' | 'small'; // 시총 티어
 
   // 항목별 점수 (원점수)
   signal_score: number | null;
   trend_score: number | null; // technical_score → trend_score
   valuation_score: number | null;
   supply_score: number | null;
-  risk_score: number | null; // 신규: 리스크 점수
-  trend_days: number | null; // 신규: 추세 지속 일수
+  risk_score: number | null; // 리스크 점수
+  earnings_momentum_score: number | null; // 이익모멘텀 점수
+  trend_days: number | null; // 추세 지속 일수
 
   // 기술적 지표
   signal_count: number | null;
@@ -31,6 +34,7 @@ export interface AiRecommendation {
   double_top: boolean;
   volume_surge: boolean;
   week52_low_near: boolean;
+  week52_high_near: boolean;
   disparity_rebound: boolean;
   volume_breakout: boolean;
   consecutive_drop_rebound: boolean;
@@ -56,17 +60,19 @@ export interface AiRecommendationWeights {
   trend: number; // 0~100 (technical → trend 리네이밍)
   valuation: number; // 0~100
   supply: number; // 0~100
+  earnings_momentum: number; // 이익모멘텀 (대형주 핵심)
   risk: number; // 감산 가중치
 }
 
-// 애널리스트 관점 기본 가중치: 추세(40) > 수급(30) > 밸류(20) > 신호(10), 리스크 감산(15)
-export const DEFAULT_WEIGHTS: AiRecommendationWeights = {
-  signal: 10,
-  trend: 40,
-  valuation: 20,
-  supply: 30,
-  risk: 15,
+// 시총 티어별 가중치: 대형주는 수급+이익모멘텀 중심, 소형주는 추세+수급 중심
+export const WEIGHTS_BY_TIER: Record<'large' | 'mid' | 'small', AiRecommendationWeights> = {
+  large: { signal: 5, trend: 25, valuation: 15, supply: 25, earnings_momentum: 30, risk: 15 },
+  mid:   { signal: 8, trend: 32, valuation: 18, supply: 25, earnings_momentum: 17, risk: 15 },
+  small: { signal: 10, trend: 40, valuation: 20, supply: 30, earnings_momentum: 0, risk: 15 },
 };
+
+// 기본 가중치 (소형주 기준, 하위 호환)
+export const DEFAULT_WEIGHTS: AiRecommendationWeights = WEIGHTS_BY_TIER.small;
 
 export interface AiRecommendationResponse {
   recommendations: AiRecommendation[];

@@ -11,14 +11,14 @@
 const NAVER_API = 'https://m.stock.naver.com/api';
 
 export interface BulkIndicatorData {
-  per: number;
-  pbr: number;
-  eps: number;
-  bps: number;
-  roe: number;
-  high_52w: number;
-  low_52w: number;
-  dividend_yield: number;
+  per: number | null;
+  pbr: number | null;
+  eps: number | null;
+  bps: number | null;
+  roe: number | null;
+  high_52w: number | null;
+  low_52w: number | null;
+  dividend_yield: number | null;
   // Forward valuation (컨센서스)
   forward_per: number | null;
   forward_eps: number | null;
@@ -31,9 +31,10 @@ interface NaverIntegrationInfo {
   value: string;
 }
 
-function parseIndicatorValue(str: string | undefined): number {
-  if (!str) return 0;
-  return parseFloat(str.replace(/[,배원%조억백만]/g, '')) || 0;
+function parseIndicatorValue(str: string | undefined): number | null {
+  if (!str || str === '-' || str === 'N/A') return null;
+  const v = parseFloat(str.replace(/[,배원%조억백만]/g, ''));
+  return Number.isNaN(v) ? null : v;
 }
 
 async function fetchSingleIndicator(symbol: string): Promise<BulkIndicatorData | null> {
@@ -47,15 +48,14 @@ async function fetchSingleIndicator(symbol: string): Promise<BulkIndicatorData |
     const infos = data.totalInfos as NaverIntegrationInfo[] | undefined;
     if (!infos) return null;
 
-    const getValue = (code: string): number => {
+    const getValue = (code: string): number | null => {
       const info = infos.find((i) => i.code === code);
       return parseIndicatorValue(info?.value);
     };
     const getValueOrNull = (code: string): number | null => {
       const info = infos.find((i) => i.code === code);
       if (!info?.value) return null;
-      const v = parseIndicatorValue(info.value);
-      return v > 0 ? v : null;
+      return parseIndicatorValue(info.value);
     };
 
     // 컨센서스 데이터 (없을 수 있음)

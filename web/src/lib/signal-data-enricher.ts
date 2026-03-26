@@ -51,13 +51,13 @@ export async function enrichSignalStocks(
     }
 
     if (ind) {
-      // 0은 유효한 값이므로 null 체크만 (|| 대신 ??)
-      if (ind.per > 0) update.per = ind.per;
-      if (ind.pbr > 0) update.pbr = ind.pbr;
-      if (ind.roe !== 0) update.roe = ind.roe;
-      if (ind.high_52w > 0) update.high_52w = ind.high_52w;
-      if (ind.low_52w > 0) update.low_52w = ind.low_52w;
-      if (ind.dividend_yield > 0) update.dividend_yield = ind.dividend_yield;
+      // null이면 API에서 데이터 없음 → 기존 값 유지. 값이 있으면(음수 포함) 저장
+      if (ind.per !== null) update.per = ind.per;
+      if (ind.pbr !== null) update.pbr = ind.pbr;
+      if (ind.roe !== null) update.roe = ind.roe;
+      if (ind.high_52w !== null) update.high_52w = ind.high_52w;
+      if (ind.low_52w !== null) update.low_52w = ind.low_52w;
+      if (ind.dividend_yield !== null) update.dividend_yield = ind.dividend_yield;
       if (ind.forward_per !== null) update.forward_per = ind.forward_per;
       if (ind.target_price !== null) update.target_price = ind.target_price;
       if (ind.invest_opinion !== null) update.invest_opinion = ind.invest_opinion;

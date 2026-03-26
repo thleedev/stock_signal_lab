@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, MoreHorizontal, BarChart3 } from 'lucide-react';
+import { Search, RefreshCw, MoreHorizontal, BarChart3, SlidersHorizontal } from 'lucide-react';
 import { SnapshotTracker } from './SnapshotTracker';
 
 // ─── Props 타입 ──────────────────────────────────────────────────────────────
@@ -25,6 +25,8 @@ interface RecommendationFilterBarProps {
   refreshing: boolean;
   /** true이면 하단에 "순위 업데이트 중..." 배너 표시 */
   updating?: boolean;
+  /** 가중치 조절 버튼 클릭 핸들러 (없으면 버튼 숨김) */
+  onWeightClick?: () => void;
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -159,6 +161,7 @@ export function RecommendationFilterBar({
   onRefresh,
   refreshing,
   updating = false,
+  onWeightClick,
 }: RecommendationFilterBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -320,13 +323,26 @@ export function RecommendationFilterBar({
           )}
         </div>
 
+        {/* 가중치 조절 버튼 */}
+        {onWeightClick && (
+          <button
+            type="button"
+            aria-label="가중치 조절"
+            title="가중치 조절"
+            onClick={onWeightClick}
+            className={`ml-auto ${iconBtnCls}`}
+          >
+            <SlidersHorizontal size={15} />
+          </button>
+        )}
+
         {/* 순위 트래킹 버튼 */}
         <button
           type="button"
           aria-label="순위 트래킹"
           title="순위 트래킹"
           onClick={() => setTrackerOpen(true)}
-          className={`ml-auto ${iconBtnCls}`}
+          className={`${onWeightClick ? '' : 'ml-auto'} ${iconBtnCls}`}
         >
           <BarChart3 size={15} />
         </button>

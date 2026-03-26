@@ -3,8 +3,6 @@ import { createServiceClient } from '@/lib/supabase';
 import { generateRecommendations, getTodayKst } from '@/lib/ai-recommendation';
 import { generateShortTermRecommendations } from '@/lib/ai-recommendation/short-term-momentum';
 import {
-  AiRecommendationWeights,
-  DEFAULT_WEIGHTS,
   DEFAULT_SHORT_TERM_WEIGHTS,
   ShortTermWeights,
   ModelType,
@@ -94,33 +92,10 @@ export async function POST(request: NextRequest) {
     }
 
     // --- 기존 standard 모델 ---
-    const rawWeights: AiRecommendationWeights = {
-      signal: Number(body.weights?.signal ?? DEFAULT_WEIGHTS.signal),
-      trend: Number(body.weights?.trend ?? DEFAULT_WEIGHTS.trend),
-      valuation: Number(body.weights?.valuation ?? DEFAULT_WEIGHTS.valuation),
-      supply: Number(body.weights?.supply ?? DEFAULT_WEIGHTS.supply),
-      risk: Number(body.weights?.risk ?? DEFAULT_WEIGHTS.risk),
-    };
-    // 핵심 4개 가중치 합계 검증 (signal + trend + valuation + supply = 100)
-    const weightSum =
-      rawWeights.signal + rawWeights.trend + rawWeights.valuation + rawWeights.supply;
-    if (Math.abs(weightSum - 100) > 0.01) {
-      return NextResponse.json(
-        { error: `가중치 합계(signal+trend+valuation+supply)가 100이어야 합니다. 현재: ${weightSum}` },
-        { status: 400 },
-      );
-    }
-    // risk 가중치는 별도 0~100 범위 검증
-    if (rawWeights.risk < 0 || rawWeights.risk > 100) {
-      return NextResponse.json(
-        { error: `risk 가중치는 0~100 범위여야 합니다. 현재: ${rawWeights.risk}` },
-        { status: 400 },
-      );
-    }
-
+    // 가중치는 시총 티어별 자동 결정 (WEIGHTS_BY_TIER)
     const { recommendations, total_candidates } = await generateRecommendations(
       supabase,
-      rawWeights,
+      undefined,
       limit,
     );
 

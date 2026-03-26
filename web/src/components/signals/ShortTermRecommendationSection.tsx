@@ -32,6 +32,14 @@ interface GapInfo {
 
 type SortMode = 'score' | 'name' | 'updated' | 'gap';
 
+interface ShortTermDisplayScoresLocal {
+  momentum: number;
+  supply: number;
+  catalyst: number;
+  valuation: number;
+  risk: number;
+}
+
 interface MenuState {
   isOpen: boolean;
   symbol: string;
@@ -39,6 +47,8 @@ interface MenuState {
   currentPrice: number | null;
   isFavorite: boolean;
   position: { x: number; y: number };
+  initialData?: StockRankItem;
+  shortTermScores?: ShortTermDisplayScoresLocal;
 }
 
 interface Weights {
@@ -804,9 +814,9 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
     doFetch(dateMode === 'today' ? todayStr : dateMode, mkt === 'ETF' ? 'all' : mkt);
   };
 
-  const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
+  const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null, itemData?: StockRankItem, stScores?: ShortTermDisplayScoresLocal) => {
     e.stopPropagation();
-    setMenu({ isOpen: true, symbol, name, currentPrice, isFavorite: favs.has(symbol), position: { x: e.clientX, y: e.clientY } });
+    setMenu({ isOpen: true, symbol, name, currentPrice, isFavorite: favs.has(symbol), position: { x: e.clientX, y: e.clientY }, initialData: itemData, shortTermScores: stScores });
   };
   const closeMenu = () => setMenu((m) => ({ ...m, isOpen: false }));
   const handleToggleFavorite = useCallback(async () => {
@@ -899,46 +909,8 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
         adjCumReturn3d = close3dAgo > 0 ? ((cp - close3dAgo) / close3dAgo) * 100 : adjCumReturn3d;
       }
 
-      // AI 종목: 서버 기술점수 유지하되, 실시간 등락률로 모멘텀 보정
-      if (item.ai) {
-        let momBonus = 0;
-        if (pct !== null && pct !== undefined) {
-          if (pct >= 5) momBonus = 15;          // 급등: 강한 모멘텀
-          else if (pct >= 3) momBonus = 10;     // 상승 초입
-          else if (pct >= 1) momBonus = 5;      // 완만 상승
-          else if (pct <= -5) momBonus = -10;   // 급락
-          else if (pct <= -3) momBonus = -5;    // 조정
-        }
-        const adjMomentum = Math.max(0, Math.min(100, item.score_momentum + momBonus));
-        const adjTotal = item.score_valuation + item.score_supply + item.score_signal + adjMomentum;
-        return { ...item, current_price: cp, price_change_pct: pct, cum_return_3d: adjCumReturn3d, score_momentum: adjMomentum, score_total: adjTotal };
-      }
-
-      let score_momentum = 0;
-      if (cp && item.high_52w && item.low_52w && item.high_52w > item.low_52w) {
-        const range = item.high_52w - item.low_52w;
-        const position = (cp - item.low_52w) / range;
-        if (position <= 0.15) score_momentum += 40;
-        else if (position <= 0.30) score_momentum += 35;
-        else if (position <= 0.50) score_momentum += 25;
-        else if (position <= 0.70) score_momentum += 15;
-        else if (position <= 0.85) score_momentum += 8;
-        else score_momentum += 3;
-      }
-      if (pct !== null && pct !== undefined) {
-        if (pct >= 1 && pct < 3) score_momentum += 30;
-        else if (pct >= 3 && pct < 5) score_momentum += 40;
-        else if (pct >= 5 && pct < 10) score_momentum += 25;
-        else if (pct >= 10 && pct < 15) score_momentum += 10;
-        else if (pct >= 15 && pct < 25) score_momentum -= 5;
-        else if (pct >= 25) score_momentum -= 20;
-        else if (pct >= 0 && pct < 1) score_momentum += 15;
-        else if (pct < 0 && pct > -3) score_momentum += 5;
-      }
-      score_momentum = Math.max(0, Math.min(100, score_momentum));
-
-      const score_total = item.score_valuation + item.score_supply + item.score_signal + score_momentum;
-      return { ...item, current_price: cp, price_change_pct: pct, cum_return_3d: adjCumReturn3d, score_momentum, score_total };
+      // 실시간 가격만 반영, 점수는 서버 calcScore 결과 유지
+      return { ...item, current_price: cp, price_change_pct: pct, cum_return_3d: adjCumReturn3d };
     });
   }, [rawItems, livePrices]);
 
@@ -1008,19 +980,22 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
   const filteredByNoise = useMemo(() => {
     if (!noiseFilter) return filteredBySearch;
     return filteredBySearch.filter((item) => {
-      const tv = item.daily_trading_value ?? item.trading_value ?? 0;
-      const avgTv = item.avg_trading_value_20d ?? 0;
+      const tvRaw = item.daily_trading_value ?? item.trading_value ?? null;
+      const avgTvRaw = item.avg_trading_value_20d ?? null;
       const tr = item.turnover_rate ?? 0;
       const managed = item.is_managed ?? false;
       const cbw = item.has_recent_cbw ?? false;
-      const shareholder = item.major_shareholder_pct ?? 100;
+      const shRaw = item.major_shareholder_pct ?? null;
+      const mc = item.market_cap ?? 0;
+      const isLargeCap = mc >= 1_000_000_000_000; // 시총 1조원 이상 대형주 (market_cap 단위: 원)
 
-      if (tv < 10_000_000_000) return false;
-      if (avgTv > 0 && avgTv < 5_000_000_000) return false;
-      if (tr > 0 && tr < 1) return false;
+      // 데이터가 있을 때만 필터 적용 (null이면 미수집이므로 통과)
+      if (tvRaw != null && tvRaw < 10_000_000_000) return false;
+      if (avgTvRaw != null && avgTvRaw > 0 && avgTvRaw < 5_000_000_000) return false;
+      if (!isLargeCap && tr > 0 && tr < 1) return false; // 대형주는 회전율 면제
       if (managed) return false;
       if (cbw) return false;
-      if (shareholder < 20) return false;
+      if (shRaw != null && shRaw > 0 && shRaw < 20) return false; // 0은 미수집
       return true;
     });
   }, [filteredBySearch, noiseFilter]);
@@ -1119,7 +1094,10 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
               weighted={pc?.weighted ?? 0}
               favs={favs}
               gapInfo={isEtfMode ? null : getGapInfo(item, signalMap, sourceFilter, livePrices)}
-              onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
+              onClick={(e) => {
+                const stTotal = Math.round(pc?.weighted ?? item.score_total);
+                openMenu(e, item.symbol, item.name, item.current_price, { ...item, score_total: stTotal }, pc?.scores);
+              }}
               characters={isEtfMode ? [] : (pc?.characters ?? [])}
               stScores={pc?.scores ?? { momentum: 0, supply: 0, catalyst: 0, valuation: 0, risk: 0 }}
               badges={isEtfMode ? [] : (pc?.badges ?? [])}
@@ -1147,6 +1125,9 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
         groups={groups}
         symbolGroupIds={symGroups[menu.symbol] ?? []}
         onGroupToggle={handleGroupToggle}
+        initialData={menu.initialData}
+        scoreMode="short_term"
+        shortTermScores={menu.shortTermScores}
       />
     </div>
   );

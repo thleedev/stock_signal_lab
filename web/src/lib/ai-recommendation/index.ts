@@ -1,10 +1,12 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { AiRecommendation, AiRecommendationWeights, DEFAULT_WEIGHTS } from '@/types/ai-recommendation';
+import { AiRecommendation, AiRecommendationWeights, WEIGHTS_BY_TIER } from '@/types/ai-recommendation';
 import { calcSignalScore } from './signal-score';
 import { calcTechnicalScore, calcSMA, calcBollingerUpper, DailyPrice } from './technical-score';
 import { calcRiskScore, RiskScoreInput } from './risk-score';
 import { calcValuationScore, ForwardData } from './valuation-score';
 import { calcSupplyScore } from './supply-score';
+import { calcEarningsMomentumScore, EarningsMomentumInput } from './earnings-momentum-score';
+import { getMarketCapTier } from './market-cap-tier';
 import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators, BulkIndicatorData } from '@/lib/krx-api';
 
@@ -43,7 +45,7 @@ export async function fetchTodayBuySymbols(
 // 메인 계산 함수
 export async function generateRecommendations(
   supabase: SupabaseClient,
-  weights: AiRecommendationWeights = DEFAULT_WEIGHTS,
+  _weights?: AiRecommendationWeights, // 하위 호환용 (무시됨, 티어별 자동 결정)
   limit = 30
 ): Promise<{ recommendations: AiRecommendation[]; total_candidates: number }> {
   const todayKst = getTodayKst();
@@ -235,12 +237,16 @@ export async function generateRecommendations(
     const high52 = cache?.high_52w ?? liveInd?.high_52w ?? null;
     const low52 = cache?.low_52w ?? liveInd?.low_52w ?? null;
 
+    // 시총 티어 결정 → 가중치 자동 선택
+    const tier = getMarketCapTier(cache?.market_cap ?? null);
+    const weights = WEIGHTS_BY_TIER[tier];
+
     const todaySignals = todaySignalMap.get(symbol) ?? [];
     const recentCount = recentCountMap.get(symbol) ?? 0;
     const prices = priceMap.get(symbol) ?? [];
 
     const signalResult = calcSignalScore(todaySignals, recentCount, cache?.current_price ?? null);
-    const technicalResult = calcTechnicalScore(prices, high52, low52);
+    const technicalResult = calcTechnicalScore(prices, high52, low52, tier);
 
     // 투자자 데이터: 캐시 우선, 없으면 live (5일/streak 포함)
     const cachedInvestorFresh =
@@ -303,7 +309,7 @@ export async function generateRecommendations(
           }
         : null;
 
-    const valuationResult = calcValuationScore(perVal, pbrVal, roeVal, divVal, forwardData);
+    const valuationResult = calcValuationScore(perVal, pbrVal, roeVal, divVal, forwardData, tier);
 
     // 리스크 입력 준비
     const closes = prices.map(p => p.close);
@@ -334,12 +340,26 @@ export async function generateRecommendations(
     };
     const riskResult = calcRiskScore(riskInput);
 
-    // 가중치 적용 총점 (추세 정규화 /58, 리스크 감산 적용)
+    // 이익모멘텀 점수 (대형주/중형주에서 핵심)
+    const earningsMomentumInput: EarningsMomentumInput = {
+      forwardPer: fwdPer,
+      trailingPer: perVal,
+      targetPrice: fwdTarget,
+      currentPrice: cache?.current_price ?? null,
+      investOpinion: fwdOpinion,
+      roe: roeVal,
+      revenueGrowthYoy: null, // 오케스트레이터에서 아직 전달하지 않음
+      operatingProfitGrowthYoy: null,
+    };
+    const earningsMomentumResult = calcEarningsMomentumScore(earningsMomentumInput);
+
+    // 티어별 가중치 적용 총점
     const base =
       (signalResult.score / 30) * weights.signal +
       (technicalResult.score / 58) * weights.trend +
       (valuationResult.score / 25) * weights.valuation +
-      ((supplyResult.score + 10) / 55) * weights.supply;
+      ((supplyResult.score + 10) / 55) * weights.supply +
+      (earningsMomentumResult.score / 100) * weights.earnings_momentum;
 
     const total_score = Math.max(0, Math.min(base - (riskResult.score / 100) * weights.risk, 100));
 
@@ -352,6 +372,8 @@ export async function generateRecommendations(
       valuation_score: valuationResult.score,
       supply_score: supplyResult.score,
       risk_score: riskResult.score,
+      earnings_momentum_score: earningsMomentumResult.score,
+      market_cap_tier: tier,
       trend_days: technicalResult.trend_days,
       signal_count: signalResult.signal_count,
       rsi: technicalResult.rsi,
@@ -362,6 +384,7 @@ export async function generateRecommendations(
       double_top: technicalResult.double_top,
       volume_surge: technicalResult.volume_surge,
       week52_low_near: technicalResult.week52_low_near,
+      week52_high_near: technicalResult.week52_high_near,
       disparity_rebound: technicalResult.disparity_rebound,
       volume_breakout: technicalResult.volume_breakout,
       consecutive_drop_rebound: technicalResult.consecutive_drop_rebound,
@@ -378,19 +401,23 @@ export async function generateRecommendations(
   // 총점 내림차순 정렬 후 상위 limit개
   const sorted = scored.sort((a, b) => b.total_score - a.total_score).slice(0, limit);
 
-  const recommendations: AiRecommendation[] = sorted.map((item, idx) => ({
-    ...item,
-    id: crypto.randomUUID(),
-    date: todayKst,
-    rank: idx + 1,
-    weight_signal: weights.signal,
-    weight_trend: weights.trend,
-    weight_valuation: weights.valuation,
-    weight_supply: weights.supply,
-    weight_risk: weights.risk,
-    total_candidates,
-    created_at: new Date().toISOString(),
-  }));
+  const recommendations: AiRecommendation[] = sorted.map((item, idx) => {
+    const itemWeights = WEIGHTS_BY_TIER[item.market_cap_tier];
+    return {
+      ...item,
+      id: crypto.randomUUID(),
+      date: todayKst,
+      rank: idx + 1,
+      weight_signal: itemWeights.signal,
+      weight_trend: itemWeights.trend,
+      weight_valuation: itemWeights.valuation,
+      weight_supply: itemWeights.supply,
+      weight_earnings_momentum: itemWeights.earnings_momentum,
+      weight_risk: itemWeights.risk,
+      total_candidates,
+      created_at: new Date().toISOString(),
+    };
+  });
 
   return { recommendations, total_candidates };
 }

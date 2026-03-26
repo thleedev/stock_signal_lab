@@ -21,7 +21,8 @@ export function DartInfoSection({ data }: Props) {
   if (data.has_treasury_buyback) flags.push({ label: "자사주 매입", type: "success" });
 
   const hasNumericData =
-    data.major_shareholder_pct != null || data.major_shareholder_delta != null ||
+    (data.major_shareholder_pct != null && data.major_shareholder_pct > 0) ||
+    data.major_shareholder_delta != null ||
     data.revenue_growth_yoy != null || data.operating_profit_growth_yoy != null;
 
   if (flags.length === 0 && !hasNumericData) return null;
@@ -46,7 +47,7 @@ export function DartInfoSection({ data }: Props) {
       )}
       {hasNumericData && (
         <div className="grid grid-cols-2 gap-2 text-sm">
-          {data.major_shareholder_pct != null && (
+          {data.major_shareholder_pct != null && data.major_shareholder_pct > 0 && (
             <div>
               <span className="text-[var(--muted)]">대주주 지분 </span>
               <span className="font-medium tabular-nums">{data.major_shareholder_pct.toFixed(1)}%</span>
