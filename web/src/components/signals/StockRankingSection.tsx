@@ -21,6 +21,8 @@ interface MenuState {
   currentPrice: number | null;
   isFavorite: boolean;
   position: { x: number; y: number };
+  /** 즉시 렌더링을 위한 초기 종목 데이터 */
+  initialData?: StockRankItem;
 }
 
 interface Weights {
@@ -308,7 +310,7 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
   const [sort, setSort] = useState<SortMode>('score');
   const [menu, setMenu] = useState<MenuState>({
     isOpen: false, symbol: '', name: '', currentPrice: null, isFavorite: false,
-    position: { x: 0, y: 0 },
+    position: { x: 0, y: 0 }, initialData: undefined,
   });
   const LIMIT = 100;
 
@@ -336,9 +338,18 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
   const handleMarket = (mkt: string) => { setMarket(mkt); setPage(1); doFetch(selectedDate, q, mkt, 1); };
   const handlePage = (pg: number) => { setPage(pg); doFetch(selectedDate, q, market, pg); };
 
-  const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
+  const openMenu = (e: React.MouseEvent, item: StockRankItem) => {
     e.stopPropagation();
-    setMenu({ isOpen: true, symbol, name, currentPrice, isFavorite: favs.has(symbol), position: { x: e.clientX, y: e.clientY } });
+    setMenu({
+      isOpen: true,
+      symbol: item.symbol,
+      name: item.name,
+      currentPrice: item.current_price,
+      isFavorite: favs.has(item.symbol),
+      position: { x: e.clientX, y: e.clientY },
+      // item 전체를 initialData로 저장하여 패널 즉시 렌더링에 활용
+      initialData: item,
+    });
   };
   const closeMenu = () => setMenu((m) => ({ ...m, isOpen: false }));
   const handleToggleFavorite = async () => {
@@ -486,7 +497,7 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
               rank={offset + idx + 1}
               weighted={weighted}
               favs={favs}
-              onClick={(e) => openMenu(e, item.symbol, item.name, item.current_price)}
+              onClick={(e) => openMenu(e, item)}
             />
           );
         })}
@@ -516,6 +527,7 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
         position={menu.position}
         isFavorite={menu.isFavorite}
         onToggleFavorite={handleToggleFavorite}
+        initialData={menu.initialData}
       />
     </div>
   );

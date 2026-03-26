@@ -6,6 +6,7 @@ import { Star, StarOff, Briefcase, ExternalLink, X, Check } from "lucide-react";
 import type { WatchlistGroup } from "@/types/stock";
 import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
 import { useStockModal } from "@/contexts/stock-modal-context";
+import type { StockRankItem } from "@/app/api/v1/stock-ranking/route";
 
 interface Portfolio {
   id: number;
@@ -26,6 +27,8 @@ interface StockActionMenuProps {
   groups?: WatchlistGroup[];
   symbolGroupIds?: string[];
   onGroupToggle?: (group: WatchlistGroup) => void;
+  /** 즉시 렌더링을 위한 초기 종목 데이터 (선택적) */
+  initialData?: StockRankItem;
 }
 
 export default function StockActionMenu({
@@ -41,6 +44,7 @@ export default function StockActionMenu({
   groups,
   symbolGroupIds,
   onGroupToggle,
+  initialData,
 }: StockActionMenuProps) {
   const router = useRouter();
   const { openStockModal } = useStockModal();
@@ -133,8 +137,9 @@ export default function StockActionMenu({
 
   const handleViewDetail = useCallback(() => {
     onClose();
-    openStockModal(symbol, name);
-  }, [symbol, name, onClose, openStockModal]);
+    // initialData가 있으면 함께 전달하여 패널이 즉시 렌더링되도록 함
+    openStockModal(symbol, name, initialData);
+  }, [symbol, name, initialData, onClose, openStockModal]);
 
   if (!isOpen) return null;
 
