@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, MoreHorizontal } from 'lucide-react';
+import { Search, RefreshCw, MoreHorizontal, BarChart3 } from 'lucide-react';
+import { SnapshotTracker } from './SnapshotTracker';
 
 // ─── Props 타입 ──────────────────────────────────────────────────────────────
 
@@ -159,6 +160,7 @@ export function RecommendationFilterBar({
   updating = false,
 }: RecommendationFilterBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [trackerOpen, setTrackerOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
   // ⋯ 팝업 외부 클릭 및 ESC 키로 닫기
@@ -317,13 +319,24 @@ export function RecommendationFilterBar({
           )}
         </div>
 
-        {/* 새로고침 버튼 — 오른쪽 끝 */}
+        {/* 순위 트래킹 버튼 */}
+        <button
+          type="button"
+          aria-label="순위 트래킹"
+          title="순위 트래킹"
+          onClick={() => setTrackerOpen(true)}
+          className={`ml-auto ${iconBtnCls}`}
+        >
+          <BarChart3 size={15} />
+        </button>
+
+        {/* 새로고침 버튼 */}
         <button
           type="button"
           aria-label="새로고침"
           onClick={onRefresh}
           disabled={refreshing}
-          className={`ml-auto ${iconBtnCls} disabled:opacity-50`}
+          className={`${iconBtnCls} disabled:opacity-50`}
         >
           <RefreshCw
             size={15}
@@ -342,6 +355,11 @@ export function RecommendationFilterBar({
           />
           순위 업데이트 중...
         </div>
+      )}
+
+      {/* ── 순위 트래킹 모달 ─────────────────────────────────────── */}
+      {trackerOpen && (
+        <SnapshotTracker onClose={() => setTrackerOpen(false)} />
       )}
     </div>
   );
