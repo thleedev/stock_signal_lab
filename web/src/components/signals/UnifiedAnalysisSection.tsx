@@ -5,7 +5,8 @@ import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { GradeTooltip } from '@/components/common/grade-tooltip';
 import { getLastNWeekdays } from '@/lib/date-utils';
-import { FilterBar } from '@/components/common/filter-bar';
+import { RecommendationFilterBar } from './RecommendationFilterBar';
+import { useSnapshotStatus } from '@/hooks/use-snapshot-status';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
 import { useStockRanking } from '@/hooks/use-stock-ranking';
 import type { WatchlistGroup } from '@/types/stock';
@@ -46,6 +47,7 @@ interface Weights {
   trend: number;
   valuation: number;
   supply: number;
+  risk: number;
 }
 
 // ── 상수 ──────────────────────────────────────────────────────────────────────
@@ -123,9 +125,11 @@ function normScores(item: StockRankItem) {
 
 // ── 가중치 합산 점수 ──────────────────────────────────────────────────────────
 function computeWeighted(item: StockRankItem, w: Weights): number {
-  const total = w.signal + w.trend + w.valuation + w.supply || 1;
+  const total = w.signal + w.trend + w.valuation + w.supply + w.risk || 1;
   const scores = normScores(item);
-  return (scores.sig * w.signal + scores.tech * w.trend + scores.val * w.valuation + scores.sup * w.supply) / total;
+  // risk 점수: score_risk가 없으면 50(중립값) 사용
+  const riskScore = Math.min(100, Math.max(0, ((item as unknown as Record<string, unknown>).score_risk as number) ?? 50));
+  return (scores.sig * w.signal + scores.tech * w.trend + scores.val * w.valuation + scores.sup * w.supply + riskScore * w.risk) / total;
 }
 
 function getInvestmentCharacters(item: StockRankItem, weights: Weights): InvestmentCharacter[] {
@@ -496,6 +500,7 @@ function WeightPopup({
     { key: 'trend' as const, label: '추세/모멘텀' },
     { key: 'valuation' as const, label: '밸류' },
     { key: 'supply' as const, label: '수급' },
+    { key: 'risk' as const, label: '리스크' },
   ];
 
   return (
@@ -526,6 +531,7 @@ function WeightPopup({
 export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: UnifiedAnalysisProps) {
   // 마운트 시마다 날짜 재계산 (모듈 레벨 const는 SPA 내비게이션 시 갱신 안 됨)
   const LAST7 = useMemo(() => getLastNWeekdays(7), []);
+  const todayStr = useMemo(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), []);
   const [selectedDate, setSelectedDate] = useState<string>(() => getLastNWeekdays(7)[0]);
   const { data, loading, doFetch } = useStockRanking();
   const [q, setQ] = useState('');
@@ -533,11 +539,15 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [visibleCount, setVisibleCount] = useState(50);
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
   const [showWeights, setShowWeights] = useState(false);
-  const [weights, setWeights] = useState<Weights>({ signal: 10, trend: 40, valuation: 10, supply: 40 });
+  const [weights, setWeights] = useState<Weights>({ signal: 10, trend: 35, valuation: 20, supply: 25, risk: 10 });
   const [sort, setSort] = useState<SortMode>('score');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [charFilter, setCharFilter] = useState<string>('all');
   const [gapAsc, setGapAsc] = useState(true);
+  const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>('today');
+  const [noiseFilter, setNoiseFilter] = useState(false);
+  const snapshotStatus = useSnapshotStatus();
   const portSet = useMemo(() => new Set(watchlistSymbols), [watchlistSymbols]);
   const [groups] = useState<WatchlistGroup[]>(initialGroups);
   const [symGroups, setSymGroups] = useState<Record<string, string[]>>(initialSymbolGroups);
@@ -570,16 +580,33 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   }, [liveLoading, refreshLivePrices]);
 
   // ── 데이터 조회 (모듈 레벨 캐시로 탭 전환 시 즉시 반환) ───────────────────────
-  useEffect(() => { doFetch(LAST7[0], 'all'); }, [doFetch]);
+  useEffect(() => { doFetch(todayStr, 'all'); }, [doFetch, todayStr]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
   const resetScroll = () => setVisibleCount(PAGE_SIZE);
+  const handleDateChange = (mode: 'today' | 'signal_all' | 'all') => {
+    setDateMode(mode);
+    resetScroll(); setQ(''); setMarket('all');
+    const dateParam = mode === 'today'
+      ? todayStr
+      : mode;
+    doFetch(dateParam, 'all');
+  };
   const handleDate = (date: string) => {
     setSelectedDate(date); resetScroll(); setQ(''); setMarket('all');
     doFetch(date, 'all');
   };
   const handleSearch = (v: string) => { setQ(v); resetScroll(); };
   const handleMarket = (mkt: string) => { setMarket(mkt); resetScroll(); doFetch(selectedDate, mkt); };
+  const handleSortChange = (by: SortMode) => {
+    if (by === sort) {
+      // 같은 정렬 기준 클릭 시 방향 토글
+      setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSort(by);
+      setSortDir('desc');
+    }
+  };
 
   const openMenu = (e: React.MouseEvent, symbol: string, name: string, currentPrice: number | null) => {
     e.stopPropagation();
@@ -718,21 +745,42 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   }, [liveItems, weights]);
 
   // ── 정렬 ──────────────────────────────────────────────────────────────────────
-  const sortedItems = useMemo(() => [...liveItems].sort((a, b) => {
-    if (sort === 'gap') {
-      const ga = getGapInfo(a, signalMap, sourceFilter, livePrices)?.gap ?? (gapAsc ? Infinity : -Infinity);
-      const gb = getGapInfo(b, signalMap, sourceFilter, livePrices)?.gap ?? (gapAsc ? Infinity : -Infinity);
-      return gapAsc ? ga - gb : gb - ga;
+  const sortedItems = useMemo(() => {
+    const filtered = [...liveItems];
+    switch (sort) {
+      case 'gap': {
+        filtered.sort((a, b) => {
+          const ga = getGapInfo(a, signalMap, sourceFilter, livePrices)?.gap ?? (sortDir === 'asc' ? Infinity : -Infinity);
+          const gb = getGapInfo(b, signalMap, sourceFilter, livePrices)?.gap ?? (sortDir === 'asc' ? Infinity : -Infinity);
+          return sortDir === 'asc' ? ga - gb : gb - ga;
+        });
+        break;
+      }
+      case 'name':
+        filtered.sort((a, b) => {
+          const cmp = (a.name ?? '').localeCompare(b.name ?? '', 'ko');
+          return sortDir === 'desc' ? -cmp : cmp;
+        });
+        break;
+      case 'updated':
+        filtered.sort((a, b) => {
+          const dateA = (a as unknown as Record<string, unknown>).signal_date as string || a.latest_signal_date || '';
+          const dateB = (b as unknown as Record<string, unknown>).signal_date as string || b.latest_signal_date || '';
+          return sortDir === 'desc'
+            ? dateB.localeCompare(dateA)
+            : dateA.localeCompare(dateB);
+        });
+        break;
+      default:
+        // score — 캐시된 점수 사용
+        filtered.sort((a, b) => {
+          const diff = (weightedMap.get(b.symbol) ?? 0) - (weightedMap.get(a.symbol) ?? 0);
+          return sortDir === 'desc' ? diff : -diff;
+        });
+        break;
     }
-    if (sort === 'name') return (a.name ?? '').localeCompare(b.name ?? '', 'ko');
-    if (sort === 'updated') {
-      const da = a.latest_signal_date ?? '';
-      const db = b.latest_signal_date ?? '';
-      if (da !== db) return db.localeCompare(da);
-    }
-    // score (default + fallback for updated) — 캐시된 점수 사용
-    return (weightedMap.get(b.symbol) ?? 0) - (weightedMap.get(a.symbol) ?? 0);
-  }), [liveItems, sort, weightedMap, sourceFilter, signalMap, livePrices, gapAsc]);
+    return filtered;
+  }, [liveItems, sort, sortDir, weightedMap, sourceFilter, signalMap, livePrices]);
 
   // ── 투자성격 필터 ────────────────────────────────────────────────────────────
   const filteredByChar = useMemo(() => {
@@ -752,9 +800,31 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     );
   }, [filteredByChar, q]);
 
+  // ── 노이즈 필터 (거래대금·회전율·관리종목 등 저품질 종목 제거) ──────────────
+  const filteredByNoise = useMemo(() => {
+    if (!noiseFilter) return filteredBySearch;
+    return filteredBySearch.filter((item) => {
+      const r = item as unknown as Record<string, unknown>;
+      const tv = (r.daily_trading_value as number) ?? (r.trading_value as number) ?? 0;
+      const avgTv = (r.avg_trading_value_20d as number) ?? 0;
+      const tr = (r.turnover_rate as number) ?? 0;
+      const managed = (r.is_managed as boolean) ?? false;
+      const cbw = (r.has_recent_cbw as boolean) ?? false;
+      const shareholder = (r.major_shareholder_pct as number) ?? 100;
+
+      if (tv < 10_000_000_000) return false;       // 거래대금 100억 미만
+      if (avgTv > 0 && avgTv < 5_000_000_000) return false;  // 20일 평균 50억 미만
+      if (tr > 0 && tr < 1) return false;           // 회전율 1% 미만
+      if (managed) return false;
+      if (cbw) return false;
+      if (shareholder < 20) return false;
+      return true;
+    });
+  }, [filteredBySearch, noiseFilter]);
+
   const total = data?.total ?? 0;
-  const displayTotal = filteredBySearch.length;
-  const displayItems = filteredBySearch.slice(0, visibleCount);
+  const displayTotal = filteredByNoise.length;
+  const displayItems = filteredByNoise.slice(0, visibleCount);
   const hasMore = visibleCount < displayTotal;
   const aiCount = rawItems.filter((i) => i.ai).length;
 
@@ -778,23 +848,24 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
     <div className="space-y-3">
       {/* ── 필터 바 ── */}
       <div className="relative">
-        <FilterBar
-          date={{ dates: LAST7, selected: selectedDate, onChange: handleDate, extraAll: { value: 'signal_all', label: '신호전체' }, allLabel: '종목전체', label: '날짜' }}
-          source={{ options: SOURCE_OPTIONS, selected: sourceFilter, onChange: (s) => setSourceFilter(s as SourceFilter), label: '소스' }}
-          character={{ options: CHARACTER_FILTER_OPTIONS, selected: charFilter, onChange: (c) => { setCharFilter(c); resetScroll(); }, label: '성격' }}
-          market={{ selected: market, onChange: handleMarket, label: '시장' }}
-          search={{ value: q, onChange: handleSearch, placeholder: '종목명 / 코드' }}
-          sort={{
-            options: SORT_OPTIONS_WITH_GAP,
-            selected: sort,
-            onChange: (s) => setSort(s as SortMode),
-            gapAsc,
-            onGapToggle: () => setGapAsc((v) => !v),
-            label: '정렬',
-          }}
-          onWeightClick={() => setShowWeights((v) => !v)}
-          onRefresh={refreshPrices}
-          refreshing={priceLoading || liveLoading}
+        <RecommendationFilterBar
+          searchValue={q}
+          onSearchChange={handleSearch}
+          dateMode={dateMode}
+          onDateChange={handleDateChange}
+          market={market as 'all' | 'KOSPI' | 'KOSDAQ'}
+          onMarketChange={(m) => { setMarket(m); resetScroll(); doFetch(dateMode === 'today' ? todayStr : dateMode, m); }}
+          sortBy={sort}
+          sortDir={sortDir}
+          onSortChange={handleSortChange}
+          characterOptions={CHARACTER_DEFS}
+          selectedCharacter={charFilter}
+          onCharacterChange={(c) => { setCharFilter(c); resetScroll(); }}
+          noiseFilter={noiseFilter}
+          onNoiseFilterChange={setNoiseFilter}
+          onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market)}
+          refreshing={loading}
+          updating={snapshotStatus.updating}
         />
         {showWeights && (
           <WeightPopup
@@ -826,7 +897,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       )}
       {!loading && displayItems.length === 0 && (
         <div className="py-16 text-center text-[var(--muted)] text-sm">
-          {selectedDate === 'all' || selectedDate === 'signal_all' || selectedDate === 'week' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
+          {dateMode === 'all' || dateMode === 'signal_all' ? '검색 결과가 없습니다' : '해당 날짜에 BUY 신호가 없습니다'}
         </div>
       )}
 
