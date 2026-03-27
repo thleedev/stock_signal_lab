@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, RefreshCw, MoreHorizontal, BarChart3, SlidersHorizontal } from 'lucide-react';
 import { SnapshotTracker } from './SnapshotTracker';
+import type { ScoreMode } from './SnapshotTracker';
 
 // ─── Props 타입 ──────────────────────────────────────────────────────────────
 
@@ -27,6 +28,10 @@ interface RecommendationFilterBarProps {
   updating?: boolean;
   /** 가중치 조절 버튼 클릭 핸들러 (없으면 버튼 숨김) */
   onWeightClick?: () => void;
+  /** 순위 트래킹 점수 모드 (기본: standard) */
+  scoreMode?: ScoreMode;
+  /** 부모의 실시간 가격 데이터 (순위 트래킹에서 현재가로 사용) */
+  livePrices?: Record<string, { current_price: number | null }>;
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -162,6 +167,8 @@ export function RecommendationFilterBar({
   refreshing,
   updating = false,
   onWeightClick,
+  scoreMode = 'standard',
+  livePrices,
 }: RecommendationFilterBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -376,7 +383,7 @@ export function RecommendationFilterBar({
 
       {/* ── 순위 트래킹 모달 ─────────────────────────────────────── */}
       {trackerOpen && (
-        <SnapshotTracker onClose={() => setTrackerOpen(false)} />
+        <SnapshotTracker onClose={() => setTrackerOpen(false)} scoreMode={scoreMode} livePrices={livePrices} />
       )}
     </div>
   );

@@ -873,6 +873,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
           refreshing={loading}
           updating={snapshotStatus.updating}
           onWeightClick={() => setShowWeights(v => !v)}
+          livePrices={livePrices}
         />
         {showWeights && !isEtfMode && (
           <WeightPopup

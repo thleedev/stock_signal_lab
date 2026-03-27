@@ -1160,6 +1160,13 @@ export async function GET(request: NextRequest) {
         item.cum_return_3d = threeDaysAgo && threeDaysAgo.close > 0
           ? Math.round(((today.close - threeDaysAgo.close) / threeDaysAgo.close) * 10000) / 100
           : null;
+
+        // current_price를 daily_prices 기준으로 동기화
+        // (stock_cache.current_price가 stale할 수 있으므로 daily_prices 종가로 보정)
+        item.current_price = today.close;
+        if (yesterday) {
+          item.price_change_pct = Math.round(((today.close - yesterday.close) / yesterday.close) * 10000) / 100;
+        }
       }
 
       // ── 장중 daily_prices live 보강 (오늘 데이터 없는 종목) ──

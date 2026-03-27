@@ -180,20 +180,21 @@ function computeShortTermScores(item: StockRankItem): ShortTermScores {
   if (is_ <= -3) supplyRaw -= 10; // 기관 3일 연속 매도
   const supply = Math.max(0, Math.min(100, (supplyRaw + 25) / 60 * 100));
 
-  // ── 3. 촉매 (신호 신선도 + 복수 소스) ──
+  // ── 3. 촉매 (신호 신선도 + 복수 소스 + 신호 경과일 감산) ──
   let catalystRaw = 0;
   const sigDate = item.latest_signal_date;
   if (sigDate) {
     const days = Math.floor((Date.now() - new Date(sigDate).getTime()) / 86400000);
-    if (days <= 0) catalystRaw += 15;      // 오늘
+    if (days <= 0) catalystRaw += 20;      // 오늘 — 단기 매매 최적
     else if (days === 1) catalystRaw += 10; // 어제
-    else if (days <= 3) catalystRaw += 5;   // 3일 이내
+    else if (days <= 3) catalystRaw += 3;   // 3일 이내 — 신선도 급감
+    else catalystRaw -= 5;                  // 4일 이상 — 단기 매력 감소
   }
   const cnt = item.signal_count_30d ?? 0;
   if (cnt >= 5) catalystRaw += 15;
   else if (cnt >= 3) catalystRaw += 10;
   else if (cnt >= 1) catalystRaw += 5;  // 1회라도 있으면 기본 보너스
-  const catalyst = Math.max(0, Math.min(100, (catalystRaw + 10) / 35 * 100));
+  const catalyst = Math.max(0, Math.min(100, (catalystRaw + 10) / 40 * 100));
 
   // ── 4. 밸류에이션 (설계 Section 4.4) ──
   let valRaw = 0;
@@ -927,7 +928,13 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
       const scores = computeShortTermScores(item);
       const coreSum = weights.momentum + weights.supply + weights.catalyst + weights.valuation;
       const base = (scores.momentum * weights.momentum + scores.supply * weights.supply + scores.catalyst * weights.catalyst + scores.valuation * weights.valuation) / (coreSum || 1);
-      const weighted = Math.max(0, Math.min(100, base - scores.risk * (weights.risk / 100)));
+      let weighted = Math.max(0, Math.min(100, base - scores.risk * (weights.risk / 100)));
+
+      // 복수 소스 보너스: 여러 소스에서 동시 추천된 종목은 단기 확신도 가산
+      const sourceCount = signalMap[item.symbol] ? Object.keys(signalMap[item.symbol]).length : 0;
+      if (sourceCount >= 3) weighted = Math.min(100, weighted + 6);
+      else if (sourceCount >= 2) weighted = Math.min(100, weighted + 3);
+
       map.set(item.symbol, {
         scores,
         weighted,
@@ -936,7 +943,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
       });
     }
     return map;
-  }, [liveItems, weights]);
+  }, [liveItems, weights, signalMap]);
 
   // ── 정렬 ──────────────────────────────────────────────────────────────────────
   const sortedItems = useMemo(() => [...liveItems].sort((a, b) => {
@@ -956,7 +963,8 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
       }
     }
     // score (default + fallback for updated) — 캐시된 점수 사용
-    return (precomputed.get(b.symbol)?.weighted ?? 0) - (precomputed.get(a.symbol)?.weighted ?? 0);
+    const diff = (precomputed.get(b.symbol)?.weighted ?? 0) - (precomputed.get(a.symbol)?.weighted ?? 0);
+    return sortDir === 'desc' ? diff : -diff;
   }), [liveItems, sort, sortDir, precomputed, sourceFilter, signalMap, livePrices, gapAsc]);
 
   // ── 투자성격 필터 ────────────────────────────────────────────────────────────
@@ -1049,6 +1057,8 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
           onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market === 'ETF' ? 'all' : market)}
           refreshing={loading}
           updating={snapshotStatus.updating}
+          scoreMode="short_term"
+          livePrices={livePrices}
         />
         {showWeights && !isEtfMode && (
           <WeightPopup

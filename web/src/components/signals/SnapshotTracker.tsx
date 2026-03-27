@@ -6,7 +6,7 @@ import { getLastNWeekdays, formatDateLabel } from '@/lib/date-utils';
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 
-/** 스냅샷 API 응답의 개별 항목 */
+/** 스냅샷 API 응답의 개별 항목 (raw_data 포함) */
 interface SnapshotItem {
   symbol: string;
   name: string;
@@ -17,6 +17,31 @@ interface SnapshotItem {
   characters: string[] | null;
   recommendation: string | null;
   signal_date: string | null;
+  // raw_data에서 spread 되는 단기점수 계산용 필드
+  price_change_pct?: number | null;
+  volume_ratio?: number | null;
+  close_position?: number | null;
+  gap_pct?: number | null;
+  trading_value?: number | null;
+  foreign_net_qty?: number | null;
+  institution_net_qty?: number | null;
+  foreign_streak?: number | null;
+  institution_streak?: number | null;
+  latest_signal_date?: string | null;
+  signal_count_30d?: number | null;
+  forward_per?: number | null;
+  target_price?: number | null;
+  pbr?: number | null;
+  roe?: number | null;
+  cum_return_3d?: number | null;
+  latest_signal_price?: number | null;
+  is_managed?: boolean;
+  audit_opinion?: string | null;
+  has_recent_cbw?: boolean;
+  major_shareholder_pct?: number | null;
+  major_shareholder_delta?: number | null;
+  turnover_rate?: number | null;
+  daily_trading_value?: number | null;
 }
 
 /** 스냅샷 API 응답 */
@@ -26,12 +51,6 @@ interface SnapshotResponse {
   snapshot_time: string | null;
   items: SnapshotItem[];
   total: number;
-}
-
-/** 현재 랭킹 API 응답의 개별 항목 (가격 비교용 최소 필드) */
-interface CurrentPriceItem {
-  symbol: string;
-  current_price: number | null;
 }
 
 /** 수익률 계산이 포함된 표시용 행 */
@@ -48,6 +67,8 @@ interface TrackerRow {
 
 type SortKey = 'rank' | 'return';
 
+export type ScoreMode = 'standard' | 'short_term';
+
 // ── 과거 평일 목록 (최근 7영업일, 오늘 제외) ──────────────────────────────────
 const WEEKDAYS = getLastNWeekdays(8).slice(1); // 오늘 제외한 7일
 
@@ -60,22 +81,150 @@ const GRADE_CLS: Record<string, string> = {
   D: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
 };
 
+// ── 단기추천 점수 계산 (ShortTermRecommendationSection에서 가져옴) ──────────────
+function computeShortTermScore(item: SnapshotItem): number {
+  const pct = item.price_change_pct ?? 0;
+  const vr = item.volume_ratio ?? 1;
+
+  // 모멘텀
+  let matrixScore = 0;
+  if (pct >= 1 && pct < 3) matrixScore = vr >= 2 ? 35 : vr >= 1.5 ? 28 : 18;
+  else if (pct >= 3 && pct < 6) matrixScore = vr >= 2 ? 30 : vr >= 1.5 ? 25 : 15;
+  else if (pct >= 0.5 && pct < 1) matrixScore = vr >= 2 ? 22 : vr >= 1.5 ? 15 : 8;
+  else if (pct >= 6 && pct < 8) matrixScore = vr >= 2 ? 15 : vr >= 1.5 ? 12 : 5;
+  else if (pct >= -1 && pct < 0.5) matrixScore = vr >= 2 ? 12 : vr >= 1.5 ? 8 : 3;
+  else if (pct >= 8) matrixScore = vr >= 2 ? -5 : vr >= 1.5 ? -8 : -10;
+
+  const cp = item.close_position;
+  let closePosScore = 0;
+  if (cp !== null && cp !== undefined) {
+    if (cp >= 0.8) closePosScore = 20;
+    else if (cp >= 0.6) closePosScore = 12;
+    else if (cp >= 0.4) closePosScore = 3;
+    else closePosScore = -10;
+  }
+
+  const gap = item.gap_pct;
+  let gapScore = 0;
+  if (gap !== null && gap !== undefined) {
+    if (gap >= 1 && gap < 3) gapScore = 15;
+    else if (gap >= 0 && gap < 1) gapScore = 8;
+    else if (gap >= 3) gapScore = 3;
+  }
+
+  const tv = item.trading_value ?? 0;
+  let tvScore = 0;
+  if (tv >= 500_0000_0000) tvScore = 15;
+  else if (tv >= 100_0000_0000) tvScore = 10;
+  else if (tv >= 30_0000_0000) tvScore = 5;
+
+  const momentumRaw = matrixScore + closePosScore + gapScore + tvScore;
+  const momentum = Math.max(0, Math.min(100, (momentumRaw + 10) / 75 * 100));
+
+  // 수급
+  const fn = item.foreign_net_qty ?? 0;
+  const in_ = item.institution_net_qty ?? 0;
+  const fs = item.foreign_streak ?? 0;
+  const is_ = item.institution_streak ?? 0;
+  let supplyRaw = 0;
+  if (fn > 0) supplyRaw += 10;
+  if (in_ > 0) supplyRaw += 10;
+  if (fn > 0 && in_ > 0) supplyRaw += 12;
+  if (fs >= 2) supplyRaw += 5;
+  if (is_ >= 2) supplyRaw += 5;
+  if (fn <= 0 && in_ <= 0 && (fn !== 0 || in_ !== 0)) supplyRaw -= 15;
+  if (fs <= -3) supplyRaw -= 10;
+  if (is_ <= -3) supplyRaw -= 10;
+  const supply = Math.max(0, Math.min(100, (supplyRaw + 25) / 60 * 100));
+
+  // 촉매
+  let catalystRaw = 0;
+  const sigDate = item.latest_signal_date;
+  if (sigDate) {
+    const days = Math.floor((Date.now() - new Date(sigDate).getTime()) / 86400000);
+    if (days <= 0) catalystRaw += 20;
+    else if (days === 1) catalystRaw += 10;
+    else if (days <= 3) catalystRaw += 3;
+    else catalystRaw -= 5;
+  }
+  const cnt = item.signal_count_30d ?? 0;
+  if (cnt >= 5) catalystRaw += 15;
+  else if (cnt >= 3) catalystRaw += 10;
+  else if (cnt >= 1) catalystRaw += 5;
+  const catalyst = Math.max(0, Math.min(100, (catalystRaw + 10) / 40 * 100));
+
+  // 밸류에이션
+  let valRaw = 0;
+  const fper = item.forward_per;
+  if (fper !== null && fper !== undefined && fper > 0) {
+    if (fper < 8) valRaw += 30;
+    else if (fper < 12) valRaw += 20;
+    else if (fper < 20) valRaw += 10;
+  }
+  if (item.target_price && item.current_price && item.current_price > 0) {
+    const upside = ((item.target_price - item.current_price) / item.current_price) * 100;
+    if (upside >= 30) valRaw += 25;
+    else if (upside >= 15) valRaw += 15;
+    else if (upside >= 5) valRaw += 5;
+  }
+  if ((fper === null || fper === undefined) && item.pbr !== null && item.pbr !== undefined && item.pbr > 0) {
+    if (item.pbr < 0.5) valRaw += 30;
+    else if (item.pbr < 1.0) valRaw += 15;
+    else if (item.pbr < 1.5) valRaw += 5;
+  }
+  const roe = item.roe ?? 0;
+  if (roe > 15) valRaw += 20;
+  else if (roe > 10) valRaw += 10;
+  else if (roe > 5) valRaw += 5;
+  const valuation = Math.max(0, Math.min(100, valRaw / 55 * 100));
+
+  // 리스크
+  let riskRaw = 0;
+  if (pct >= 12) riskRaw += 20;
+  const cr3 = item.cum_return_3d ?? 0;
+  if (cr3 >= 20) riskRaw += 20;
+  if (pct >= 10 && vr < 1) riskRaw += 15;
+  if (cp !== null && cp !== undefined && cp < 0.3 && pct > 0) riskRaw += 10;
+  if (item.latest_signal_price && item.current_price && item.latest_signal_price > 0) {
+    const sigGap = ((item.current_price - item.latest_signal_price) / item.latest_signal_price) * 100;
+    if (sigGap >= 12) riskRaw += 20;
+    else if (sigGap >= 7) riskRaw += 12;
+  }
+  if (tv > 0 && tv < 100_0000_0000 && pct > 3) riskRaw += 10;
+  if (item.is_managed) riskRaw += 100;
+  if (item.audit_opinion && item.audit_opinion !== '적정') riskRaw += 80;
+  if (item.has_recent_cbw) riskRaw += 20;
+  if (item.major_shareholder_pct != null && item.major_shareholder_pct > 0 && item.major_shareholder_pct < 20) riskRaw += 15;
+  if (item.major_shareholder_delta != null && item.major_shareholder_delta < 0) riskRaw += 10;
+  if (item.turnover_rate != null && item.turnover_rate > 10) riskRaw += 10;
+  const tvValue = item.daily_trading_value ?? item.trading_value ?? 0;
+  if (tvValue > 0 && tvValue < 3_000_000_000) riskRaw += 15;
+  const risk = Math.min(100, riskRaw);
+
+  // 가중합: momentum:45, supply:28, catalyst:22, valuation:5, risk감산:15
+  const base = (momentum * 45 + supply * 28 + catalyst * 22 + valuation * 5) / 100;
+  return Math.max(0, Math.min(100, base - risk * 0.15));
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 interface SnapshotTrackerProps {
-  /** 모달/드로어 닫기 콜백 */
   onClose: () => void;
+  /** 점수 모드: standard(종목추천) 또는 short_term(단기추천) */
+  scoreMode?: ScoreMode;
+  /** 부모 컴포넌트의 실시간 가격 — 있으면 별도 조회 생략 */
+  livePrices?: Record<string, { current_price: number | null }>;
 }
 
 // ── 메인 컴포넌트 ──────────────────────────────────────────────────────────────
 
 /**
  * 순위 트래킹 — 과거 스냅샷의 가격과 현재 가격을 비교하여 수익률을 표시.
- * 모달 형태로 렌더링되며, 날짜 선택 + 테이블 구성.
+ * scoreMode에 따라 종목추천 순위 또는 단기추천 순위로 표시.
  */
-export function SnapshotTracker({ onClose }: SnapshotTrackerProps) {
+export function SnapshotTracker({ onClose, scoreMode = 'standard', livePrices }: SnapshotTrackerProps) {
   const [selectedDate, setSelectedDate] = useState<string>(WEEKDAYS[0] ?? '');
   const [snapshotData, setSnapshotData] = useState<SnapshotResponse | null>(null);
-  const [currentPrices, setCurrentPrices] = useState<Map<string, number | null>>(new Map());
+  const [fetchedPrices, setFetchedPrices] = useState<Map<string, number | null>>(new Map());
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -100,33 +249,55 @@ export function SnapshotTracker({ onClose }: SnapshotTrackerProps) {
     }
   }, []);
 
-  // 현재 가격 가져오기 (오늘 전체 랭킹에서 추출)
-  const fetchCurrentPrices = useCallback(async () => {
+  // 부모에서 livePrices가 없을 때 stock_cache에서 현재가 조회
+  const fetchCurrentPrices = useCallback(async (symbols: string[]) => {
+    if (symbols.length === 0) return;
     try {
-      const res = await window.fetch('/api/v1/stock-ranking?date=all&limit=500');
-      if (res.ok) {
-        const data = await res.json();
-        const map = new Map<string, number | null>();
-        (data.items as CurrentPriceItem[]).forEach((item) => {
-          map.set(item.symbol, item.current_price);
-        });
-        setCurrentPrices(map);
+      const CHUNK = 200;
+      const map = new Map<string, number | null>();
+      for (let i = 0; i < symbols.length; i += CHUNK) {
+        const chunk = symbols.slice(i, i + CHUNK);
+        const res = await window.fetch(`/api/v1/prices?symbols=${chunk.join(',')}`);
+        if (res.ok) {
+          const { data } = await res.json();
+          if (data) {
+            for (const [sym, info] of Object.entries(data as Record<string, { current_price: number | null }>)) {
+              map.set(sym, info.current_price);
+            }
+          }
+        }
       }
+      setFetchedPrices(map);
     } catch {
-      // 현재 가격 조회 실패 시 빈 맵 유지
+      // 실패 시 빈 맵 유지
     }
   }, []);
-
-  // 초기 로드: 현재 가격 + 첫 번째 날짜 스냅샷
-  useEffect(() => {
-    fetchCurrentPrices();
-  }, [fetchCurrentPrices]);
 
   useEffect(() => {
     if (selectedDate) {
       fetchSnapshot(selectedDate);
     }
   }, [selectedDate, fetchSnapshot]);
+
+  // 부모에서 livePrices를 전달하지 않았을 때만 별도 조회
+  useEffect(() => {
+    if (!livePrices && snapshotData?.items?.length) {
+      const symbols = snapshotData.items.map((item) => item.symbol);
+      fetchCurrentPrices(symbols);
+    }
+  }, [snapshotData, fetchCurrentPrices, livePrices]);
+
+  // 현재가 맵: livePrices 우선, 없으면 fetchedPrices
+  const currentPrices = useMemo(() => {
+    if (livePrices) {
+      const map = new Map<string, number | null>();
+      for (const [sym, info] of Object.entries(livePrices)) {
+        map.set(sym, info.current_price);
+      }
+      return map;
+    }
+    return fetchedPrices;
+  }, [livePrices, fetchedPrices]);
 
   // 날짜 변경 핸들러
   const handleDateChange = (date: string) => {
@@ -143,10 +314,22 @@ export function SnapshotTracker({ onClose }: SnapshotTrackerProps) {
     }
   };
 
+  // 스냅샷 아이템을 scoreMode에 따라 정렬 (단기추천이면 재정렬)
+  const orderedSnapshotItems = useMemo(() => {
+    if (!snapshotData?.items) return [];
+    if (scoreMode === 'standard') {
+      // 서버 score_total 순 (API가 이미 정렬해서 반환)
+      return snapshotData.items;
+    }
+    // 단기추천: raw_data 기반으로 단기점수 재계산 후 정렬
+    return [...snapshotData.items].sort((a, b) => {
+      return computeShortTermScore(b) - computeShortTermScore(a);
+    });
+  }, [snapshotData, scoreMode]);
+
   // 표시용 행 계산
   const rows: TrackerRow[] = useMemo(() => {
-    if (!snapshotData?.items) return [];
-    return snapshotData.items.map((item, idx) => {
+    return orderedSnapshotItems.map((item, idx) => {
       const todayPrice = currentPrices.get(item.symbol) ?? null;
       const snapshotPrice = item.current_price;
       let returnPct: number | null = null;
@@ -164,7 +347,7 @@ export function SnapshotTracker({ onClose }: SnapshotTrackerProps) {
         grade: item.grade,
       };
     });
-  }, [snapshotData, currentPrices]);
+  }, [orderedSnapshotItems, currentPrices]);
 
   // 정렬 적용
   const sortedRows = useMemo(() => {
@@ -214,6 +397,8 @@ export function SnapshotTracker({ onClose }: SnapshotTrackerProps) {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  const modeLabel = scoreMode === 'short_term' ? '단기추천' : '종목추천';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* 오버레이 */}
@@ -228,6 +413,9 @@ export function SnapshotTracker({ onClose }: SnapshotTrackerProps) {
         <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">
             순위 트래킹
+            <span className="ml-2 text-xs font-normal text-[var(--muted)]">
+              {modeLabel} 기준
+            </span>
           </h2>
           <button
             onClick={onClose}
