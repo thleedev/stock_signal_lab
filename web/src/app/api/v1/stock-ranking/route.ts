@@ -1035,15 +1035,9 @@ export async function GET(request: NextRequest) {
       sectorAvgPctMap.set(sec, pcts.reduce((a, b) => a + b, 0) / pcts.length);
     }
 
-    // ── 점수 계산 + ai 병합 + 날짜 필터
-    const scored: StockRankItem[] = allRows
+    // ── 점수 계산 + ai 병합 (날짜 필터는 스코어링 후 적용)
+    const allScored: StockRankItem[] = allRows
       .filter((r) => r.symbol && r.name)
-      .filter((r) => {
-        const sym = r.symbol as string;
-        if (dateSymbols) return dateSymbols.has(sym);
-        if (showSignalAll) return ((r.signal_count_30d as number) ?? 0) > 0;
-        return true;
-      })
       .map((r) => {
         const base = r as Omit<StockRankItem, 'score_total' | 'score_valuation' | 'score_supply' | 'score_signal' | 'score_momentum' | 'ai'>;
         const dateSig = dateSignalMap.get(base.symbol);
@@ -1091,6 +1085,13 @@ export async function GET(request: NextRequest) {
         }
         return item;
       });
+
+    // ── 날짜 필터 적용 (스냅샷 저장용 allScored와 분리) ──
+    const scored = allScored.filter((item) => {
+      if (dateSymbols) return dateSymbols.has(item.symbol);
+      if (showSignalAll) return (item.signal_count_30d ?? 0) > 0;
+      return true;
+    });
 
     // ── 초단기 모멘텀용 daily_prices 조회 ──
     const displaySymbols = scored.map(s => s.symbol);
@@ -1291,10 +1292,10 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const items = regularItems.slice(offset, offset + limit);
 
-    // ── 비동기 스냅샷 저장 (ETF 포함 전체 저장 — ETF 재스코어링은 읽기 시점) ──
+    // ── 비동기 스냅샷 저장 (날짜 필터 전 전체 종목 저장 — 읽기 시점에 필터 적용) ──
     void (async () => {
       try {
-        const snapshotRows = filtered.map((item: StockRankItem) => ({
+        const snapshotRows = allScored.map((item: StockRankItem) => ({
           snapshot_date: todayStr,
           snapshot_time: new Date().toISOString(),
           model: model || 'standard',
