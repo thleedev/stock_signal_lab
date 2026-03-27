@@ -109,16 +109,19 @@ export function calcSupplyScore(
   }
 
   // ── 연속 매수/매도 (매집 의지 or 이탈 경고) — 전 티어 공통 ──
+  // 매수 전환 첫날에 보너스를 주되, 장기 streak과의 역전 폭은 억제
   const fStreak = foreignStreak ?? 0;
-  if (fStreak >= 5) score += 7;
-  else if (fStreak >= 3) score += 5;
-  else if (fStreak >= 2) score += 3;
+  if (fStreak === 1) score += 6;       // 매수 전환 첫날 (초기진입 보너스)
+  else if (fStreak >= 5) score += 5;   // 장기 매집 (7→5)
+  else if (fStreak >= 3) score += 4;
+  else if (fStreak >= 2) score += 6;   // 2일차 = 확인 매수 (첫날과 동급)
   else if (fStreak <= -3) score -= 5;  // 외국인 3일+ 연속 매도
 
   const iStreak = institutionStreak ?? 0;
-  if (iStreak >= 5) score += 7;
-  else if (iStreak >= 3) score += 5;
-  else if (iStreak >= 2) score += 3;
+  if (iStreak === 1) score += 6;       // 매수 전환 첫날
+  else if (iStreak >= 5) score += 5;
+  else if (iStreak >= 3) score += 4;
+  else if (iStreak >= 2) score += 6;   // 확인 매수
   else if (iStreak <= -3) score -= 5;  // 기관 3일+ 연속 매도
 
   // ── 섹터 거래대금 급증(2배) ──

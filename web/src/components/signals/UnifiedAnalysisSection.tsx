@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { GradeTooltip } from '@/components/common/grade-tooltip';
-import { getLastNWeekdays } from '@/lib/date-utils';
+import { getLastNWeekdays, formatTimeAgo } from '@/lib/date-utils';
 import { RecommendationFilterBar } from './RecommendationFilterBar';
 import { useSnapshotStatus } from '@/hooks/use-snapshot-status';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
@@ -874,6 +874,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
           updating={snapshotStatus.updating}
           onWeightClick={() => setShowWeights(v => !v)}
           livePrices={livePrices}
+          updateLabel={data?.snapshot_time ? formatTimeAgo(data.snapshot_time) : null}
         />
         {showWeights && !isEtfMode && (
           <WeightPopup

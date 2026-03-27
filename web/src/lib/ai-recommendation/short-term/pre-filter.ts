@@ -34,6 +34,8 @@ export interface PreFilterInput {
   cumReturn3d: number;
   /** 당일 OHLCV 데이터 존재 여부 (false면 거래대금/종가위치 필터 완화) */
   hasTodayCandle?: boolean;
+  /** 오늘 BUY 소스 수 (0~3, 촉매 강도 판단용) */
+  todayBuySources?: number;
 }
 
 export interface PreFilterResult {
@@ -61,18 +63,28 @@ export function applyPreFilter(input: PreFilterInput): PreFilterResult {
 
   const hasCandle = input.hasTodayCandle !== false;
 
-  // 1. 등락률 범위 검증 (0.5% 이상, 8% 미만) — 데이터 없으면 통과
-  if (hasCandle && (input.priceChangePct < 0.5 || input.priceChangePct >= 8)) {
-    reasons.push('등락률 범위 미달');
+  // 촉매 강도 판단: BUY 소스 2개 이상 또는 섹터 강세이면 "강한 촉매"
+  const strongCatalyst = (input.todayBuySources ?? 0) >= 2 || input.sectorStrong;
+
+  // 1. 등락률 범위 검증
+  //    - 강한 촉매 시: -1% 이상이면 통과 (아직 안 오른 종목도 포함)
+  //    - 기본: +0.5% 이상
+  //    - 상한: 8% 미만 (공통)
+  if (hasCandle) {
+    const lowerBound = strongCatalyst ? -1 : 0.5;
+    if (input.priceChangePct < lowerBound || input.priceChangePct >= 8) {
+      reasons.push('등락률 범위 미달');
+    }
   }
 
-  // 2. 거래대금 검증 (200억 이상) — 당일 캔들 없으면 skip
+  // 2. 거래대금 검증 (200억 고정 — 유동성 리스크 방지)
   if (hasCandle && input.tradingValue < TRADING_VALUE_MIN) {
     reasons.push('거래대금 미달');
   }
 
-  // 3. 종가 위치 검증 (0.5 이상) — 당일 캔들 없으면 skip
-  if (hasCandle && closePos < 0.5) {
+  // 3. 종가 위치 검증 — 강한 촉매 시 0.4로 완화 (0.3은 음봉전환 리스크)
+  const closePosMin = strongCatalyst ? 0.4 : 0.5;
+  if (hasCandle && closePos < closePosMin) {
     reasons.push('종가위치 미달');
   }
 

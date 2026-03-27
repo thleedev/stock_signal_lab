@@ -155,12 +155,13 @@ describe('calcShortTermSupplyScore', () => {
     expect(result.institutionBuying).toBe(true);
   });
 
-  it('외국인만 순매수 → 10점', () => {
+  it('외국인만 순매수 + 매수 전환 첫날 → 16점', () => {
     const result = calcShortTermSupplyScore({
       foreignNet: 1000, institutionNet: -500, programNet: null,
       foreignStreak: 1, institutionStreak: -1, programStreak: null,
     });
-    expect(result.raw).toBe(10);
+    // 외국인10 + 매수전환첫날보너스6 = 16
+    expect(result.raw).toBe(16);
   });
 
   it('외국인/기관 둘 다 매도 → -15', () => {

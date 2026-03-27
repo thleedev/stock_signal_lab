@@ -356,7 +356,7 @@ export async function generateRecommendations(
     // 티어별 가중치 적용 총점
     const base =
       (signalResult.score / 30) * weights.signal +
-      (technicalResult.score / 58) * weights.trend +
+      (technicalResult.score / 65) * weights.trend +
       (valuationResult.score / 25) * weights.valuation +
       ((supplyResult.score + 10) / 55) * weights.supply +
       (earningsMomentumResult.score / 100) * weights.earnings_momentum;

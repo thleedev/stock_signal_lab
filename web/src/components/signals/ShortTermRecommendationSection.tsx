@@ -10,6 +10,7 @@ import { useSnapshotStatus } from '@/hooks/use-snapshot-status';
 import { useStockRanking } from '@/hooks/use-stock-ranking';
 import type { WatchlistGroup } from '@/types/stock';
 import type { SignalMap } from './UnifiedAnalysisSection';
+import { formatTimeAgo } from '@/lib/date-utils';
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 
@@ -1059,6 +1060,7 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
           updating={snapshotStatus.updating}
           scoreMode="short_term"
           livePrices={livePrices}
+          updateLabel={data?.snapshot_time ? formatTimeAgo(data.snapshot_time) : null}
         />
         {showWeights && !isEtfMode && (
           <WeightPopup

@@ -3,7 +3,9 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Star, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2, Briefcase, RefreshCw, Pin, PinOff, GripVertical } from "lucide-react";
+import { Star, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2, Briefcase, Pin, PinOff, GripVertical } from "lucide-react";
+import { useGlobalPriceRefresh, type LivePriceMap } from "@/hooks/use-global-price-refresh";
+import { PriceUpdateBadge } from "@/components/common/price-update-badge";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
 import { PageLayout, PageHeader } from "@/components/ui";
@@ -114,7 +116,6 @@ function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
   );
 }
 
-type LivePriceMap = Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }>;
 
 function applyLivePrices(list: StockCache[], prices: LivePriceMap): StockCache[] {
   return list.map((stock) => {
@@ -594,58 +595,20 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     });
   }, []);
 
-  // 가격 업데이트 상태 + 갱신
-  const [updateTime, setUpdateTime] = useState(lastPriceUpdate);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const isStale = useMemo(() => {
-    if (!updateTime) return true;
-    const diffMin = (Date.now() - new Date(updateTime).getTime()) / 60000;
-    return diffMin >= 5;
-  }, [updateTime]);
-
-  const priceUpdateLabel = useMemo(() => {
-    if (!updateTime) return null;
-    const d = new Date(updateTime);
-    const now = new Date();
-    const diffMin = Math.floor((now.getTime() - d.getTime()) / 60000);
-    if (diffMin < 1) return "방금 업데이트";
-    if (diffMin < 60) return `${diffMin}분 전 업데이트`;
-    return `${d.toLocaleDateString("ko-KR")} ${d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} 업데이트`;
-  }, [updateTime]);
-
-  const stocksRef = useRef(stocks);
-  stocksRef.current = stocks;
-  const favStocksRef = useRef(favStocks);
-  favStocksRef.current = favStocks;
   // 최근 fetch된 live price 캐시 (새 페이지 로드 시 적용)
-  const livePricesRef = useRef<Record<string, { current_price: number; price_change: number; price_change_pct: number; volume: number; market_cap: number }>>({});
+  const livePricesRef = useRef<LivePriceMap>({});
 
-  const refreshPrices = useCallback(async () => {
-    if (refreshing) return;
-    setRefreshing(true);
-    try {
-      // POST가 네이버에서 조회한 전종목 가격 데이터를 직접 반환
-      const res = await fetch("/api/v1/prices", { method: "POST" });
-      if (!res.ok) return;
-      const json = await res.json();
-      const allPrices: typeof livePricesRef.current = json.data ?? {};
-
-      livePricesRef.current = { ...livePricesRef.current, ...allPrices };
-      setStocks((prev) => applyLivePrices(prev, allPrices));
-      setFavStocks((prev) => applyLivePrices(prev, allPrices));
-      setUpdateTime(new Date().toISOString());
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshing]);
-
-  useEffect(() => {
-    if (isStale) {
-      refreshPrices();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handlePricesRefreshed = useCallback((allPrices: LivePriceMap) => {
+    livePricesRef.current = { ...livePricesRef.current, ...allPrices };
+    setStocks((prev) => applyLivePrices(prev, allPrices));
+    setFavStocks((prev) => applyLivePrices(prev, allPrices));
   }, []);
+
+  const { refreshing, isStale, priceUpdateLabel, refreshPrices } =
+    useGlobalPriceRefresh({
+      initialUpdateTime: lastPriceUpdate,
+      onPricesRefreshed: handlePricesRefreshed,
+    });
 
   // 테이블 헤더 JSX (재사용)
   const tableHeader = (
@@ -679,21 +642,12 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         title="종목"
         subtitle="관심종목 그룹 관리 및 전체 종목 조회"
         action={
-          <div className="flex items-center gap-2 flex-shrink-0 pt-1">
-            {priceUpdateLabel && (
-              <span className={`text-xs ${isStale ? "text-yellow-400" : "text-[var(--muted)]"}`}>
-                {priceUpdateLabel}
-              </span>
-            )}
-            <button
-              onClick={refreshPrices}
-              disabled={refreshing}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--card)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
-              갱신
-            </button>
-          </div>
+          <PriceUpdateBadge
+            priceUpdateLabel={priceUpdateLabel}
+            isStale={isStale}
+            refreshing={refreshing}
+            onRefresh={refreshPrices}
+          />
         }
       />
 

@@ -1,8 +1,10 @@
 // web/src/components/stock-modal/AiOpinionCard.tsx
 "use client";
 
+import { useState } from "react";
 import type { StockRankItem } from "@/app/api/v1/stock-ranking/route";
 import { SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
+import { WEIGHTS_BY_TIER, DEFAULT_SHORT_TERM_WEIGHTS } from "@/types/ai-recommendation";
 
 /** 단기추천 점수 (ShortTermRecommendationSection에서 전달) */
 export interface ShortTermDisplayScores {
@@ -96,7 +98,31 @@ function deriveGrade(score: number): { grade: string; label: string } {
   return { grade: 'D', label: '주의' };
 }
 
+/** 가중치 기여도 막대 */
+function WeightBar({ label, raw, maxRaw, weight, normalized }: {
+  label: string; raw: number; maxRaw: number; weight: number; normalized: number;
+}) {
+  const pct = Math.min(Math.max(normalized, 0), 100);
+  const contribution = (normalized / 100) * weight;
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-20 shrink-0 text-[var(--muted)]">{label}</span>
+      <div className="flex-1 h-1.5 rounded-full bg-[var(--background)] overflow-hidden">
+        <div
+          className="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="w-24 shrink-0 text-right tabular-nums text-[var(--muted)]">
+        {raw.toFixed(1)}/{maxRaw} × {weight}% = <span className="text-[var(--foreground)] font-medium">{contribution.toFixed(1)}</span>
+      </span>
+    </div>
+  );
+}
+
 export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }: Props) {
+  const [showReport, setShowReport] = useState(false);
+
   const {
     score_total: rawTotal,
     score_signal,
@@ -379,6 +405,273 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
         </div>
           </>
         )}
+      </div>
+
+      {/* ── 점수 산출 리포트 (접이식) ── */}
+      <button
+        type="button"
+        onClick={() => setShowReport(!showReport)}
+        className="w-full text-left text-xs font-medium text-[var(--accent)] hover:underline py-1"
+      >
+        {showReport ? "▼ 점수 산출 리포트 접기" : "▶ 점수 산출 리포트 보기"}
+      </button>
+
+      {showReport && (
+        <ScoreReport
+          data={data}
+          scoreMode={scoreMode}
+          shortTermScores={shortTermScores}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ================================================================
+ * 점수 산출 리포트 — 각 항목의 원점수, 가중치, 기여도를 시각화
+ * ================================================================ */
+
+function ScoreReport({
+  data,
+  scoreMode,
+  shortTermScores,
+}: {
+  data: StockRankItem;
+  scoreMode: 'standard' | 'short_term';
+  shortTermScores?: ShortTermDisplayScores;
+}) {
+  if (scoreMode === 'short_term' && shortTermScores) {
+    return <ShortTermReport data={data} scores={shortTermScores} />;
+  }
+  return <StandardReport data={data} />;
+}
+
+/* ── 종목추천 리포트 ── */
+function StandardReport({ data }: { data: StockRankItem }) {
+  // 시총 티어 추정 (market_cap 단위: 억원)
+  const mcap = data.market_cap ?? 0;
+  const tier: 'large' | 'mid' | 'small' =
+    mcap >= 100000 ? 'large' : mcap >= 10000 ? 'mid' : 'small';
+  const w = WEIGHTS_BY_TIER[tier];
+
+  // ai 서브객체에서 원점수 추출 (없으면 정규화 점수에서 역산)
+  const ai = data.ai;
+  const rawSignal = ai?.signal_score ?? data.score_signal * 30 / 100;
+  const rawTrend = ai?.trend_score ?? data.score_momentum * 65 / 100;
+  const rawValuation = ai?.valuation_score ?? data.score_valuation * 25 / 100;
+  const rawSupply = ai?.supply_score ?? (data.score_supply * 55 / 100 - 10);
+  const rawRisk = (data.score_risk ?? 0) < 0 ? Math.abs(data.score_risk ?? 0) : 0;
+
+  // 정규화 (0~100)
+  const normSignal = (rawSignal / 30) * 100;
+  const normTrend = (rawTrend / 65) * 100;
+  const normValuation = (rawValuation / 25) * 100;
+  const normSupply = ((rawSupply + 10) / 55) * 100;
+  const normRisk = rawRisk;  // 이미 0~100
+
+  // 기여도 계산
+  const contSignal = (normSignal / 100) * w.signal;
+  const contTrend = (normTrend / 100) * w.trend;
+  const contVal = (normValuation / 100) * w.valuation;
+  const contSupply = (normSupply / 100) * w.supply;
+  const contEarn = 0; // earnings momentum은 별도
+  const contRisk = (normRisk / 100) * w.risk;
+  const base = contSignal + contTrend + contVal + contSupply + contEarn;
+
+  // 활성 기술 패턴
+  const patterns: string[] = [];
+  if (ai) {
+    const patternMap: Record<string, string> = {
+      golden_cross: "골든크로스 (+5)",
+      bollinger_bottom: "볼린저하단복귀 (+6)",
+      macd_cross: "MACD크로스 (+4)",
+      phoenix_pattern: "피닉스패턴 (+3)",
+      volume_surge: "거래량급등 (+4)",
+      disparity_rebound: "이격도반등 (+5~7)",
+      volume_breakout: "거래량돌파 (+3)",
+      consecutive_drop_rebound: "연속하락반등 (+6~8)",
+      week52_low_near: "52주저점근접 (+3~7)",
+      double_top: "쌍봉패턴 (리스크)",
+    };
+    for (const [key, label] of Object.entries(patternMap)) {
+      if (ai[key as keyof typeof ai] === true) patterns.push(label);
+    }
+  }
+
+  // 수급 상세
+  const supplyDetails: string[] = [];
+  if (ai?.foreign_buying) supplyDetails.push("외국인 순매수");
+  if (ai?.institution_buying) supplyDetails.push("기관 순매수");
+  if (ai?.foreign_buying && ai?.institution_buying) supplyDetails.push("동반매수 시너지 (+3)");
+  if (ai?.volume_vs_sector) supplyDetails.push("섹터 거래대금 2배+ (+4)");
+  if (ai?.low_short_sell) supplyDetails.push("공매도 <1% (+2)");
+  if (data.foreign_streak != null) {
+    if (data.foreign_streak === 1) supplyDetails.push("외국인 매수 전환 첫날 (+6)");
+    else if (data.foreign_streak >= 2) supplyDetails.push(`외국인 ${data.foreign_streak}일 연속 매수`);
+  }
+  if (data.institution_streak != null) {
+    if (data.institution_streak === 1) supplyDetails.push("기관 매수 전환 첫날 (+6)");
+    else if (data.institution_streak >= 2) supplyDetails.push(`기관 ${data.institution_streak}일 연속 매수`);
+  }
+
+  return (
+    <div className="space-y-3 text-xs border-t border-[var(--border)] pt-3">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-sm">종목추천 산출 근거</h4>
+        <span className="px-2 py-0.5 rounded bg-[var(--accent)]/20 text-[var(--accent)] text-[10px] font-medium">
+          {tier === 'large' ? '대형주' : tier === 'mid' ? '중형주' : '소형주'} 가중치
+        </span>
+      </div>
+
+      {/* 가중치 기여도 막대 */}
+      <div className="space-y-1.5">
+        <WeightBar label="신호" raw={rawSignal} maxRaw={30} weight={w.signal} normalized={normSignal} />
+        <WeightBar label="기술(추세)" raw={rawTrend} maxRaw={65} weight={w.trend} normalized={normTrend} />
+        <WeightBar label="밸류에이션" raw={rawValuation} maxRaw={25} weight={w.valuation} normalized={normValuation} />
+        <WeightBar label="수급" raw={rawSupply} maxRaw={45} weight={w.supply} normalized={normSupply} />
+        {w.earnings_momentum > 0 && (
+          <WeightBar label="이익모멘텀" raw={0} maxRaw={100} weight={w.earnings_momentum} normalized={0} />
+        )}
+      </div>
+
+      {/* 총점 공식 */}
+      <div className="p-2 rounded bg-[var(--background)] text-[10px] font-mono leading-relaxed">
+        <p>base = {contSignal.toFixed(1)} + {contTrend.toFixed(1)} + {contVal.toFixed(1)} + {contSupply.toFixed(1)} = <span className="font-bold">{base.toFixed(1)}</span></p>
+        <p>risk 감산 = {contRisk.toFixed(1)} (원점수 {rawRisk.toFixed(0)} × {w.risk}%)</p>
+        <p>total = {base.toFixed(1)} − {contRisk.toFixed(1)} = <span className="font-bold text-[var(--foreground)]">{Math.max(0, base - contRisk).toFixed(1)}</span></p>
+      </div>
+
+      {/* 활성 기술 패턴 */}
+      {patterns.length > 0 && (
+        <div>
+          <p className="text-[var(--muted)] mb-1">활성 기술 패턴:</p>
+          <div className="flex flex-wrap gap-1">
+            {patterns.map((p) => (
+              <span key={p} className="px-1.5 py-0.5 rounded bg-purple-900/40 text-purple-300 text-[10px]">
+                {p}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 수급 상세 */}
+      {supplyDetails.length > 0 && (
+        <div>
+          <p className="text-[var(--muted)] mb-1">수급 구성:</p>
+          <div className="flex flex-wrap gap-1">
+            {supplyDetails.map((s) => (
+              <span key={s} className="px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300 text-[10px]">
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 밸류에이션 상세 */}
+      <div>
+        <p className="text-[var(--muted)] mb-1">밸류에이션 입력값:</p>
+        <div className="grid grid-cols-3 gap-1 text-[10px]">
+          <span>PER {data.per?.toFixed(1) ?? "—"}</span>
+          <span>PBR {data.pbr?.toFixed(2) ?? "—"}</span>
+          <span>ROE {data.roe?.toFixed(1) ?? "—"}%</span>
+          {data.forward_per != null && <span>F.PER {data.forward_per.toFixed(1)}</span>}
+          {data.dividend_yield != null && data.dividend_yield > 0 && (
+            <span>배당 {data.dividend_yield.toFixed(2)}%</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── 단기추천 리포트 ── */
+function ShortTermReport({ data, scores }: { data: StockRankItem; scores: ShortTermDisplayScores }) {
+  const w = DEFAULT_SHORT_TERM_WEIGHTS;
+
+  const contMom = (scores.momentum / 100) * w.momentum;
+  const contSup = (scores.supply / 100) * w.supply;
+  const contCat = (scores.catalyst / 100) * w.catalyst;
+  const contVal = (scores.valuation / 100) * w.valuation;
+  const contRisk = (scores.risk / 100) * w.risk;
+  const base = contMom + contSup + contCat + contVal;
+
+  // 프리필터 통과 조건 요약
+  const filterInfo: string[] = [];
+  if (data.price_change_pct != null) {
+    filterInfo.push(`등락률 ${data.price_change_pct >= 0 ? '+' : ''}${data.price_change_pct.toFixed(2)}%`);
+  }
+  if (data.daily_trading_value != null) {
+    filterInfo.push(`거래대금 ${(data.daily_trading_value / 1_0000_0000).toFixed(0)}억`);
+  }
+  if (data.close_position != null) {
+    filterInfo.push(`종가위치 ${(data.close_position * 100).toFixed(0)}%`);
+  }
+
+  return (
+    <div className="space-y-3 text-xs border-t border-[var(--border)] pt-3">
+      <div className="flex items-center justify-between">
+        <h4 className="font-semibold text-sm">단기추천 산출 근거</h4>
+        <span className="px-2 py-0.5 rounded bg-orange-900/40 text-orange-300 text-[10px] font-medium">
+          1~2일 모멘텀
+        </span>
+      </div>
+
+      {/* 가중치 기여도 막대 */}
+      <div className="space-y-1.5">
+        <WeightBar label="모멘텀" raw={scores.momentum} maxRaw={100} weight={w.momentum} normalized={scores.momentum} />
+        <WeightBar label="수급" raw={scores.supply} maxRaw={100} weight={w.supply} normalized={scores.supply} />
+        <WeightBar label="촉매" raw={scores.catalyst} maxRaw={100} weight={w.catalyst} normalized={scores.catalyst} />
+        <WeightBar label="밸류에이션" raw={scores.valuation} maxRaw={100} weight={w.valuation} normalized={scores.valuation} />
+      </div>
+
+      {/* 총점 공식 */}
+      <div className="p-2 rounded bg-[var(--background)] text-[10px] font-mono leading-relaxed">
+        <p>base = {contMom.toFixed(1)} + {contSup.toFixed(1)} + {contCat.toFixed(1)} + {contVal.toFixed(1)} = <span className="font-bold">{base.toFixed(1)}</span></p>
+        <p>risk 감산 = {contRisk.toFixed(1)} (점수 {scores.risk.toFixed(0)} × {w.risk}%)</p>
+        <p>total = {base.toFixed(1)} − {contRisk.toFixed(1)} = <span className="font-bold text-[var(--foreground)]">{Math.max(0, base - contRisk).toFixed(1)}</span></p>
+      </div>
+
+      {/* 프리필터 통과 정보 */}
+      {filterInfo.length > 0 && (
+        <div>
+          <p className="text-[var(--muted)] mb-1">프리필터 통과 조건:</p>
+          <div className="flex flex-wrap gap-1">
+            {filterInfo.map((f) => (
+              <span key={f} className="px-1.5 py-0.5 rounded bg-green-900/40 text-green-300 text-[10px]">
+                {f}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 수급 상세 */}
+      <div>
+        <p className="text-[var(--muted)] mb-1">수급 정보:</p>
+        <div className="space-y-0.5 text-[10px]">
+          {data.foreign_net_qty != null && (
+            <p>
+              외국인 {data.foreign_net_qty >= 0 ? "순매수" : "순매도"} {Math.abs(data.foreign_net_qty).toLocaleString()}주
+              {data.foreign_streak != null && data.foreign_streak !== 0 && (
+                <span className="text-[var(--muted)]">
+                  {" "}(streak {data.foreign_streak > 0 ? '+' : ''}{data.foreign_streak}일)
+                </span>
+              )}
+            </p>
+          )}
+          {data.institution_net_qty != null && (
+            <p>
+              기관 {data.institution_net_qty >= 0 ? "순매수" : "순매도"} {Math.abs(data.institution_net_qty).toLocaleString()}주
+              {data.institution_streak != null && data.institution_streak !== 0 && (
+                <span className="text-[var(--muted)]">
+                  {" "}(streak {data.institution_streak > 0 ? '+' : ''}{data.institution_streak}일)
+                </span>
+              )}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

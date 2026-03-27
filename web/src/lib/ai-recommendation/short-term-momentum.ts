@@ -447,6 +447,7 @@ export async function generateShortTermRecommendations(
       sectorStrong,
       cumReturn3d,
       hasTodayCandle: isLatestToday,
+      todayBuySources,
     };
 
     const preFilterResult = applyPreFilter(preFilterInput);

@@ -64,11 +64,12 @@ export interface AiRecommendationWeights {
   risk: number; // 감산 가중치
 }
 
-// 시총 티어별 가중치: 대형주는 수급+이익모멘텀 중심, 소형주는 추세+수급 중심
+// 시총 티어별 가중치: 저점매수 강화 — 수급 비중 축소, trend(저점신호 포함) 상향
+// 대형주: 수급이 핵심이므로 22% 유지, 중소형주는 trend 중심
 export const WEIGHTS_BY_TIER: Record<'large' | 'mid' | 'small', AiRecommendationWeights> = {
-  large: { signal: 5, trend: 25, valuation: 15, supply: 25, earnings_momentum: 30, risk: 15 },
-  mid:   { signal: 8, trend: 32, valuation: 18, supply: 25, earnings_momentum: 17, risk: 15 },
-  small: { signal: 10, trend: 40, valuation: 20, supply: 30, earnings_momentum: 0, risk: 15 },
+  large: { signal: 5, trend: 28, valuation: 15, supply: 22, earnings_momentum: 30, risk: 15 },
+  mid:   { signal: 8, trend: 35, valuation: 20, supply: 18, earnings_momentum: 19, risk: 15 },
+  small: { signal: 10, trend: 45, valuation: 22, supply: 23, earnings_momentum: 0, risk: 15 },
 };
 
 // 기본 가중치 (소형주 기준, 하위 호환)
@@ -93,12 +94,13 @@ export interface ShortTermWeights {
   risk: number;       // 기본 15 (감산)
 }
 
+// 단기추천: 모멘텀 축소, 촉매 상향, 리스크 강화
 export const DEFAULT_SHORT_TERM_WEIGHTS: ShortTermWeights = {
-  momentum: 45,
-  supply: 28,
-  catalyst: 22,
-  valuation: 5,
-  risk: 15,
+  momentum: 38,
+  supply: 22,
+  catalyst: 28,
+  valuation: 7,
+  risk: 18,
 };
 
 export interface ShortTermScoreBreakdown {

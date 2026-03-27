@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
-import { PageLayout, PageHeader } from "@/components/ui";
+import { PageLayout } from "@/components/ui";
 import { PORTFOLIO_CONFIG } from "@/lib/strategy-engine";
 import { StockLinkButton } from "./stock-link-button";
 import { SOURCE_CARD_COLORS, SOURCE_DOTS, SOURCE_LABELS } from "@/lib/signal-constants";
+import { PortfolioHeader } from "./portfolio-header";
 
 /** SOURCE_CARD_COLORS를 기존 SOURCE_META 형태로 매핑 */
 const SOURCE_META = Object.fromEntries(
@@ -40,6 +41,7 @@ export default async function PortfolioPage({
     { data: combined },
     { data: history },
     { data: allTrades },
+    { data: latestUpdate },
   ] = await Promise.all([
     supabase.from("portfolio_snapshots").select("*")
       .eq("execution_type", execType).order("date", { ascending: false }).limit(3),
@@ -51,7 +53,9 @@ export default async function PortfolioPage({
     supabase.from("virtual_trades")
       .select("symbol, name, side, source, price, quantity, created_at")
       .in("source", ["lassi", "stockbot", "quant"]).order("created_at", { ascending: false }),
+    supabase.from("stock_cache").select("updated_at").not("current_price", "is", null).order("updated_at", { ascending: false }).limit(1).single(),
   ]);
+  const lastPriceUpdate = latestUpdate?.updated_at ?? null;
 
   const totalInitial = PORTFOLIO_CONFIG.CASH_PER_STRATEGY * 3;
   const totalValue = combined?.total_value ?? totalInitial;
@@ -101,7 +105,7 @@ export default async function PortfolioPage({
 
   return (
     <PageLayout>
-      <PageHeader title="AI 포트폴리오" subtitle="3개 AI 합산 성과" />
+      <PortfolioHeader lastPriceUpdate={lastPriceUpdate} />
 
       {/* 전략 탭 */}
       <div className="flex gap-2">

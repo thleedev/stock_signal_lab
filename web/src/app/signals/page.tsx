@@ -31,7 +31,7 @@ export default async function SignalsPage({
     : params.date && last7.includes(params.date) ? params.date
     : last7[0];
 
-  // 즐겨찾기 + 보유 + 관심그룹 → 두 탭 공통 사용
+  // 즐겨찾기 + 보유 + 관심그룹 + 가격 업데이트 시간 → 두 탭 공통 사용
   const [{ data: favorites }, { data: watchlistItems }, { data: groupRows }, { data: groupStockRows }] = await Promise.all([
     supabase.from("favorite_stocks").select("symbol"),
     supabase.from("watchlist").select("symbol"),
@@ -70,6 +70,7 @@ export default async function SignalsPage({
     let query = supabase
       .from("signals")
       .select("*")
+      .not("symbol", "is", null)
       .gte("timestamp", dateStart)
       .lte("timestamp", dateEnd)
       .order("timestamp", { ascending: false });

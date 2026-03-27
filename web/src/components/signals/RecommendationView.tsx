@@ -48,19 +48,21 @@ export default function RecommendationView({
       <PageHeader
         title="AI 신호"
         action={
-          <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
-            <Link
-              href="/signals"
-              className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
-            >
-              AI 신호
-            </Link>
-            <button onClick={() => handleTabChange('analysis')} className={tabCls('analysis')}>
-              종목추천
-            </button>
-            <button onClick={() => handleTabChange('short-term')} className={tabCls('short-term')}>
-              단기추천
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 rounded-lg border border-[var(--border)] p-1 bg-[var(--card)]">
+              <Link
+                href="/signals"
+                className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                AI 신호
+              </Link>
+              <button onClick={() => handleTabChange('analysis')} className={tabCls('analysis')}>
+                종목추천
+              </button>
+              <button onClick={() => handleTabChange('short-term')} className={tabCls('short-term')}>
+                단기추천
+              </button>
+            </div>
           </div>
         }
       />

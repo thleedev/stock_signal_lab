@@ -1,5 +1,5 @@
 export interface TechnicalScoreResult {
-  score: number; // 0~58 (추세 점수, 순수 가점만)
+  score: number; // 0~65 (추세 점수, 순수 가점만 — 저점매수 강화 반영)
   trend_days: number; // 종가 > SMA20 연속일수
   rsi: number | null;
   macd_cross: boolean;
@@ -136,7 +136,7 @@ export function calcTechnicalScore(
   }
   if (goldenCross) score += 5;
 
-  // 볼린저 밴드 하단 이탈 후 복귀 (최근 5일 내)
+  // 볼린저 밴드 하단 이탈 후 복귀 (최근 5일 내) — 저점매수 핵심 시그널
   let bollingerBottom = false;
   if (closes.length >= 25) {
     for (let i = closes.length - 5; i < closes.length - 1; i++) {
@@ -147,7 +147,7 @@ export function calcTechnicalScore(
       }
     }
   }
-  if (bollingerBottom) score += 2;
+  if (bollingerBottom) score += 6;
 
   // MACD 골든크로스 (12/26/9) — 최근 3일 내 발생 여부 확인
   let macdCross = false;
@@ -204,7 +204,7 @@ export function calcTechnicalScore(
   }
   if (volumeSurge) score += 4;
 
-  // 이동평균 정배열: 완전정배열(5>20>60) 12점, 부분정배열(5>20만) 5점
+  // 이동평균 정배열: 티어별 차등 (대형주는 기관 장기배분 신호로 유지, 소형주만 축소)
   let maAligned = false;
   if (closes.length >= 60) {
     const sma60 = calcSMA(closes, 60);
@@ -213,16 +213,15 @@ export function calcTechnicalScore(
     const latest60 = sma60[sma60.length - 1];
     if (latest5 > latest20 && latest20 > latest60) {
       maAligned = true;
-      score += 12; // 완전정배열
+      score += marketCapTier === 'large' ? 10 : marketCapTier === 'mid' ? 8 : 7;
     } else if (latest5 > latest20) {
-      score += 5; // 부분정배열 (5>20만)
+      score += marketCapTier === 'large' ? 5 : 4;
     }
   } else if (sma5.length >= 1 && sma20.length >= 1) {
-    // 60일 데이터 부족 시 부분정배열만 판정
     const latest5 = sma5[sma5.length - 1];
     const latest20 = sma20[sma20.length - 1];
     if (latest5 > latest20) {
-      score += 5;
+      score += marketCapTier === 'large' ? 5 : 4;
     }
   }
 
@@ -234,25 +233,27 @@ export function calcTechnicalScore(
     const position52 = (currentPrice - low52w) / range52; // 0=저점, 1=고점
 
     if (marketCapTier === 'large') {
-      // 대형주: 52주 신고가 돌파가 강한 매수 시그널
-      if (position52 >= 0.95) { score += 8; week52HighNear = true; }
-      else if (position52 >= 0.85) score += 6;
-      else if (position52 >= 0.70) score += 4;
+      // 대형주: 고점 가점 축소, 저점 가점 강화 (저점매수 유도)
+      if (position52 >= 0.95) { score += 5; week52HighNear = true; }  // 8→5
+      else if (position52 >= 0.85) score += 4;                         // 6→4
+      else if (position52 >= 0.70) score += 3;                         // 4→3
       else if (position52 >= 0.50) score += 2;
-      else if (position52 <= 0.15) { score += 1; week52LowNear = true; }
-      // 대형주가 52주 저점이면 펀더멘털 악화 가능성 → 낮은 가점
+      else if (position52 <= 0.15) { score += 4; week52LowNear = true; }  // 1→4
+      else if (position52 <= 0.30) { score += 3; week52LowNear = true; }  // 신규: 저점 구간 가점
     } else if (marketCapTier === 'mid') {
-      // 중형주: 균형 잡힌 관점
-      if (position52 >= 0.95) { score += 5; week52HighNear = true; }
-      else if (position52 <= 0.15) { score += 5; week52LowNear = true; }
-      else if (position52 <= 0.30) score += 3;
+      // 중형주: 저점 쪽 가점 상향
+      if (position52 >= 0.95) { score += 4; week52HighNear = true; }
+      else if (position52 <= 0.15) { score += 6; week52LowNear = true; } // 7→6
+      else if (position52 <= 0.30) { score += 4; week52LowNear = true; }
       else if (position52 >= 0.85) score += 3;
     } else {
-      // 소형주: 기존 로직 유지 (바닥 반등 기대)
-      const ratioLow = currentPrice / low52w;
-      if (ratioLow >= 0.95 && ratioLow <= 1.05) {
+      // 소형주: 저점 가점 + 거래량 반등 동반 시에만 높은 점수 (떨어지는 칼날 방지)
+      if (position52 <= 0.15) {
         week52LowNear = true;
-        score += 2;
+        score += volumeSurge ? 5 : 3;   // 거래량 반등 동반 시 +5, 미동반 +3
+      } else if (position52 <= 0.30) {
+        week52LowNear = true;
+        score += volumeSurge ? 4 : 2;   // 거래량 반등 동반 시 +4, 미동반 +2
       }
     }
   } else if (low52w && low52w > 0 && currentPrice > 0) {
@@ -266,16 +267,21 @@ export function calcTechnicalScore(
 
   // ── 단기 상승 임박 지표 ──
 
-  // 이격도 반등: 현재가가 20일선 대비 92~98% (저이격) + 오늘 양봉
+  // 이격도 반등: 현재가가 20일선 대비 저이격 + 오늘 양봉 — 저점매수 핵심 시그널
   let disparityRebound = false;
   if (sma20.length >= 1 && closes.length >= 2) {
     const latestSma20 = sma20[sma20.length - 1];
     if (latestSma20 > 0) {
       const disparity = currentPrice / latestSma20;
       const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
-      if (disparity >= 0.92 && disparity <= 0.98 && todayBullish) {
+      if (disparity >= 0.88 && disparity <= 0.95 && todayBullish) {
+        // 깊은 이격 (88~95%) + 양봉: 강한 저점매수 신호
         disparityRebound = true;
-        score += 3;
+        score += 7;
+      } else if (disparity >= 0.92 && disparity <= 0.98 && todayBullish) {
+        // 기존 범위 (92~98%)
+        disparityRebound = true;
+        score += 5;
       }
     }
   }
@@ -294,7 +300,7 @@ export function calcTechnicalScore(
     }
   }
 
-  // 연속하락 후 반등: 3일 이상 연속 하락 후 오늘 +1.5% 이상 양봉
+  // 연속하락 후 반등: 3일 이상 연속 하락 후 오늘 +1.5% 이상 양봉 — 저점매수 핵심 시그널
   let consecutiveDropRebound = false;
   if (closes.length >= 5) {
     let dropDays = 0;
@@ -307,7 +313,8 @@ export function calcTechnicalScore(
       const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
       if (todayPct >= 1.5 && todayBullish) {
         consecutiveDropRebound = true;
-        score += 3;
+        // 하락일수가 길수록 반등 가점 상향 (저점매수 강화)
+        score += dropDays >= 5 ? 8 : 6;  // 3→6~8
       }
     }
   }
@@ -361,13 +368,19 @@ export function calcTechnicalScore(
       }
     }
   }
-  // 추세 지속일수 점수: >=15일 10점, >=10일 6점, >=5일 3점, <5일 0점
-  if (trendDays >= 15) score += 10;
-  else if (trendDays >= 10) score += 6;
-  else if (trendDays >= 5) score += 3;
+  // 추세 지속일수 점수: 대형주는 유지, 소형주만 축소
+  if (marketCapTier === 'large') {
+    if (trendDays >= 15) score += 9;       // 대형주: 장기추세 존중
+    else if (trendDays >= 10) score += 5;
+    else if (trendDays >= 5) score += 3;
+  } else {
+    if (trendDays >= 15) score += 7;       // 중소형주: 축소
+    else if (trendDays >= 10) score += 4;
+    else if (trendDays >= 5) score += 2;
+  }
 
   return {
-    score: Math.max(0, Math.min(score, 58)),
+    score: Math.max(0, Math.min(score, 65)),
     trend_days: trendDays,
     rsi,
     macd_cross: macdCross,

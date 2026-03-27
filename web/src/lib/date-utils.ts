@@ -1,11 +1,27 @@
+/** ISO 타임스탬프를 "N분 전", "N시간 전" 등 상대 시간으로 변환 */
+export function formatTimeAgo(isoTime: string): string {
+  const diff = Date.now() - new Date(isoTime).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return '방금';
+  if (mins < 60) return `${mins}분 전`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  return `${days}일 전`;
+}
+
 export function getLastNWeekdays(n: number): string[] {
   const days: string[] = [];
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   let d = new Date(kst);
   while (days.length < n) {
-    const day = d.getDay();
-    if (day !== 0 && day !== 6) days.push(d.toISOString().slice(0, 10));
+    // KST 날짜 문자열에서 요일을 판단해야 정확함
+    // (getDay()는 UTC 기준이라 KST +9h 후 날짜와 불일치할 수 있음)
+    const dateStr = d.toISOString().slice(0, 10);
+    const kstDate = new Date(dateStr + 'T00:00:00+09:00');
+    const day = kstDate.getUTCDay();
+    if (day !== 0 && day !== 6) days.push(dateStr);
     d = new Date(d.getTime() - 86400000);
   }
   return days;

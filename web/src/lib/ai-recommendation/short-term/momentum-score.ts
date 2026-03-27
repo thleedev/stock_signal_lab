@@ -107,7 +107,8 @@ function calcClosePositionScore(closePosition: number, highEqualsLow: boolean): 
 
   if (pos >= 0.8) return 20;
   if (pos >= 0.6) return 12;
-  if (pos >= 0.4) return 3;
+  if (pos >= 0.4) return 5;   // 3→5 (저가권 종목의 과도한 감점 완화)
+  if (pos >= 0.3) return 0;   // 신규: 0.3~0.4 구간은 중립 (강한 촉매로 프리필터 통과한 종목)
   return -10;
 }
 

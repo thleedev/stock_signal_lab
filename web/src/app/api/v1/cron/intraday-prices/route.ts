@@ -6,17 +6,18 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /**
- * 장중 가격 업데이트 크론 (30분 간격, KST 09:00~20:00)
+ * 장중 가격 업데이트 크론 (30분 간격, KST 08:00~20:00)
  *
  * 매 실행:
  *   1. 네이버에서 전종목 가격 갱신 → stock_cache
- *   2. 스냅샷 무효화 (snapshot_update_status.last_updated 갱신)
- *      → 클라이언트가 폴링하여 새 데이터 fetch → stock-ranking API가 자동 스냅샷 저장
+ *   2. 클라이언트 폴링용 last_updated 갱신 (snapshot_update_status)
  *
  * 20시 마감 실행 (일 1회):
  *   3. 관리종목/유통주식수 갱신 (네이버, 신호 종목만)
  *   4. DART 재무 데이터 수집
  *   5. 30일 초과 스냅샷 삭제
+ *
+ * 참고: 랭킹 스냅샷은 daily-prices 크론에서 1일 1회 저장
  */
 export async function GET() {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -64,9 +65,7 @@ export async function GET() {
     if (!error) updated += rows.length;
   }
 
-  // ── 2. 스냅샷 무효화 알림 ──
-  // last_updated를 갱신하면 클라이언트 폴링이 감지하여 새 데이터를 fetch
-  // stock-ranking API가 refresh 또는 캐시 만료 시 자동으로 스냅샷 저장
+  // ── 2. 클라이언트 폴링용 타임스탬프 갱신 ──
   await supabase
     .from('snapshot_update_status')
     .update({ last_updated: now })

@@ -237,6 +237,25 @@ export async function GET(request: Request) {
     // ═══ Step 7: 분할매매 + AI 리포트 ═══
     const splitResult = await executePendingSplitTrades(supabase, today);
     const reportResult = await generateDailyReport(supabase, today, todayCompact);
+    lap('분할매매 + 리포트 완료');
+
+    // ═══ Step 8: 랭킹 스냅샷 저장 ═══
+    // stock-ranking API를 refresh+snapshot으로 호출하여 당일 스냅샷 1회 저장
+    let snapshotSaved = false;
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000';
+      const res = await fetch(
+        `${baseUrl}/api/v1/stock-ranking?refresh=true&snapshot=true`,
+        { headers: { 'Cache-Control': 'no-cache' } },
+      );
+      snapshotSaved = res.ok;
+      lap(`스냅샷 저장: ${res.ok ? '성공' : `실패(${res.status})`}`);
+    } catch (e) {
+      console.error('[daily-sync] 스냅샷 저장 실패:', e);
+    }
+
     lap('완료');
 
     return NextResponse.json({
@@ -247,6 +266,7 @@ export async function GET(request: Request) {
       short_sell: shortSellMap.size,
       splits: splitResult,
       report: reportResult,
+      snapshot: snapshotSaved,
       elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}초`,
     });
   } catch (e) {

@@ -32,6 +32,8 @@ interface RecommendationFilterBarProps {
   scoreMode?: ScoreMode;
   /** 부모의 실시간 가격 데이터 (순위 트래킹에서 현재가로 사용) */
   livePrices?: Record<string, { current_price: number | null }>;
+  /** 데이터 업데이트 시각 라벨 (예: "14:30") */
+  updateLabel?: string | null;
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -169,6 +171,7 @@ export function RecommendationFilterBar({
   onWeightClick,
   scoreMode = 'standard',
   livePrices,
+  updateLabel,
 }: RecommendationFilterBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -354,19 +357,26 @@ export function RecommendationFilterBar({
           <BarChart3 size={15} />
         </button>
 
-        {/* 새로고침 버튼 */}
-        <button
-          type="button"
-          aria-label="새로고침"
-          onClick={onRefresh}
-          disabled={refreshing}
-          className={`${iconBtnCls} disabled:opacity-50`}
-        >
-          <RefreshCw
-            size={15}
-            className={refreshing ? 'animate-spin' : ''}
-          />
-        </button>
+        {/* 새로고침 버튼 + 업데이트 시각 */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {updateLabel && (
+            <span className="text-[10px] text-[var(--muted)] whitespace-nowrap">
+              {updateLabel}
+            </span>
+          )}
+          <button
+            type="button"
+            aria-label="새로고침"
+            onClick={onRefresh}
+            disabled={refreshing}
+            className={`${iconBtnCls} disabled:opacity-50`}
+          >
+            <RefreshCw
+              size={15}
+              className={refreshing ? 'animate-spin' : ''}
+            />
+          </button>
+        </div>
       </div>
 
       {/* ── 업데이트 배너 ─────────────────────────────────────────── */}

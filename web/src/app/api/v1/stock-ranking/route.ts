@@ -530,6 +530,7 @@ export async function GET(request: NextRequest) {
     const market = searchParams.get('market') ?? 'all';
     const model = searchParams.get('model') || 'standard';
     const refresh = searchParams.get('refresh') === 'true';
+    const saveSnapshot = searchParams.get('snapshot') === 'true';
 
     const supabase = createServiceClient();
     const now = new Date();
@@ -647,7 +648,7 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          // 스냅샷 아이템에 반영
+          // 스냅샷 아이템에 반영 (없는 종목은 0으로 리셋)
           for (const item of snapshotItems) {
             const agg = sigAggMap.get(item.symbol);
             if (agg) {
@@ -656,8 +657,11 @@ export async function GET(request: NextRequest) {
               if (agg.latestDate) {
                 (item as unknown as Record<string, unknown>).signal_date = agg.latestDate.slice(0, 10);
               }
+            } else {
+              // signals 테이블에 없으면 stale 데이터 제거
+              item.signal_count_30d = 0;
+              (item as unknown as Record<string, unknown>).signal_date = null;
             }
-            // stock_cache도 보조적으로 확인 (signals에 없지만 cache에 있는 경우)
           }
         }
 
@@ -1086,6 +1090,31 @@ export async function GET(request: NextRequest) {
         return item;
       });
 
+    // ── signal_count_30d 실시간 보강 (stock_cache 값이 stale할 수 있음) ──
+    if (showSignalAll) {
+      const thirtyDaysAgo = new Date(new Date().getTime() + 9 * 60 * 60 * 1000 - 30 * 86400000)
+        .toISOString().slice(0, 10);
+      const { data: sigData } = await supabase
+        .from('signals')
+        .select('symbol, timestamp')
+        .in('signal_type', ['BUY', 'BUY_FORECAST'])
+        .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`)
+        .order('timestamp', { ascending: false })
+        .limit(5000);
+      const liveSignalSymbols = new Set<string>();
+      if (sigData) {
+        for (const row of sigData) {
+          liveSignalSymbols.add(row.symbol as string);
+        }
+      }
+      // stock_cache의 stale signal_count_30d를 보정
+      for (const item of allScored) {
+        if (!liveSignalSymbols.has(item.symbol)) {
+          item.signal_count_30d = 0;
+        }
+      }
+    }
+
     // ── 날짜 필터 적용 (스냅샷 저장용 allScored와 분리) ──
     const scored = allScored.filter((item) => {
       if (dateSymbols) return dateSymbols.has(item.symbol);
@@ -1299,52 +1328,53 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit;
     const items = regularItems.slice(offset, offset + limit);
 
-    // ── 비동기 스냅샷 저장 (날짜 필터 전 전체 종목 저장 — 읽기 시점에 필터 적용) ──
-    void (async () => {
-      try {
-        const snapshotRows = allScored.map((item: StockRankItem) => ({
-          snapshot_date: todayStr,
-          snapshot_time: new Date().toISOString(),
-          model: model || 'standard',
-          symbol: item.symbol,
-          name: item.name,
-          market: item.market,
-          current_price: item.current_price,
-          market_cap: item.market_cap,
-          daily_trading_value: item.trading_value ?? null,
-          avg_trading_value_20d: item.avg_trading_value_20d ?? null,
-          turnover_rate: item.turnover_rate ?? null,
-          is_managed: item.is_managed ?? false,
-          has_recent_cbw: item.has_recent_cbw ?? false,
-          major_shareholder_pct: item.major_shareholder_pct ?? null,
-          score_total: item.score_total,
-          score_signal: item.score_signal,
-          score_trend: item.score_momentum,
-          score_valuation: item.score_valuation,
-          score_supply: item.score_supply,
-          score_risk: item.score_risk ?? 0,
-          score_momentum: item.score_momentum,
-          score_catalyst: item.score_catalyst ?? 0,
-          grade: item.grade ?? null,
-          characters: item.characters ?? null,
-          recommendation: item.recommendation ?? null,
-          signal_date: item.latest_signal_date ?? null,
-          raw_data: item,
-        }));
+    // ── 스냅샷 저장 (snapshot=true 파라미터 시에만 — daily-prices 크론에서 호출) ──
+    if (saveSnapshot) {
+      void (async () => {
+        try {
+          const snapshotRows = allScored.map((item: StockRankItem) => ({
+            snapshot_date: todayStr,
+            snapshot_time: new Date().toISOString(),
+            model: model || 'standard',
+            symbol: item.symbol,
+            name: item.name,
+            market: item.market,
+            current_price: item.current_price,
+            market_cap: item.market_cap,
+            daily_trading_value: item.trading_value ?? null,
+            avg_trading_value_20d: item.avg_trading_value_20d ?? null,
+            turnover_rate: item.turnover_rate ?? null,
+            is_managed: item.is_managed ?? false,
+            has_recent_cbw: item.has_recent_cbw ?? false,
+            major_shareholder_pct: item.major_shareholder_pct ?? null,
+            score_total: item.score_total,
+            score_signal: item.score_signal,
+            score_trend: item.score_momentum,
+            score_valuation: item.score_valuation,
+            score_supply: item.score_supply,
+            score_risk: item.score_risk ?? 0,
+            score_momentum: item.score_momentum,
+            score_catalyst: item.score_catalyst ?? 0,
+            grade: item.grade ?? null,
+            characters: item.characters ?? null,
+            recommendation: item.recommendation ?? null,
+            signal_date: item.latest_signal_date ?? null,
+            raw_data: item,
+          }));
 
-        // 500건씩 배치 upsert
-        for (let i = 0; i < snapshotRows.length; i += 500) {
-          await supabase
-            .from('stock_ranking_snapshot')
-            .upsert(snapshotRows.slice(i, i + 500), {
-              onConflict: 'snapshot_date,model,symbol',
-              ignoreDuplicates: false,
-            });
+          for (let i = 0; i < snapshotRows.length; i += 500) {
+            await supabase
+              .from('stock_ranking_snapshot')
+              .upsert(snapshotRows.slice(i, i + 500), {
+                onConflict: 'snapshot_date,model,symbol',
+                ignoreDuplicates: false,
+              });
+          }
+        } catch (e) {
+          console.error('스냅샷 저장 실패:', e);
         }
-      } catch (e) {
-        console.error('스냅샷 저장 실패:', e);
-      }
-    })();
+      })();
+    }
 
     return NextResponse.json({
       items, total, page, limit, today: todayStr,
