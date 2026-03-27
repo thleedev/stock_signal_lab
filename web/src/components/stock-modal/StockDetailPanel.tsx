@@ -12,6 +12,7 @@ import { MetricsGrid } from "./MetricsGrid";
 import { ConsensusSection } from "./ConsensusSection";
 import { DartInfoSection } from "./DartInfoSection";
 import { PortfolioGroupAccordion } from "./PortfolioGroupAccordion";
+import { ReturnTrendSection } from "./ReturnTrendSection";
 import dynamic from "next/dynamic";
 
 // 차트 컴포넌트 — SSR 비활성화
@@ -291,6 +292,12 @@ export function StockDetailPanel() {
 
               {/* 주요 지표 그리드 */}
               <MetricsGrid data={metricsData} />
+
+              {/* 수익률 추이 */}
+              <ReturnTrendSection
+                symbol={modal.symbol}
+                currentPrice={currentPrice}
+              />
 
               {/* 컨센서스 섹션 */}
               {data && <ConsensusSection data={data} currentPrice={currentPrice} />}

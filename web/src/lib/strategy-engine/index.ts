@@ -73,8 +73,6 @@ function getTradeDirection(signal: Signal): 'BUY' | 'SELL' | null {
     case 'SELL':
     case 'SELL_COMPLETE':
       return 'SELL';
-    case 'HOLD':
-      return null;
     default:
       return null;
   }

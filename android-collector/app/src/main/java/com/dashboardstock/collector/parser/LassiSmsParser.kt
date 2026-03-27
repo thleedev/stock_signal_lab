@@ -30,7 +30,7 @@ object LassiSmsParser {
         val now = OffsetDateTime.now(ZoneId.of("Asia/Seoul"))
         val timestamp = now.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
 
-        return STOCK_PATTERN.findAll(body).map { match ->
+        return STOCK_PATTERN.findAll(body).mapNotNull { match ->
             val name = match.groupValues[1].trim()
             val symbol = match.groupValues[2]
             val status = match.groupValues[3].replace("\\s+".toRegex(), "")
@@ -38,9 +38,9 @@ object LassiSmsParser {
             val signalType = when {
                 status.contains("매도") -> "SELL"
                 status.contains("매수") -> "BUY"
-                status.contains("보유중") -> "HOLD"
-                else -> "HOLD"
-            }
+                status.contains("보유중") -> null // 보유중 신호는 무시
+                else -> null
+            } ?: return@mapNotNull null
 
             SignalInput(
                 timestamp = timestamp,

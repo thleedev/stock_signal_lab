@@ -1332,10 +1332,33 @@ export async function GET(request: NextRequest) {
     if (saveSnapshot) {
       void (async () => {
         try {
+          const triggerType = searchParams.get('trigger_type') || 'cron';
+          const now = new Date().toISOString();
+
+          // 1. 세션 생성
+          const { data: session, error: sessionError } = await supabase
+            .from('snapshot_sessions')
+            .insert({
+              session_date: todayStr,
+              session_time: now,
+              model: model || 'standard',
+              trigger_type: triggerType,
+              total_count: allScored.length,
+            })
+            .select('id')
+            .single();
+
+          if (sessionError || !session) {
+            console.error('세션 생성 실패:', sessionError);
+            return;
+          }
+
+          // 2. 스냅샷 행 저장 (session_id 포함)
           const snapshotRows = allScored.map((item: StockRankItem) => ({
             snapshot_date: todayStr,
-            snapshot_time: new Date().toISOString(),
+            snapshot_time: now,
             model: model || 'standard',
+            session_id: session.id,
             symbol: item.symbol,
             name: item.name,
             market: item.market,
@@ -1366,7 +1389,7 @@ export async function GET(request: NextRequest) {
             await supabase
               .from('stock_ranking_snapshot')
               .upsert(snapshotRows.slice(i, i + 500), {
-                onConflict: 'snapshot_date,model,symbol',
+                onConflict: 'session_id,symbol',
                 ignoreDuplicates: false,
               });
           }

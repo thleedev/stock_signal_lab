@@ -5,7 +5,6 @@ import { Signal, SignalType } from '@/types/signal';
 const SIGNAL_TYPE_KR: Record<SignalType, string> = {
   BUY: '매수',
   SELL: '매도',
-  HOLD: '보유',
   BUY_FORECAST: '매수 예고',
   SELL_COMPLETE: '매도 완료',
 };

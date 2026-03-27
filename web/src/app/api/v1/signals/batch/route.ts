@@ -37,12 +37,56 @@ export async function POST(request: NextRequest) {
     device_id: body.device_id || null,
   }));
 
+  // BUY_FORECAST → BUY 전환: 퀀트 매수(BUY) 신호가 들어오면
+  // 동일 종목의 가장 최근 매수예고(BUY_FORECAST)를 BUY로 업데이트
+  const buySignals = body.signals.filter(
+    (s) => s.signal_type === 'BUY' && s.symbol && s.source === 'quant'
+  );
+  const upgradedSymbols = new Set<string>();
+  for (const buy of buySignals) {
+    // 가장 최근 BUY_FORECAST 조회
+    const { data: forecast } = await supabase
+      .from('signals')
+      .select('id, raw_data')
+      .eq('symbol', buy.symbol!)
+      .eq('source', 'quant')
+      .eq('signal_type', 'BUY_FORECAST')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (forecast) {
+      await supabase
+        .from('signals')
+        .update({
+          signal_type: 'BUY',
+          timestamp: buy.timestamp,
+          signal_price: buy.signal_price ?? null,
+          raw_data: {
+            ...(forecast.raw_data as Record<string, unknown> || {}),
+            ...(buy.raw_data || {}),
+            ...(buy.signal_price != null ? { signal_price: buy.signal_price } : {}),
+            upgraded_from: 'BUY_FORECAST',
+          },
+        })
+        .eq('id', forecast.id);
+      upgradedSymbols.add(buy.symbol!);
+    }
+  }
+
+  // BUY_FORECAST→BUY 전환된 종목은 중복 INSERT 방지를 위해 제외
+  const finalRows = rows.filter(
+    (r) => !(r.signal_type === 'BUY' && r.source === 'quant' && upgradedSymbols.has(r.symbol ?? ''))
+  );
+
   // upsert with ignoreDuplicates: UNIQUE constraint(idx_signals_dedup)에
   // 걸리는 중복 행은 무시하고 나머지만 INSERT
-  const { data, error } = await supabase
-    .from('signals')
-    .upsert(rows, { onConflict: 'symbol,source,signal_type,signal_time', ignoreDuplicates: true })
-    .select('id');
+  const { data, error } = finalRows.length > 0
+    ? await supabase
+        .from('signals')
+        .upsert(finalRows, { onConflict: 'symbol,source,signal_type,signal_time', ignoreDuplicates: true })
+        .select('id')
+    : { data: [], error: null };
 
   if (error) {
     console.error('signals insert error:', error);

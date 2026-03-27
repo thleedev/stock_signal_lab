@@ -1,5 +1,5 @@
 // 신호 타입
-export type SignalType = 'BUY' | 'SELL' | 'HOLD' | 'BUY_FORECAST' | 'SELL_COMPLETE';
+export type SignalType = 'BUY' | 'SELL' | 'BUY_FORECAST' | 'SELL_COMPLETE';
 export type SignalSource = 'lassi' | 'stockbot' | 'quant';
 export type ExecutionType = 'lump' | 'split';
 

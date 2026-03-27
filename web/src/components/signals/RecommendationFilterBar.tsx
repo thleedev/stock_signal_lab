@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, RefreshCw, MoreHorizontal, BarChart3, SlidersHorizontal } from 'lucide-react';
+import { Search, RefreshCw, MoreHorizontal, BarChart3, SlidersHorizontal, Camera, Loader2 } from 'lucide-react';
 import { SnapshotTracker } from './SnapshotTracker';
 import type { ScoreMode } from './SnapshotTracker';
 
@@ -34,6 +34,10 @@ interface RecommendationFilterBarProps {
   livePrices?: Record<string, { current_price: number | null }>;
   /** 데이터 업데이트 시각 라벨 (예: "14:30") */
   updateLabel?: string | null;
+  /** 수동 스냅샷 저장 핸들러 */
+  onSaveSnapshot?: () => void;
+  /** 스냅샷 저장 진행 중 */
+  savingSnapshot?: boolean;
 }
 
 // ─── 상수 ────────────────────────────────────────────────────────────────────
@@ -172,6 +176,8 @@ export function RecommendationFilterBar({
   scoreMode = 'standard',
   livePrices,
   updateLabel,
+  onSaveSnapshot,
+  savingSnapshot,
 }: RecommendationFilterBarProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -346,13 +352,31 @@ export function RecommendationFilterBar({
           </button>
         )}
 
+        {/* 스냅샷 저장 버튼 */}
+        {onSaveSnapshot && (
+          <button
+            type="button"
+            aria-label="스냅샷 저장"
+            title="현재 스냅샷 저장"
+            onClick={onSaveSnapshot}
+            disabled={savingSnapshot}
+            className={`${onWeightClick ? '' : 'ml-auto'} ${iconBtnCls} disabled:opacity-50`}
+          >
+            {savingSnapshot ? (
+              <Loader2 size={15} className="animate-spin" />
+            ) : (
+              <Camera size={15} />
+            )}
+          </button>
+        )}
+
         {/* 순위 트래킹 버튼 */}
         <button
           type="button"
           aria-label="순위 트래킹"
           title="순위 트래킹"
           onClick={() => setTrackerOpen(true)}
-          className={`${onWeightClick ? '' : 'ml-auto'} ${iconBtnCls}`}
+          className={`${!onSaveSnapshot && !onWeightClick ? 'ml-auto' : ''} ${iconBtnCls}`}
         >
           <BarChart3 size={15} />
         </button>

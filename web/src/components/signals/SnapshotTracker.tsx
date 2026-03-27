@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { X, ArrowUpDown, TrendingUp, TrendingDown, Loader2 } from 'lucide-react';
-import { getLastNWeekdays, formatDateLabel } from '@/lib/date-utils';
+import { X, ArrowUpDown, TrendingUp, TrendingDown, Loader2, Camera, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useStockModal } from '@/contexts/stock-modal-context';
+import { SnapshotTimeline } from './SnapshotTimeline';
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 
@@ -48,9 +49,21 @@ interface SnapshotItem {
 interface SnapshotResponse {
   date: string;
   model: string;
+  session_id: number | null;
   snapshot_time: string | null;
+  trigger_type: string | null;
   items: SnapshotItem[];
   total: number;
+}
+
+/** 세션 메타 */
+interface Session {
+  id: number;
+  session_date: string;
+  session_time: string;
+  model: string;
+  trigger_type: string;
+  total_count: number;
 }
 
 /** 수익률 계산이 포함된 표시용 행 */
@@ -69,8 +82,17 @@ type SortKey = 'rank' | 'return';
 
 export type ScoreMode = 'standard' | 'short_term';
 
-// ── 과거 평일 목록 (최근 7영업일, 오늘 제외) ──────────────────────────────────
-const WEEKDAYS = getLastNWeekdays(8).slice(1); // 오늘 제외한 7일
+// ── 날짜 포맷 헬퍼 ──────────────────────────────────────────────────────────────
+function formatDateLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const weekday = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+  // 오늘인지 확인
+  const today = new Date().toISOString().slice(0, 10);
+  if (dateStr === today) return `오늘 (${weekday})`;
+  return `${month}/${day} (${weekday})`;
+}
 
 // ── 등급 색상 매핑 ──────────────────────────────────────────────────────────────
 const GRADE_CLS: Record<string, string> = {
@@ -219,22 +241,76 @@ interface SnapshotTrackerProps {
 
 /**
  * 순위 트래킹 — 과거 스냅샷의 가격과 현재 가격을 비교하여 수익률을 표시.
- * scoreMode에 따라 종목추천 순위 또는 단기추천 순위로 표시.
+ * 세션 기반 조회 + 타임라인 바 + 수동 스냅샷 저장 지원.
  */
 export function SnapshotTracker({ onClose, scoreMode = 'standard', livePrices }: SnapshotTrackerProps) {
-  const [selectedDate, setSelectedDate] = useState<string>(WEEKDAYS[0] ?? '');
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [allSessions, setAllSessions] = useState<Session[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [snapshotData, setSnapshotData] = useState<SnapshotResponse | null>(null);
   const [fetchedPrices, setFetchedPrices] = useState<Map<string, number | null>>(new Map());
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [datesLoading, setDatesLoading] = useState(true);
 
-  // 스냅샷 데이터 가져오기
-  const fetchSnapshot = useCallback(async (date: string) => {
+  const { openStockModal } = useStockModal();
+
+  // ── 전체 세션 로드 (마운트 시 1회) → 스냅샷이 있는 날짜 목록 추출 ──
+  const fetchAllSessions = useCallback(async () => {
+    setDatesLoading(true);
+    try {
+      const res = await window.fetch(
+        `/api/v1/stock-ranking/sessions?model=standard`,
+      );
+      if (res.ok) {
+        const { sessions: list } = await res.json() as { sessions: Session[] };
+        setAllSessions(list);
+        // 고유 날짜 추출 (최신순 정렬)
+        const dates = [...new Set(list.map((s) => s.session_date))].sort().reverse();
+        setAvailableDates(dates);
+        // 가장 최신 날짜 자동 선택
+        if (dates.length > 0) {
+          setSelectedDate(dates[0]);
+        }
+      }
+    } catch {
+      setAvailableDates([]);
+    } finally {
+      setDatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAllSessions();
+  }, [fetchAllSessions]);
+
+  // ── 선택된 날짜의 세션 필터링 (로컬) ──
+  useEffect(() => {
+    if (!selectedDate || allSessions.length === 0) {
+      setSessions([]);
+      setActiveSessionId(null);
+      return;
+    }
+    const dateSessions = allSessions.filter((s) => s.session_date === selectedDate);
+    setSessions(dateSessions);
+    if (dateSessions.length > 0) {
+      setActiveSessionId(dateSessions[dateSessions.length - 1].id);
+    } else {
+      setActiveSessionId(null);
+      setSnapshotData(null);
+    }
+  }, [selectedDate, allSessions]);
+
+  // ── 세션별 스냅샷 로드 ──
+  const fetchSnapshot = useCallback(async (sessionId: number) => {
     setLoading(true);
     try {
       const res = await window.fetch(
-        `/api/v1/stock-ranking/snapshot?date=${date}&model=standard`,
+        `/api/v1/stock-ranking/snapshot?session_id=${sessionId}`,
       );
       if (res.ok) {
         const data: SnapshotResponse = await res.json();
@@ -254,55 +330,84 @@ export function SnapshotTracker({ onClose, scoreMode = 'standard', livePrices }:
     if (symbols.length === 0) return;
     try {
       const CHUNK = 200;
-      const map = new Map<string, number | null>();
+      // 청크를 병렬로 요청
+      const chunks: string[][] = [];
       for (let i = 0; i < symbols.length; i += CHUNK) {
-        const chunk = symbols.slice(i, i + CHUNK);
-        const res = await window.fetch(`/api/v1/prices?symbols=${chunk.join(',')}`);
-        if (res.ok) {
-          const { data } = await res.json();
+        chunks.push(symbols.slice(i, i + CHUNK));
+      }
+      const results = await Promise.all(
+        chunks.map((chunk) =>
+          window.fetch(`/api/v1/prices?symbols=${chunk.join(',')}`)
+            .then((r) => (r.ok ? r.json() : { data: null }))
+            .then(({ data }) => data as Record<string, { current_price: number | null }> | null)
+            .catch(() => null),
+        ),
+      );
+      // 모든 결과를 하나의 맵에 병합
+      setFetchedPrices((prev) => {
+        const merged = new Map(prev);
+        for (const data of results) {
           if (data) {
-            for (const [sym, info] of Object.entries(data as Record<string, { current_price: number | null }>)) {
-              map.set(sym, info.current_price);
+            for (const [sym, info] of Object.entries(data)) {
+              merged.set(sym, info.current_price);
             }
           }
         }
-      }
-      setFetchedPrices(map);
+        return merged;
+      });
     } catch {
-      // 실패 시 빈 맵 유지
+      // 실패 시 기존 맵 유지
     }
   }, []);
 
-  useEffect(() => {
-    if (selectedDate) {
-      fetchSnapshot(selectedDate);
+  // ── 수동 스냅샷 저장 ──
+  const handleSaveSnapshot = useCallback(async () => {
+    setSaving(true);
+    try {
+      const res = await window.fetch('/api/v1/stock-ranking/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: scoreMode === 'short_term' ? 'short_term' : 'standard' }),
+      });
+      if (res.ok) {
+        // 전체 세션 목록 다시 가져오기 → 오늘 날짜가 추가됨
+        await fetchAllSessions();
+        const today = new Date().toISOString().slice(0, 10);
+        setSelectedDate(today);
+      }
+    } finally {
+      setSaving(false);
     }
-  }, [selectedDate, fetchSnapshot]);
+  }, [scoreMode, fetchAllSessions]);
 
-  // 부모에서 livePrices를 전달하지 않았을 때만 별도 조회
+  // 세션 선택 → 스냅샷 로드
   useEffect(() => {
-    if (!livePrices && snapshotData?.items?.length) {
-      const symbols = snapshotData.items.map((item) => item.symbol);
-      fetchCurrentPrices(symbols);
+    if (activeSessionId) fetchSnapshot(activeSessionId);
+  }, [activeSessionId, fetchSnapshot]);
+
+  // livePrices에 없는 종목은 별도 조회
+  useEffect(() => {
+    if (!snapshotData?.items?.length) return;
+    const missing = snapshotData.items
+      .map((item) => item.symbol)
+      .filter((sym) => !livePrices?.[sym]?.current_price);
+    if (missing.length > 0) {
+      fetchCurrentPrices(missing);
     }
   }, [snapshotData, fetchCurrentPrices, livePrices]);
 
-  // 현재가 맵: livePrices 우선, 없으면 fetchedPrices
+  // 현재가 맵: livePrices + fetchedPrices 병합 (livePrices 우선)
   const currentPrices = useMemo(() => {
+    const map = new Map<string, number | null>(fetchedPrices);
     if (livePrices) {
-      const map = new Map<string, number | null>();
       for (const [sym, info] of Object.entries(livePrices)) {
-        map.set(sym, info.current_price);
+        if (info.current_price != null) {
+          map.set(sym, info.current_price);
+        }
       }
-      return map;
     }
-    return fetchedPrices;
+    return map;
   }, [livePrices, fetchedPrices]);
-
-  // 날짜 변경 핸들러
-  const handleDateChange = (date: string) => {
-    setSelectedDate(date);
-  };
 
   // 정렬 토글
   const handleSortToggle = (key: SortKey) => {
@@ -314,14 +419,17 @@ export function SnapshotTracker({ onClose, scoreMode = 'standard', livePrices }:
     }
   };
 
+  // 종목 클릭 → 종목 상세 모달
+  const handleRowClick = useCallback((row: TrackerRow) => {
+    openStockModal(row.symbol, row.name);
+  }, [openStockModal]);
+
   // 스냅샷 아이템을 scoreMode에 따라 정렬 (단기추천이면 재정렬)
   const orderedSnapshotItems = useMemo(() => {
     if (!snapshotData?.items) return [];
     if (scoreMode === 'standard') {
-      // 서버 score_total 순 (API가 이미 정렬해서 반환)
       return snapshotData.items;
     }
-    // 단기추천: raw_data 기반으로 단기점수 재계산 후 정렬
     return [...snapshotData.items].sort((a, b) => {
       return computeShortTermScore(b) - computeShortTermScore(a);
     });
@@ -356,7 +464,6 @@ export function SnapshotTracker({ onClose, scoreMode = 'standard', livePrices }:
       if (sortKey === 'rank') {
         return sortDir === 'asc' ? a.rank - b.rank : b.rank - a.rank;
       }
-      // return 정렬: null은 뒤로
       const aVal = a.returnPct ?? (sortDir === 'asc' ? Infinity : -Infinity);
       const bVal = b.returnPct ?? (sortDir === 'asc' ? Infinity : -Infinity);
       return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
@@ -417,51 +524,109 @@ export function SnapshotTracker({ onClose, scoreMode = 'standard', livePrices }:
               {modeLabel} 기준
             </span>
           </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--card-hover)] text-[var(--muted)] transition-colors"
-            aria-label="닫기"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSaveSnapshot}
+              disabled={saving}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
+            >
+              {saving ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Camera size={12} />
+              )}
+              {saving ? '저장 중...' : '스냅샷 저장'}
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-[var(--card-hover)] text-[var(--muted)] transition-colors"
+              aria-label="닫기"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* ── 날짜 선택 ── */}
         <div className="p-4 border-b border-[var(--border)] space-y-3">
-          <p className="text-xs text-[var(--muted)]">
-            과거 스냅샷 날짜를 선택하면 해당일 추천 종목의 현재 수익률을 확인할 수 있습니다.
-          </p>
-          <div className="flex gap-1.5 flex-wrap">
-            {WEEKDAYS.map((date) => (
-              <button
-                key={date}
-                onClick={() => handleDateChange(date)}
-                className={`px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
-                  selectedDate === date
-                    ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
-                    : 'bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]'
-                }`}
-              >
-                {formatDateLabel(date)}
-              </button>
-            ))}
-          </div>
-
-          {/* 요약 통계 */}
-          {snapshotData && !loading && (
-            <div className="flex items-center gap-4 text-xs">
-              <span className="text-[var(--muted)]">
-                {snapshotData.total}종목
-              </span>
-              {avgReturn !== null && (
-                <span className={avgReturn >= 0 ? 'text-[var(--danger)]' : 'text-blue-500'}>
-                  평균 수익률: {avgReturn > 0 ? '+' : ''}
-                  {avgReturn.toFixed(2)}%
-                </span>
-              )}
+          {datesLoading ? (
+            <div className="flex items-center justify-center py-2 text-[var(--muted)] text-xs gap-2">
+              <Loader2 size={12} className="animate-spin" />
+              날짜 로딩 중...
             </div>
+          ) : availableDates.length === 0 ? (
+            <p className="text-xs text-[var(--muted)] text-center py-2">
+              스냅샷 데이터가 없습니다. "스냅샷 저장" 버튼으로 첫 스냅샷을 생성하세요.
+            </p>
+          ) : (
+            <>
+              {/* 좌우 화살표 + 날짜 버튼 스크롤 */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => {
+                    const idx = availableDates.indexOf(selectedDate);
+                    if (idx < availableDates.length - 1) setSelectedDate(availableDates[idx + 1]);
+                  }}
+                  disabled={availableDates.indexOf(selectedDate) >= availableDates.length - 1}
+                  className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-hover)] disabled:opacity-30 transition-colors shrink-0"
+                  title="이전 날짜"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                <div className="flex gap-1.5 overflow-x-auto scrollbar-hide flex-1">
+                  {availableDates.map((date) => (
+                    <button
+                      key={date}
+                      onClick={() => setSelectedDate(date)}
+                      className={`px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap shrink-0 ${
+                        selectedDate === date
+                          ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                          : 'bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]'
+                      }`}
+                    >
+                      {formatDateLabel(date)}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => {
+                    const idx = availableDates.indexOf(selectedDate);
+                    if (idx > 0) setSelectedDate(availableDates[idx - 1]);
+                  }}
+                  disabled={availableDates.indexOf(selectedDate) <= 0}
+                  className="p-1 rounded-md text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--card-hover)] disabled:opacity-30 transition-colors shrink-0"
+                  title="다음 날짜"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+
+              {/* 요약 통계 */}
+              {snapshotData && !loading && (
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="text-[var(--muted)]">
+                    {snapshotData.total}종목
+                  </span>
+                  {avgReturn !== null && (
+                    <span className={avgReturn >= 0 ? 'text-[var(--danger)]' : 'text-blue-500'}>
+                      평균 수익률: {avgReturn > 0 ? '+' : ''}
+                      {avgReturn.toFixed(2)}%
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
+
+        {/* ── 타임라인 바 ── */}
+        <SnapshotTimeline
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onSelect={setActiveSessionId}
+        />
 
         {/* ── 테이블 ── */}
         <div className="flex-1 overflow-y-auto">
@@ -525,7 +690,8 @@ export function SnapshotTracker({ onClose, scoreMode = 'standard', livePrices }:
                   return (
                     <tr
                       key={row.symbol}
-                      className="hover:bg-[var(--card-hover)] transition-colors"
+                      onClick={() => handleRowClick(row)}
+                      className="hover:bg-[var(--card-hover)] transition-colors cursor-pointer"
                     >
                       {/* 순위 */}
                       <td className="py-2 px-3 text-center text-xs font-bold tabular-nums text-[var(--muted)]">

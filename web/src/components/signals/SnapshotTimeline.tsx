@@ -27,7 +27,7 @@ function getTriggerLabel(triggerType: string): string {
   return triggerType === 'manual' ? '수동' : '자동';
 }
 
-export default function SnapshotTimeline({
+export function SnapshotTimeline({
   sessions,
   activeSessionId,
   onSelect,
@@ -37,7 +37,7 @@ export default function SnapshotTimeline({
   const count = sessions.length;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="px-4 py-2 border-b border-[var(--border)] flex flex-col gap-2">
       {/* 범례 헤더 */}
       <div className="flex items-center gap-3">
         <span

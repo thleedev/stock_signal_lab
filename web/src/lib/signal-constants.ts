@@ -39,7 +39,6 @@ export const SIGNAL_TYPE_LABELS: Record<string, string> = {
   BUY_FORECAST: "매수예고",
   SELL: "매도",
   SELL_COMPLETE: "매도완료",
-  HOLD: "보유중",
 };
 
 /** 신호 타입 배지 색상 클래스 */

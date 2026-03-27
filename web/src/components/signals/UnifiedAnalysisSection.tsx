@@ -591,6 +591,20 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const allSymbols = useMemo(() => (data?.items ?? []).map((s) => s.symbol), [data]);
   const { prices: livePrices, refresh: refreshLivePrices, loading: liveLoading } = usePriceRefresh(allSymbols);
   const [priceLoading, setPriceLoading] = useState(false);
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+
+  const handleSaveSnapshot = useCallback(async () => {
+    setSavingSnapshot(true);
+    try {
+      await window.fetch('/api/v1/stock-ranking/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'standard' }),
+      });
+    } finally {
+      setSavingSnapshot(false);
+    }
+  }, []);
   const priceLoadingRef = useRef(false);
 
   const refreshPrices = useCallback(async () => {
@@ -875,6 +889,8 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
           onWeightClick={() => setShowWeights(v => !v)}
           livePrices={livePrices}
           updateLabel={data?.snapshot_time ? formatTimeAgo(data.snapshot_time) : null}
+          onSaveSnapshot={handleSaveSnapshot}
+          savingSnapshot={savingSnapshot}
         />
         {showWeights && !isEtfMode && (
           <WeightPopup
@@ -913,7 +929,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
       <div className={`rounded-xl border border-[var(--border)] bg-[var(--card)] divide-y divide-[var(--border)] overflow-hidden ${loading ? 'opacity-60' : ''}`}>
         {displayItems.map((item, idx) => (
             <RankCard
-              key={item.symbol}
+              key={`${item.symbol}-${idx}`}
               item={item}
               rank={idx + 1}
               weighted={weightedMap.get(item.symbol) ?? 0}
