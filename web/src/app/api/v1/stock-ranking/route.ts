@@ -457,31 +457,39 @@ async function readSnapshot(
   model: string,
   date: string,
 ): Promise<{ items: StockRankItem[]; snapshot_time: string | null } | null> {
-  let query = supabase
-    .from('stock_ranking_snapshot')
-    .select('*')
-    .eq('model', model)
-
+  // 해당 날짜의 최신 세션 찾기
+  let targetDate = date;
   if (date === 'all' || date === 'signal_all') {
     const { data: latest } = await supabase
-      .from('stock_ranking_snapshot')
-      .select('snapshot_date')
+      .from('snapshot_sessions')
+      .select('session_date')
       .eq('model', model)
-      .order('snapshot_date', { ascending: false })
+      .order('session_date', { ascending: false })
       .limit(1)
-      .single()
-
-    if (!latest) return null
-    query = query.eq('snapshot_date', latest.snapshot_date)
-  } else {
-    query = query.eq('snapshot_date', date)
+      .single();
+    if (!latest) return null;
+    targetDate = latest.session_date;
   }
 
-  // Supabase 기본 1000건 제한 → 페이지네이션으로 전체 조회
+  const { data: latestSession } = await supabase
+    .from('snapshot_sessions')
+    .select('id, session_time')
+    .eq('session_date', targetDate)
+    .eq('model', model)
+    .order('session_time', { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!latestSession) return null;
+
+  // 해당 세션의 스냅샷만 조회 (페이지네이션)
   const allData: Record<string, unknown>[] = [];
   let offset = 0;
   while (true) {
-    const { data: page, error: pageError } = await query
+    const { data: page, error: pageError } = await supabase
+      .from('stock_ranking_snapshot')
+      .select('*')
+      .eq('session_id', latestSession.id)
       .order('score_total', { ascending: false })
       .range(offset, offset + 999);
     if (pageError || !page?.length) break;
@@ -516,7 +524,7 @@ async function readSnapshot(
       characters: row.characters as string[],
       recommendation: row.recommendation as string,
     })) as StockRankItem[],
-    snapshot_time: (allData[0] as Record<string, unknown>)?.snapshot_time as string ?? null,
+    snapshot_time: latestSession.session_time as string,
   }
 }
 
@@ -1353,7 +1361,23 @@ export async function GET(request: NextRequest) {
             return;
           }
 
-          // 2. 스냅샷 행 저장 (session_id 포함)
+          // 2. stock_cache에서 최신 가격 읽기 (스냅샷 정확성 보장)
+          const priceMap = new Map<string, number>();
+          const allSymbols = allScored.map((item: StockRankItem) => item.symbol);
+          for (let i = 0; i < allSymbols.length; i += 1000) {
+            const chunk = allSymbols.slice(i, i + 1000);
+            const { data: priceRows } = await supabase
+              .from('stock_cache')
+              .select('symbol, current_price')
+              .in('symbol', chunk);
+            if (priceRows) {
+              for (const row of priceRows) {
+                if (row.current_price) priceMap.set(row.symbol, row.current_price);
+              }
+            }
+          }
+
+          // 3. 스냅샷 행 저장 (session_id 포함, stock_cache 최신 가격 적용)
           const snapshotRows = allScored.map((item: StockRankItem) => ({
             snapshot_date: todayStr,
             snapshot_time: now,
@@ -1362,7 +1386,7 @@ export async function GET(request: NextRequest) {
             symbol: item.symbol,
             name: item.name,
             market: item.market,
-            current_price: item.current_price,
+            current_price: priceMap.get(item.symbol) ?? item.current_price,
             market_cap: item.market_cap,
             daily_trading_value: item.trading_value ?? null,
             avg_trading_value_20d: item.avg_trading_value_20d ?? null,

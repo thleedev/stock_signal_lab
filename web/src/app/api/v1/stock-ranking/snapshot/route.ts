@@ -3,6 +3,7 @@
 // POST: 수동 스냅샷 생성 트리거
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { fetchAllStockPrices } from '@/lib/naver-stock-api';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,13 +160,31 @@ export async function POST() {
       ? `https://${process.env.VERCEL_URL}`
       : 'http://localhost:3000';
 
-    // 실시간 가격 갱신 (수동 스냅샷 시 최신 가격 보장)
-    await fetch(`${baseUrl}/api/v1/prices`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    }).catch(() => {});
+    // 1. 네이버에서 전종목 실시간 가격 조회 → stock_cache 동기 업데이트
+    try {
+      const priceMap = await fetchAllStockPrices();
+      const now = new Date().toISOString();
+      const entries = Array.from(priceMap.values());
+      for (let i = 0; i < entries.length; i += 500) {
+        const batch = entries.slice(i, i + 500);
+        const rows = batch.map((p) => ({
+          symbol: p.symbol,
+          current_price: p.current_price,
+          market_cap: p.market_cap,
+          volume: p.volume > 0 ? p.volume : undefined,
+          price_change: p.volume > 0 ? p.price_change : undefined,
+          price_change_pct: p.volume > 0 ? p.price_change_pct : undefined,
+          updated_at: now,
+        }));
+        await supabase
+          .from('stock_cache')
+          .upsert(rows, { onConflict: 'symbol', ignoreDuplicates: false });
+      }
+    } catch (e) {
+      console.error('가격 갱신 실패:', e);
+    }
 
-    // stock-ranking 호출 (refresh + snapshot)
+    // 2. stock-ranking 호출 (refresh + snapshot) — stock_cache에 최신 가격 보장
     const res = await fetch(
       `${baseUrl}/api/v1/stock-ranking?refresh=true&snapshot=true&trigger_type=manual`,
       { headers: { 'Cache-Control': 'no-cache' } },
