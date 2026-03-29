@@ -1,5 +1,7 @@
-export interface TechnicalScoreResult {
-  score: number; // 0~65 (추세 점수, 순수 가점만 — 저점매수 강화 반영)
+import type { ScoreReason, NormalizedScoreBase } from '@/types/score-reason';
+
+export interface TechnicalScoreResult extends NormalizedScoreBase {
+  score: number; // 0~65 (추세 점수, 순수 가점만 — 저점매수 강화 반영) — 하위 호환
   trend_days: number; // 종가 > SMA20 연속일수
   rsi: number | null;
   macd_cross: boolean;
@@ -26,6 +28,16 @@ export interface DailyPrice {
   volume: number;
 }
 
+/** 숫자를 한국어 형식으로 포맷 (반올림 후 천단위 구분) */
+function fmt(n: number): string {
+  return Math.round(n).toLocaleString('ko-KR');
+}
+
+/** 정규화된 points 계산: rawPoints / MAX_RAW * 100 */
+function norm(rawPoints: number): number {
+  return Math.round((rawPoints / 65) * 1000) / 10;
+}
+
 function calcEMA(closes: number[], period: number): number[] {
   if (closes.length < period) return [];
   const k = 2 / (period + 1);
@@ -36,7 +48,7 @@ function calcEMA(closes: number[], period: number): number[] {
   return emas;
 }
 
-function calcRSI(closes: number[]): number | null {
+export function calcRSI(closes: number[]): number | null {
   if (closes.length < 15) return null;
   const recent = closes.slice(-15);
   let gains = 0,
@@ -85,6 +97,9 @@ export function calcTechnicalScore(
 ): TechnicalScoreResult {
   const empty: TechnicalScoreResult = {
     score: 0,
+    rawScore: 0,
+    normalizedScore: 0,
+    reasons: [],
     trend_days: 0,
     rsi: null,
     macd_cross: false,
@@ -112,11 +127,19 @@ export function calcTechnicalScore(
   const currentPrice = closes[closes.length - 1];
 
   let score = 0;
+  const reasons: ScoreReason[] = [];
 
   // RSI (14일)
   const rsi = calcRSI(closes);
   const rsiInZone = rsi !== null && rsi >= 30 && rsi <= 50;
   if (rsiInZone) score += 4;
+  if (rsi === null) {
+    reasons.push({ label: 'RSI 매수구간', points: 0, detail: 'RSI 데이터 부족', met: false });
+  } else if (rsiInZone) {
+    reasons.push({ label: 'RSI 매수구간', points: norm(4), detail: `RSI ${Math.round(rsi)} (매수구간 30~50)`, met: true });
+  } else {
+    reasons.push({ label: 'RSI 매수구간', points: 0, detail: `RSI ${Math.round(rsi)} (구간 밖)`, met: false });
+  }
 
   // 골든크로스: 5일선이 20일선 상향 돌파 (최근 3일 내)
   const sma5 = calcSMA(closes, 5);
@@ -135,6 +158,15 @@ export function calcTechnicalScore(
     }
   }
   if (goldenCross) score += 5;
+  {
+    const s5 = sma5.length > 0 ? sma5[sma5.length - 1] : 0;
+    const s20 = sma20.length > 0 ? sma20[sma20.length - 1] : 0;
+    if (goldenCross) {
+      reasons.push({ label: '골든크로스', points: norm(5), detail: `5일선 ${fmt(s5)} > 20일선 ${fmt(s20)}`, met: true });
+    } else {
+      reasons.push({ label: '골든크로스', points: 0, detail: `5일선 ${fmt(s5)} ≤ 20일선 ${fmt(s20)}`, met: false });
+    }
+  }
 
   // 볼린저 밴드 하단 이탈 후 복귀 (최근 5일 내) — 저점매수 핵심 시그널
   let bollingerBottom = false;
@@ -148,6 +180,11 @@ export function calcTechnicalScore(
     }
   }
   if (bollingerBottom) score += 6;
+  if (bollingerBottom) {
+    reasons.push({ label: '볼린저 하단', points: norm(6), detail: '볼린저 하단 이탈 후 복귀', met: true });
+  } else {
+    reasons.push({ label: '볼린저 하단', points: 0, detail: '볼린저 하단 미이탈', met: false });
+  }
 
   // MACD 골든크로스 (12/26/9) — 최근 3일 내 발생 여부 확인
   let macdCross = false;
@@ -173,9 +210,15 @@ export function calcTechnicalScore(
     }
   }
   if (macdCross) score += 4;
+  if (macdCross) {
+    reasons.push({ label: 'MACD 크로스', points: norm(4), detail: 'MACD > Signal (상향돌파)', met: true });
+  } else {
+    reasons.push({ label: 'MACD 크로스', points: 0, detail: 'MACD 크로스 미발생', met: false });
+  }
 
   // 불새패턴: 최근 5거래일 중 3일 이상 음봉/보합, 마지막 2일 내 +3% 이상 장대 양봉
   let phoenixPattern = false;
+  let phoenixPct = 0;
   if (closes.length >= 5 && opens.length >= 5) {
     const recentCloses = closes.slice(-5);
     const recentOpens = opens.slice(-5);
@@ -188,24 +231,41 @@ export function calcTechnicalScore(
       const pctGain = recentOpens[i] > 0 ? (body / recentOpens[i]) * 100 : 0;
       if (bearDays >= 3 && body > 0 && pctGain >= 3 && bodyRatio >= 0.6) {
         phoenixPattern = true;
+        phoenixPct = pctGain;
         break;
       }
     }
   }
   if (phoenixPattern) score += 3;
+  if (phoenixPattern) {
+    reasons.push({ label: '불새패턴', points: norm(3), detail: `음봉 후 +${Math.round(phoenixPct * 10) / 10}% 장대양봉`, met: true });
+  } else {
+    reasons.push({ label: '불새패턴', points: 0, detail: '불새패턴 미발생', met: false });
+  }
 
   // 거래량 급증: 20일 평균 대비 2배 이상
   let volumeSurge = false;
+  let volumeSurgeRatio = 0;
+  let todayVolumeVal = 0;
   if (volumes.length >= 21) {
     const avgVol = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
-    if (avgVol > 0 && volumes[volumes.length - 1] >= avgVol * 2) {
+    todayVolumeVal = volumes[volumes.length - 1];
+    volumeSurgeRatio = avgVol > 0 ? todayVolumeVal / avgVol : 0;
+    if (avgVol > 0 && todayVolumeVal >= avgVol * 2) {
       volumeSurge = true;
     }
   }
   if (volumeSurge) score += 4;
+  if (volumeSurge) {
+    reasons.push({ label: '거래량 급증', points: norm(4), detail: `거래량 ${fmt(todayVolumeVal)}주 (20일 평균 대비 ${Math.round(volumeSurgeRatio * 10) / 10}배)`, met: true });
+  } else {
+    reasons.push({ label: '거래량 급증', points: 0, detail: '거래량 평균 범위', met: false });
+  }
 
   // 이동평균 정배열: 티어별 차등 (대형주는 기관 장기배분 신호로 유지, 소형주만 축소)
   let maAligned = false;
+  let maAlignedRawPoints = 0;
+  let maAlignedDetail = '';
   if (closes.length >= 60) {
     const sma60 = calcSMA(closes, 60);
     const latest5 = sma5[sma5.length - 1];
@@ -213,110 +273,159 @@ export function calcTechnicalScore(
     const latest60 = sma60[sma60.length - 1];
     if (latest5 > latest20 && latest20 > latest60) {
       maAligned = true;
-      score += marketCapTier === 'large' ? 10 : marketCapTier === 'mid' ? 8 : 7;
+      maAlignedRawPoints = marketCapTier === 'large' ? 10 : marketCapTier === 'mid' ? 8 : 7;
+      score += maAlignedRawPoints;
+      maAlignedDetail = `5일 ${fmt(latest5)} > 20일 ${fmt(latest20)} > 60일 ${fmt(latest60)}`;
     } else if (latest5 > latest20) {
-      score += marketCapTier === 'large' ? 5 : 4;
+      maAlignedRawPoints = marketCapTier === 'large' ? 5 : 4;
+      score += maAlignedRawPoints;
+      maAlignedDetail = `5일 ${fmt(latest5)} > 20일 ${fmt(latest20)} (부분 정배열)`;
+    } else {
+      maAlignedDetail = `5일 ${fmt(latest5)}, 20일 ${fmt(latest20)}, 60일 ${fmt(latest60)} (정배열 미달)`;
     }
   } else if (sma5.length >= 1 && sma20.length >= 1) {
     const latest5 = sma5[sma5.length - 1];
     const latest20 = sma20[sma20.length - 1];
     if (latest5 > latest20) {
-      score += marketCapTier === 'large' ? 5 : 4;
+      maAlignedRawPoints = marketCapTier === 'large' ? 5 : 4;
+      score += maAlignedRawPoints;
+      maAlignedDetail = `5일 ${fmt(latest5)} > 20일 ${fmt(latest20)} (60일 데이터 부족)`;
+    } else {
+      maAlignedDetail = `5일 ${fmt(latest5)} ≤ 20일 ${fmt(latest20)} (정배열 미달)`;
     }
+  } else {
+    maAlignedDetail = '이동평균 데이터 부족';
   }
+  reasons.push({ label: '이동평균 정배열', points: norm(maAlignedRawPoints), detail: maAlignedDetail, met: maAlignedRawPoints > 0 });
 
   // 52주 위치 점수 (티어별 차등)
   let week52LowNear = false;
   let week52HighNear = false;
+  let week52RawPoints = 0;
+  let week52Detail = '';
   if (high52w && low52w && high52w > low52w && currentPrice > 0) {
     const range52 = high52w - low52w;
     const position52 = (currentPrice - low52w) / range52; // 0=저점, 1=고점
+    const positionPct = Math.round(position52 * 1000) / 10;
+    week52Detail = `52주 위치 ${positionPct}% (저점 ${fmt(low52w)} ~ 고점 ${fmt(high52w)})`;
 
     if (marketCapTier === 'large') {
       // 대형주: 고점 가점 축소, 저점 가점 강화 (저점매수 유도)
-      if (position52 >= 0.95) { score += 5; week52HighNear = true; }  // 8→5
-      else if (position52 >= 0.85) score += 4;                         // 6→4
-      else if (position52 >= 0.70) score += 3;                         // 4→3
-      else if (position52 >= 0.50) score += 2;
-      else if (position52 <= 0.15) { score += 4; week52LowNear = true; }  // 1→4
-      else if (position52 <= 0.30) { score += 3; week52LowNear = true; }  // 신규: 저점 구간 가점
+      if (position52 >= 0.95) { week52RawPoints = 5; week52HighNear = true; }  // 8→5
+      else if (position52 >= 0.85) week52RawPoints = 4;                         // 6→4
+      else if (position52 >= 0.70) week52RawPoints = 3;                         // 4→3
+      else if (position52 >= 0.50) week52RawPoints = 2;
+      else if (position52 <= 0.15) { week52RawPoints = 4; week52LowNear = true; }  // 1→4
+      else if (position52 <= 0.30) { week52RawPoints = 3; week52LowNear = true; }  // 신규: 저점 구간 가점
     } else if (marketCapTier === 'mid') {
       // 중형주: 저점 쪽 가점 상향
-      if (position52 >= 0.95) { score += 4; week52HighNear = true; }
-      else if (position52 <= 0.15) { score += 6; week52LowNear = true; } // 7→6
-      else if (position52 <= 0.30) { score += 4; week52LowNear = true; }
-      else if (position52 >= 0.85) score += 3;
+      if (position52 >= 0.95) { week52RawPoints = 4; week52HighNear = true; }
+      else if (position52 <= 0.15) { week52RawPoints = 6; week52LowNear = true; } // 7→6
+      else if (position52 <= 0.30) { week52RawPoints = 4; week52LowNear = true; }
+      else if (position52 >= 0.85) week52RawPoints = 3;
     } else {
       // 소형주: 저점 가점 + 거래량 반등 동반 시에만 높은 점수 (떨어지는 칼날 방지)
       if (position52 <= 0.15) {
         week52LowNear = true;
-        score += volumeSurge ? 5 : 3;   // 거래량 반등 동반 시 +5, 미동반 +3
+        week52RawPoints = volumeSurge ? 5 : 3;   // 거래량 반등 동반 시 +5, 미동반 +3
       } else if (position52 <= 0.30) {
         week52LowNear = true;
-        score += volumeSurge ? 4 : 2;   // 거래량 반등 동반 시 +4, 미동반 +2
+        week52RawPoints = volumeSurge ? 4 : 2;   // 거래량 반등 동반 시 +4, 미동반 +2
       }
     }
+    score += week52RawPoints;
   } else if (low52w && low52w > 0 && currentPrice > 0) {
     // high52w 없는 경우 기존 로직
     const ratioLow = currentPrice / low52w;
     if (ratioLow >= 0.95 && ratioLow <= 1.05) {
       week52LowNear = true;
-      score += 2;
+      week52RawPoints = 2;
+      score += week52RawPoints;
     }
+    week52Detail = `52주 저점 ${fmt(low52w)} 기준 (고점 데이터 없음)`;
+  } else {
+    week52Detail = '52주 데이터 없음';
   }
+  reasons.push({ label: '52주 위치', points: norm(week52RawPoints), detail: week52Detail, met: week52RawPoints > 0 });
 
   // ── 단기 상승 임박 지표 ──
 
   // 이격도 반등: 현재가가 20일선 대비 저이격 + 오늘 양봉 — 저점매수 핵심 시그널
   let disparityRebound = false;
+  let disparityRawPoints = 0;
+  let disparityDetail = '';
   if (sma20.length >= 1 && closes.length >= 2) {
     const latestSma20 = sma20[sma20.length - 1];
     if (latestSma20 > 0) {
       const disparity = currentPrice / latestSma20;
+      const disparityPct = Math.round(disparity * 1000) / 10;
       const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
       if (disparity >= 0.88 && disparity <= 0.95 && todayBullish) {
         // 깊은 이격 (88~95%) + 양봉: 강한 저점매수 신호
         disparityRebound = true;
+        disparityRawPoints = 7;
         score += 7;
+        disparityDetail = `이격도 ${disparityPct}% + 양봉 (20일선 ${fmt(latestSma20)})`;
       } else if (disparity >= 0.92 && disparity <= 0.98 && todayBullish) {
         // 기존 범위 (92~98%)
         disparityRebound = true;
+        disparityRawPoints = 5;
         score += 5;
+        disparityDetail = `이격도 ${disparityPct}% + 양봉 (20일선 ${fmt(latestSma20)})`;
+      } else {
+        disparityDetail = `이격도 ${disparityPct}% (반등 미발생, 20일선 ${fmt(latestSma20)})`;
       }
     }
   }
+  reasons.push({ label: '이격도 반등', points: norm(disparityRawPoints), detail: disparityDetail || '이격도 데이터 부족', met: disparityRebound });
 
   // 거래량 바닥 탈출: 최근 10일 평균 거래량이 20일 평균의 50% 이하 → 오늘 20일 평균 2배 이상
   let volumeBreakout = false;
+  let volumeBreakoutRatio = 0;
+  let avg10RecentVal = 0;
   if (volumes.length >= 21) {
     const avg20Vol = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
     if (avg20Vol > 0 && volumes.length >= 11) {
-      const avg10Recent = volumes.slice(-11, -1).reduce((a, b) => a + b, 0) / 10;
+      avg10RecentVal = volumes.slice(-11, -1).reduce((a, b) => a + b, 0) / 10;
       const todayVol = volumes[volumes.length - 1];
-      if (avg10Recent <= avg20Vol * 0.5 && todayVol >= avg20Vol * 2) {
+      volumeBreakoutRatio = avg20Vol > 0 ? todayVol / avg20Vol : 0;
+      if (avg10RecentVal <= avg20Vol * 0.5 && todayVol >= avg20Vol * 2) {
         volumeBreakout = true;
         score += 3;
       }
     }
   }
+  if (volumeBreakout) {
+    reasons.push({ label: '거래량 바닥 탈출', points: norm(3), detail: `10일 평균 → 오늘 (${Math.round(volumeBreakoutRatio * 10) / 10}배 탈출)`, met: true });
+  } else {
+    reasons.push({ label: '거래량 바닥 탈출', points: 0, detail: '거래량 바닥 탈출 미발생', met: false });
+  }
 
   // 연속하락 후 반등: 3일 이상 연속 하락 후 오늘 +1.5% 이상 양봉 — 저점매수 핵심 시그널
   let consecutiveDropRebound = false;
+  let consecutiveDropRawPoints = 0;
+  let dropDays = 0;
+  let dropReboundPct = 0;
   if (closes.length >= 5) {
-    let dropDays = 0;
     for (let i = closes.length - 2; i >= Math.max(1, closes.length - 6); i--) {
       if (closes[i] < closes[i - 1]) dropDays++;
       else break;
     }
     if (dropDays >= 3) {
-      const todayPct = (closes[closes.length - 1] - closes[closes.length - 2]) / closes[closes.length - 2] * 100;
+      dropReboundPct = (closes[closes.length - 1] - closes[closes.length - 2]) / closes[closes.length - 2] * 100;
       const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
-      if (todayPct >= 1.5 && todayBullish) {
+      if (dropReboundPct >= 1.5 && todayBullish) {
         consecutiveDropRebound = true;
         // 하락일수가 길수록 반등 가점 상향 (저점매수 강화)
-        score += dropDays >= 5 ? 8 : 6;  // 3→6~8
+        consecutiveDropRawPoints = dropDays >= 5 ? 8 : 6;  // 3→6~8
+        score += consecutiveDropRawPoints;
       }
     }
+  }
+  if (consecutiveDropRebound) {
+    reasons.push({ label: '연속하락 반등', points: norm(consecutiveDropRawPoints), detail: `${dropDays}일 연속 하락 후 +${Math.round(dropReboundPct * 10) / 10}% 반등`, met: true });
+  } else {
+    reasons.push({ label: '연속하락 반등', points: 0, detail: '연속하락 반등 미발생', met: false });
   }
 
   // 초기진입 보너스: 신호 발생 + 아직 덜 오름
@@ -369,18 +478,32 @@ export function calcTechnicalScore(
     }
   }
   // 추세 지속일수 점수: 대형주는 유지, 소형주만 축소
+  let trendRawPoints = 0;
+  let trendDetail = '';
   if (marketCapTier === 'large') {
-    if (trendDays >= 15) score += 9;       // 대형주: 장기추세 존중
-    else if (trendDays >= 10) score += 5;
-    else if (trendDays >= 5) score += 3;
+    if (trendDays >= 15) { trendRawPoints = 9; score += 9; }       // 대형주: 장기추세 존중
+    else if (trendDays >= 10) { trendRawPoints = 5; score += 5; }
+    else if (trendDays >= 5) { trendRawPoints = 3; score += 3; }
   } else {
-    if (trendDays >= 15) score += 7;       // 중소형주: 축소
-    else if (trendDays >= 10) score += 4;
-    else if (trendDays >= 5) score += 2;
+    if (trendDays >= 15) { trendRawPoints = 7; score += 7; }       // 중소형주: 축소
+    else if (trendDays >= 10) { trendRawPoints = 4; score += 4; }
+    else if (trendDays >= 5) { trendRawPoints = 2; score += 2; }
   }
+  const latestSma20ForTrend = sma20.length > 0 ? sma20[sma20.length - 1] : 0;
+  if (trendDays > 0) {
+    trendDetail = `SMA20 위 ${trendDays}일 연속 (20일선 ${fmt(latestSma20ForTrend)})`;
+  } else {
+    trendDetail = `SMA20 위 0일 (20일선 ${fmt(latestSma20ForTrend)})`;
+  }
+  reasons.push({ label: '추세지속', points: norm(trendRawPoints), detail: trendDetail, met: trendRawPoints > 0 });
+
+  const rawScore = Math.max(0, Math.min(score, 65));
 
   return {
-    score: Math.max(0, Math.min(score, 65)),
+    score: rawScore,
+    rawScore,
+    normalizedScore: Math.round((rawScore / 65) * 1000) / 10,
+    reasons,
     trend_days: trendDays,
     rsi,
     macd_cross: macdCross,
