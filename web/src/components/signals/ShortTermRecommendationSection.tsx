@@ -15,6 +15,7 @@ import { formatTimeAgo } from '@/lib/date-utils';
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 
 interface ShortTermRecommendationSectionProps {
+  initialDateMode?: 'today' | 'signal_all';
   signalMap: SignalMap;
   favoriteSymbols: string[];
   watchlistSymbols: string[];
@@ -720,10 +721,10 @@ function WeightPopup({
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
-export default function ShortTermRecommendationSection({ signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: ShortTermRecommendationSectionProps) {
+export default function ShortTermRecommendationSection({ initialDateMode = 'today', signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: ShortTermRecommendationSectionProps) {
   // 오늘 날짜 (KST 기준)
   const todayStr = useMemo(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), []);
-  const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>('today');
+  const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>(initialDateMode);
   const { data, loading, doFetch } = useStockRanking();
   const [q, setQ] = useState('');
   const [market, setMarket] = useState<'all' | 'KOSPI' | 'KOSDAQ' | 'ETF'>('all');
@@ -779,7 +780,10 @@ export default function ShortTermRecommendationSection({ signalMap, favoriteSymb
   }, [liveLoading, refreshLivePrices]);
 
   // ── 데이터 조회 (모듈 레벨 캐시로 탭 전환 시 즉시 반환) ───────────────────────
-  useEffect(() => { doFetch(todayStr, 'all'); }, [doFetch, todayStr]);
+  useEffect(() => {
+    const dateParam = initialDateMode === 'today' ? todayStr : initialDateMode;
+    doFetch(dateParam, 'all');
+  }, [doFetch, todayStr, initialDateMode]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
   // 가중치 변경 시 localStorage 저장
   useEffect(() => {

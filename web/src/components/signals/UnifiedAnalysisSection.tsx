@@ -15,6 +15,7 @@ import type { WatchlistGroup } from '@/types/stock';
 export type SignalMap = Record<string, Record<string, { buyPrice: number; date: string }>>;
 
 interface UnifiedAnalysisProps {
+  initialDateMode?: 'today' | 'signal_all';
   signalMap: SignalMap;
   favoriteSymbols: string[];
   watchlistSymbols: string[];
@@ -555,7 +556,7 @@ function WeightPopup({
 }
 
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
-export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: UnifiedAnalysisProps) {
+export function UnifiedAnalysisSection({ initialDateMode = 'today', signalMap, favoriteSymbols, watchlistSymbols, groups: initialGroups = [], symbolGroups: initialSymbolGroups = {} }: UnifiedAnalysisProps) {
   // 마운트 시마다 날짜 재계산 (모듈 레벨 const는 SPA 내비게이션 시 갱신 안 됨)
   const LAST7 = useMemo(() => getLastNWeekdays(7), []);
   const todayStr = useMemo(() => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10), []);
@@ -574,7 +575,7 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [charFilter, setCharFilter] = useState<string>('all');
   const [gapAsc, setGapAsc] = useState(true);
-  const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>('today');
+  const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>(initialDateMode);
   const [noiseFilter, setNoiseFilter] = useState(false);
   const snapshotStatus = useSnapshotStatus();
   const portSet = useMemo(() => new Set(watchlistSymbols), [watchlistSymbols]);
@@ -623,7 +624,10 @@ export function UnifiedAnalysisSection({ signalMap, favoriteSymbols, watchlistSy
   }, [liveLoading, refreshLivePrices]);
 
   // ── 데이터 조회 (모듈 레벨 캐시로 탭 전환 시 즉시 반환) ───────────────────────
-  useEffect(() => { doFetch(todayStr, 'all'); }, [doFetch, todayStr]);
+  useEffect(() => {
+    const dateParam = initialDateMode === 'today' ? todayStr : initialDateMode;
+    doFetch(dateParam, 'all');
+  }, [doFetch, todayStr, initialDateMode]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
   const resetScroll = () => setVisibleCount(PAGE_SIZE);

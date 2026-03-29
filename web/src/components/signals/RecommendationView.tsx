@@ -9,6 +9,7 @@ import type { WatchlistGroup } from '@/types/stock';
 
 interface Props {
   initialTab: 'analysis' | 'short-term';
+  initialDateMode?: 'today' | 'signal_all';
   signalMap: SignalMap;
   favoriteSymbols: string[];
   watchlistSymbols: string[];
@@ -22,6 +23,7 @@ interface Props {
  */
 export default function RecommendationView({
   initialTab,
+  initialDateMode = 'today',
   signalMap,
   favoriteSymbols,
   watchlistSymbols,
@@ -69,6 +71,7 @@ export default function RecommendationView({
 
       {activeTab === 'analysis' ? (
         <UnifiedAnalysisSection
+          initialDateMode={initialDateMode}
           signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}
@@ -77,6 +80,7 @@ export default function RecommendationView({
         />
       ) : (
         <ShortTermRecommendationSection
+          initialDateMode={initialDateMode}
           signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}

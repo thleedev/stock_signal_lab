@@ -25,10 +25,26 @@ export default async function SignalsPage({
   const supabase = createServiceClient();
 
   const last7 = getLastNWeekdays(7);
+
+  // date가 명시되지 않은 경우 오늘 신호 유무 확인 → 없으면 신호전체를 기본으로
+  const isDateAuto = !params.date;
+  let defaultDateMode: 'today' | 'signal_all' = 'today';
+  if (isDateAuto) {
+    const todayRange = getKstDayRange(last7[0]);
+    const { count } = await supabase
+      .from("signals")
+      .select("*", { count: "exact", head: true })
+      .not("symbol", "is", null)
+      .gte("timestamp", todayRange.start)
+      .lte("timestamp", todayRange.end);
+    if (!count || count === 0) defaultDateMode = 'signal_all';
+  }
+
   const selectedDate =
     params.date === "all" ? "all"
     : params.date === "week" ? "week"
     : params.date && last7.includes(params.date) ? params.date
+    : defaultDateMode === 'signal_all' ? "all"
     : last7[0];
 
   // 즐겨찾기 + 보유 + 관심그룹 + 가격 업데이트 시간 → 두 탭 공통 사용
@@ -194,6 +210,7 @@ export default async function SignalsPage({
       ) : (
         <RecommendationView
           initialTab={activeTab as "analysis" | "short-term"}
+          initialDateMode={defaultDateMode}
           signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}
