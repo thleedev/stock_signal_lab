@@ -10,6 +10,8 @@ import { useSnapshotStatus } from '@/hooks/use-snapshot-status';
 import { usePriceRefresh } from '@/hooks/use-price-refresh';
 import { useStockRanking } from '@/hooks/use-stock-ranking';
 import type { WatchlistGroup } from '@/types/stock';
+import ScoreReasonPopover from './ScoreReasonPopover';
+import type { ScoreReason } from '@/types/score-reason';
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 export type SignalMap = Record<string, Record<string, { buyPrice: number; date: string }>>;

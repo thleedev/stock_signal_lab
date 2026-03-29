@@ -7,6 +7,7 @@ import { calcRiskScore } from '@/lib/scoring/risk-score';
 import { calcSupplyAdditions } from '@/lib/scoring/supply-score-additions';
 import { calcValuationAdditions } from '@/lib/scoring/valuation-score-additions';
 import { getMarketCapTier, type MarketCapTier } from '@/lib/ai-recommendation/market-cap-tier';
+import type { ScoreReason } from '@/types/score-reason';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +95,20 @@ export interface StockRankItem {
     institution_buying: boolean;
     volume_vs_sector: boolean;
     low_short_sell: boolean;
+    // 정규화 점수 (0~100)
+    signal_norm?: number;
+    trend_norm?: number;
+    valuation_norm?: number;
+    supply_norm?: number;
+    earnings_momentum_norm?: number;
+    risk_norm?: number;
+    // 점수 산출 근거
+    signal_reasons?: ScoreReason[];
+    trend_reasons?: ScoreReason[];
+    valuation_reasons?: ScoreReason[];
+    supply_reasons?: ScoreReason[];
+    earnings_momentum_reasons?: ScoreReason[];
+    risk_reasons?: ScoreReason[];
   };
 }
 
