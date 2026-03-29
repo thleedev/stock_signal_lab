@@ -546,6 +546,18 @@ async function readSnapshot(
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+
+    // 체크리스트 모드: 별도 오케스트레이터 사용
+    const mode = searchParams.get('mode');
+    if (mode === 'checklist') {
+      const conditionsParam = searchParams.get('conditions') ?? '';
+      const activeIds = conditionsParam.split(',').filter(Boolean);
+      const supabase = createServiceClient();
+      const { generateChecklist } = await import('@/lib/checklist-recommendation/index');
+      const result = await generateChecklist(supabase, activeIds);
+      return NextResponse.json(result);
+    }
+
     // 페이지네이션은 클라이언트에서 처리 — 서버는 전체 반환
     const page = 1;
     const limit = 99999;

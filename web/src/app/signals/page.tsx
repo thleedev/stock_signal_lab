@@ -21,6 +21,7 @@ export default async function SignalsPage({
   const activeTab =
     params.tab === "analysis" ? "analysis"
     : params.tab === "short-term" ? "short-term"
+    : params.tab === "checklist" ? "checklist"
     : "signals";
   const supabase = createServiceClient();
 
@@ -141,7 +142,7 @@ export default async function SignalsPage({
   // ── 종목추천 탭 ──────────────────────────────────────────
   const signalMap: SignalMap = {};
 
-  if (activeTab === "analysis" || activeTab === "short-term") {
+  if (activeTab === "analysis" || activeTab === "short-term" || activeTab === "checklist") {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const since30d = thirtyDaysAgo.toISOString();
@@ -194,6 +195,12 @@ export default async function SignalsPage({
                 >
                   단기추천
                 </Link>
+                <Link
+                  href="/signals?tab=checklist"
+                  className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
+                >
+                  체크리스트
+                </Link>
               </div>
             }
           />
@@ -209,7 +216,7 @@ export default async function SignalsPage({
         </>
       ) : (
         <RecommendationView
-          initialTab={activeTab as "analysis" | "short-term"}
+          initialTab={activeTab as "analysis" | "short-term" | "checklist"}
           initialDateMode={defaultDateMode}
           signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
