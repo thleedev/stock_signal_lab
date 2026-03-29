@@ -1,3 +1,5 @@
+import type { ScoreReason } from './score-reason';
+
 export interface AiRecommendation {
   id: string;
   date: string; // YYYY-MM-DD
@@ -49,6 +51,22 @@ export interface AiRecommendation {
   institution_buying: boolean;
   volume_vs_sector: boolean;
   low_short_sell: boolean;
+
+  // 정규화 점수 (0~100) — 신규
+  signal_norm: number;
+  trend_norm: number;
+  valuation_norm: number;
+  supply_norm: number;
+  earnings_momentum_norm: number;
+  risk_norm: number;
+
+  // 근거 목록 — 신규
+  signal_reasons: ScoreReason[];
+  trend_reasons: ScoreReason[];
+  valuation_reasons: ScoreReason[];
+  supply_reasons: ScoreReason[];
+  earnings_momentum_reasons: ScoreReason[];
+  risk_reasons: ScoreReason[];
 
   // 메타
   total_candidates: number | null;

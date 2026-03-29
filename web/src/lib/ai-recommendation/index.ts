@@ -355,13 +355,13 @@ export async function generateRecommendations(
 
     // 티어별 가중치 적용 총점
     const base =
-      (signalResult.score / 30) * weights.signal +
-      (technicalResult.score / 65) * weights.trend +
-      (valuationResult.score / 25) * weights.valuation +
-      ((supplyResult.score + 10) / 55) * weights.supply +
-      (earningsMomentumResult.score / 100) * weights.earnings_momentum;
+      (signalResult.normalizedScore / 100) * weights.signal +
+      (technicalResult.normalizedScore / 100) * weights.trend +
+      (valuationResult.normalizedScore / 100) * weights.valuation +
+      (supplyResult.normalizedScore / 100) * weights.supply +
+      (earningsMomentumResult.normalizedScore / 100) * weights.earnings_momentum;
 
-    const total_score = Math.max(0, Math.min(base - (riskResult.score / 100) * weights.risk, 100));
+    const total_score = Math.max(0, Math.min(base - (riskResult.normalizedScore / 100) * weights.risk, 100));
 
     return {
       symbol,
@@ -395,6 +395,22 @@ export async function generateRecommendations(
       institution_buying: supplyResult.institution_buying,
       volume_vs_sector: supplyResult.volume_vs_sector,
       low_short_sell: supplyResult.low_short_sell,
+
+      // 정규화 점수 (신규)
+      signal_norm: signalResult.normalizedScore,
+      trend_norm: technicalResult.normalizedScore,
+      valuation_norm: valuationResult.normalizedScore,
+      supply_norm: supplyResult.normalizedScore,
+      earnings_momentum_norm: earningsMomentumResult.normalizedScore,
+      risk_norm: riskResult.normalizedScore,
+
+      // 근거 목록 (신규)
+      signal_reasons: signalResult.reasons,
+      trend_reasons: technicalResult.reasons,
+      valuation_reasons: valuationResult.reasons,
+      supply_reasons: supplyResult.reasons,
+      earnings_momentum_reasons: earningsMomentumResult.reasons,
+      risk_reasons: riskResult.reasons,
     };
   });
 
