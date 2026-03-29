@@ -256,6 +256,43 @@ export async function GET(request: Request) {
       console.error('[daily-sync] 스냅샷 저장 실패:', e);
     }
 
+    // ═══ Step 9: 30일 이상 된 스냅샷 정리 ═══
+    let snapshotCleaned = 0;
+    try {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+      // 오래된 세션 ID 조회
+      const { data: oldSessions } = await supabase
+        .from('snapshot_sessions')
+        .select('id')
+        .lt('session_date', cutoffStr);
+
+      if (oldSessions && oldSessions.length > 0) {
+        const oldIds = oldSessions.map((s) => s.id);
+
+        // 스냅샷 행 삭제
+        for (let i = 0; i < oldIds.length; i += 100) {
+          await supabase
+            .from('stock_ranking_snapshot')
+            .delete()
+            .in('session_id', oldIds.slice(i, i + 100));
+        }
+
+        // 세션 삭제
+        await supabase
+          .from('snapshot_sessions')
+          .delete()
+          .in('id', oldIds);
+
+        snapshotCleaned = oldSessions.length;
+      }
+      lap(`스냅샷 정리: ${snapshotCleaned}개 세션 삭제`);
+    } catch (e) {
+      console.error('[daily-sync] 스냅샷 정리 실패:', e);
+    }
+
     lap('완료');
 
     return NextResponse.json({
@@ -267,6 +304,7 @@ export async function GET(request: Request) {
       splits: splitResult,
       report: reportResult,
       snapshot: snapshotSaved,
+      snapshot_cleaned: snapshotCleaned,
       elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}초`,
     });
   } catch (e) {
