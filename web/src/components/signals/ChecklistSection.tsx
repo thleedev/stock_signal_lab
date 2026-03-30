@@ -22,12 +22,25 @@ const GRADE_OPTIONS = [
   { key: 'C', label: 'C 관망' },
   { key: 'D', label: 'D 주의' },
 ] as const;
+const DATE_OPTIONS = [
+  { key: 'today', label: '오늘' },
+  { key: 'signal_all', label: '신호전체' },
+  { key: 'all', label: '종목전체' },
+] as const;
+const MARKET_OPTIONS = [
+  { key: 'all', label: '전체' },
+  { key: 'KOSPI', label: 'KOSPI' },
+  { key: 'KOSDAQ', label: 'KOSDAQ' },
+  { key: 'ETF', label: 'ETF' },
+] as const;
 const SORT_OPTIONS = [
   { key: 'ratio', label: '충족률↓' },
   { key: 'name', label: '이름' },
 ] as const;
 type SortMode = 'ratio' | 'name';
 type GradeFilter = 'all' | ChecklistGrade;
+type DateMode = 'today' | 'signal_all' | 'all';
+type MarketFilter = 'all' | 'KOSPI' | 'KOSDAQ' | 'ETF';
 
 // ── 한줄 요약 생성 ───────────────────────────────────────────────────────────
 function makeSummary(item: ChecklistItem, activeIds: string[]): string {
@@ -58,12 +71,14 @@ export default function ChecklistSection() {
   const [search, setSearch] = useState('');
   const [gradeFilter, setGradeFilter] = useState<GradeFilter>('all');
   const [sortMode, setSortMode] = useState<SortMode>('ratio');
+  const [dateMode, setDateMode] = useState<DateMode>('today');
+  const [market, setMarket] = useState<MarketFilter>('all');
   const [conditionPanelOpen, setConditionPanelOpen] = useState(false);
 
-  const fetchData = useCallback(async (ids: string[]) => {
+  const fetchData = useCallback(async (ids: string[], date: DateMode, mkt: MarketFilter) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/stock-ranking?mode=checklist&conditions=${ids.join(',')}`);
+      const res = await fetch(`/api/v1/stock-ranking?mode=checklist&conditions=${ids.join(',')}&date=${date}&market=${mkt}`);
       if (!res.ok) throw new Error('fetch failed');
       const data = await res.json();
       setItems(data.items ?? []);
@@ -76,9 +91,9 @@ export default function ChecklistSection() {
   }, []);
 
   useEffect(() => {
-    if (activeIds.length > 0) fetchData(activeIds);
+    if (activeIds.length > 0) fetchData(activeIds, dateMode, market);
     else setItems([]);
-  }, [activeIds, fetchData]);
+  }, [activeIds, dateMode, market, fetchData]);
 
   const handleFilterChange = useCallback((ids: string[]) => {
     setActiveIds(ids);
@@ -135,8 +150,48 @@ export default function ChecklistSection() {
           />
         </div>
 
-        {/* 등급 필터 */}
+        {/* 날짜 필터 */}
         <div className="flex rounded-lg border border-[var(--border)] overflow-hidden shrink-0">
+          {DATE_OPTIONS.map((opt, idx) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setDateMode(opt.key as DateMode)}
+              className={[
+                'px-2.5 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
+                idx > 0 ? 'border-l border-[var(--border)]' : '',
+                dateMode === opt.key
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--border)]',
+              ].filter(Boolean).join(' ')}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 시장 필터 */}
+        <div className="flex rounded-lg border border-[var(--border)] overflow-hidden shrink-0">
+          {MARKET_OPTIONS.map((opt, idx) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setMarket(opt.key as MarketFilter)}
+              className={[
+                'px-2.5 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
+                idx > 0 ? 'border-l border-[var(--border)]' : '',
+                market === opt.key
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'bg-[var(--card)] text-[var(--muted-foreground)] hover:bg-[var(--border)]',
+              ].filter(Boolean).join(' ')}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* 등급 필터 */}
+        <div className="hidden sm:flex rounded-lg border border-[var(--border)] overflow-hidden shrink-0">
           {GRADE_OPTIONS.map((opt, idx) => (
             <button
               key={opt.key}
@@ -192,7 +247,7 @@ export default function ChecklistSection() {
         <button
           type="button"
           aria-label="새로고침"
-          onClick={() => fetchData(activeIds)}
+          onClick={() => fetchData(activeIds, dateMode, market)}
           disabled={loading}
           className="ml-auto p-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors disabled:opacity-50"
         >

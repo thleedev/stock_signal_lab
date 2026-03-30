@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { fetchTodayBuySymbols, getTodayKst } from '@/lib/ai-recommendation/index';
+import { getTodayKst } from '@/lib/ai-recommendation/index';
+import { getLastNWeekdays } from '@/lib/date-utils';
 import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
 import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
 import { evaluateConditions } from './checklist-conditions';
@@ -12,18 +13,84 @@ function calcGrade(ratio: number): { grade: ChecklistGrade; gradeLabel: string }
   return { grade: 'D', gradeLabel: '주의' };
 }
 
+/** 날짜 모드별 매수 신호 종목 조회 */
+async function fetchCandidates(
+  supabase: SupabaseClient,
+  dateMode: 'today' | 'signal_all' | 'all',
+  market: string,
+): Promise<{ symbol: string; name: string; market?: string }[]> {
+  const todayKst = getTodayKst();
+
+  if (dateMode === 'all') {
+    // 종목전체: stock_cache의 모든 종목 (신호 무관)
+    let query = supabase
+      .from('stock_cache')
+      .select('symbol, name, market')
+      .not('current_price', 'is', null);
+    if (market !== 'all') query = query.eq('market', market);
+    const { data } = await query.limit(500);
+    return (data ?? []).map(r => ({ symbol: r.symbol, name: r.name, market: r.market }));
+  }
+
+  // today / signal_all: 신호 기반
+  let startDate: string;
+  let endDate: string;
+
+  if (dateMode === 'signal_all') {
+    const last7 = getLastNWeekdays(7);
+    startDate = `${last7[last7.length - 1]}T00:00:00+09:00`;
+    endDate = `${last7[0]}T23:59:59+09:00`;
+  } else {
+    startDate = `${todayKst}T00:00:00+09:00`;
+    endDate = `${todayKst}T23:59:59+09:00`;
+  }
+
+  const { data } = await supabase
+    .from('signals')
+    .select('symbol, name')
+    .in('signal_type', ['BUY', 'BUY_FORECAST'])
+    .gte('timestamp', startDate)
+    .lte('timestamp', endDate);
+
+  if (!data) return [];
+
+  // 중복 제거
+  const seen = new Set<string>();
+  const unique = data.filter(s => {
+    if (seen.has(s.symbol)) return false;
+    seen.add(s.symbol);
+    return true;
+  });
+
+  // 시장 필터 적용 (stock_cache에서 market 조회)
+  if (market !== 'all') {
+    const symbols = unique.map(s => s.symbol);
+    const { data: cacheRows } = await supabase
+      .from('stock_cache')
+      .select('symbol, market')
+      .in('symbol', symbols)
+      .eq('market', market);
+    const marketSymbols = new Set((cacheRows ?? []).map(r => r.symbol));
+    return unique.filter(s => marketSymbols.has(s.symbol));
+  }
+
+  return unique;
+}
+
 export async function generateChecklist(
   supabase: SupabaseClient,
   activeConditionIds: string[],
-  limit = 30,
+  dateMode: 'today' | 'signal_all' | 'all' = 'today',
+  market = 'all',
+  limit = 50,
 ): Promise<{ items: ChecklistItem[]; total_candidates: number }> {
   const todayKst = getTodayKst();
-  const candidates = await fetchTodayBuySymbols(supabase, todayKst);
+  const candidates = await fetchCandidates(supabase, dateMode, market);
   if (candidates.length === 0) return { items: [], total_candidates: 0 };
 
   const symbols = candidates.map(c => c.symbol);
 
-  // 병렬 데이터 조회 (ai-recommendation/index.ts 패턴과 동일)
+  // 병렬 데이터 조회
   const [{ data: cacheData }, { data: priceRows }] = await Promise.all([
     supabase
       .from('stock_cache')
@@ -37,7 +104,6 @@ export async function generateChecklist(
       .limit(symbols.length * 65),
   ]);
 
-  // Map 구성
   const cacheMap = new Map((cacheData ?? []).map(c => [c.symbol, c]));
   const priceMap = new Map<string, DailyPrice[]>();
   for (const row of priceRows ?? []) {

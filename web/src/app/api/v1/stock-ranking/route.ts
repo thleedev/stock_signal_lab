@@ -552,9 +552,11 @@ export async function GET(request: NextRequest) {
     if (mode === 'checklist') {
       const conditionsParam = searchParams.get('conditions') ?? '';
       const activeIds = conditionsParam.split(',').filter(Boolean);
+      const dateMode = (searchParams.get('date') ?? 'today') as 'today' | 'signal_all' | 'all';
+      const market = searchParams.get('market') ?? 'all';
       const supabase = createServiceClient();
       const { generateChecklist } = await import('@/lib/checklist-recommendation/index');
-      const result = await generateChecklist(supabase, activeIds);
+      const result = await generateChecklist(supabase, activeIds, dateMode, market);
       return NextResponse.json(result);
     }
 
