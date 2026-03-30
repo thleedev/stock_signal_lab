@@ -326,6 +326,99 @@ export async function POST(request: NextRequest) {
   // ═══════════════════════════════════════════════════════════
   const statsResult = await runDailyStats(supabase, today);
 
+  // ═══════════════════════════════════════════════════════════
+  // 마감 작업: 관리종목/유통주식수 + DART + 스냅샷 정리
+  // ═══════════════════════════════════════════════════════════
+  let extraUpdated = 0;
+  let dartUpdated = 0;
+
+  // 관리종목/유통주식수 갱신 — 신호 있는 종목만
+  try {
+    const { fetchBatchStockExtra } = await import('@/lib/naver-stock-extra');
+    const { data: signalStocks } = await supabase
+      .from('stock_cache')
+      .select('symbol')
+      .gt('signal_count_30d', 0);
+
+    const targetSymbols = (signalStocks ?? []).map((s: { symbol: string }) => s.symbol);
+    if (targetSymbols.length > 0) {
+      const extraMap = await fetchBatchStockExtra(targetSymbols, 10);
+      for (const [symbol, info] of extraMap.entries()) {
+        await supabase
+          .from('stock_cache')
+          .update({ float_shares: info.floatShares, is_managed: info.isManaged })
+          .eq('symbol', symbol);
+      }
+      extraUpdated = extraMap.size;
+    }
+  } catch (e) {
+    console.error('네이버 추가 데이터 수집 실패:', e);
+  }
+
+  // DART 재무 데이터 수집
+  try {
+    const { fetchDartInfo } = await import('@/lib/dart-api');
+    const { data: existingDart } = await supabase
+      .from('stock_dart_info')
+      .select('symbol, updated_at');
+
+    const todayStart = new Date(Date.now() + 9 * 3600000);
+    todayStart.setHours(0, 0, 0, 0);
+
+    const alreadyUpdated = new Set(
+      (existingDart ?? [])
+        .filter((d: { symbol: string; updated_at: string | null }) =>
+          d.updated_at && new Date(d.updated_at) > todayStart,
+        )
+        .map((d: { symbol: string; updated_at: string | null }) => d.symbol),
+    );
+
+    const { data: symbols } = await supabase
+      .from('stock_cache')
+      .select('symbol, dart_corp_code')
+      .not('dart_corp_code', 'is', null);
+
+    const targets = (symbols ?? []).filter(
+      (s: { symbol: string; dart_corp_code: string }) => !alreadyUpdated.has(s.symbol),
+    );
+
+    for (let i = 0; i < targets.length; i += 10) {
+      const batch = targets.slice(i, i + 10);
+      type DartResult = { symbol: string; info: Awaited<ReturnType<typeof fetchDartInfo>> };
+      const dartResults = await Promise.allSettled(
+        batch.map(async (s: { symbol: string; dart_corp_code: string }): Promise<DartResult> => ({
+          symbol: s.symbol,
+          info: await fetchDartInfo(s.dart_corp_code),
+        })),
+      );
+
+      const dartRows = dartResults
+        .filter((r): r is PromiseFulfilledResult<DartResult> => r.status === 'fulfilled')
+        .map((r) => ({
+          symbol: r.value.symbol,
+          ...r.value.info,
+          updated_at: new Date().toISOString(),
+        }));
+
+      if (dartRows.length > 0) {
+        await supabase
+          .from('stock_dart_info')
+          .upsert(dartRows, { onConflict: 'symbol', ignoreDuplicates: false });
+        dartUpdated += dartRows.length;
+      }
+    }
+  } catch (e) {
+    console.error('DART 데이터 수집 실패:', e);
+  }
+
+  // 30일 초과 스냅샷 삭제
+  const thirtyDaysAgo = new Date(Date.now() + 9 * 3600000);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  await supabase
+    .from('stock_ranking_snapshot')
+    .delete()
+    .lt('snapshot_date', thirtyDaysAgo.toISOString().slice(0, 10));
+
   return NextResponse.json({
     success: true,
     date: today,
@@ -334,6 +427,7 @@ export async function POST(request: NextRequest) {
     event_risk_score: eventRiskScore,
     combined_score: combinedScore,
     stats: statsResult,
+    closing: { extra: extraUpdated, dart: dartUpdated },
   });
 }
 

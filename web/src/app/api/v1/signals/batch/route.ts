@@ -126,11 +126,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // 장중 시세 갱신 트리거 (비동기, 10분 디바운스는 intraday 내부에서 처리)
+  triggerIntradayRefresh().catch(() => {});
+
   return Response.json({
     success: true,
     inserted: data?.length ?? 0,
     batch_id: body.batch_id,
   });
+}
+
+/**
+ * 장중 시세 갱신 트리거 (fire-and-forget)
+ */
+async function triggerIntradayRefresh() {
+  const baseUrl = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : 'http://localhost:3000';
+  await fetch(`${baseUrl}/api/v1/cron/intraday-prices`, {
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => {});
 }
 
 /**

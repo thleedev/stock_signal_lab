@@ -2,9 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { getDailyPrices, delay } from '@/lib/kis-api';
 import { fetchKrxShortSell } from '@/lib/krx-shortsell-api';
-import { fetchAllStockPrices } from '@/lib/naver-stock-api';
-import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
-import { fetchBulkIndicators, fetchKrxIndicators, fetchKrxInvestorData } from '@/lib/krx-api';
+import { fetchNaverBulkIntegration } from '@/lib/naver-stock-api';
 import { createAiProvider } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
@@ -63,108 +61,75 @@ export async function GET(request: Request) {
       { data: openTrades },
       { data: pendingSchedule },
       { data: favs },
-      { data: watchlist },
-      { data: recentSignals },
     ] = await Promise.all([
       supabase.from('signals').select('symbol').gte('timestamp', `${today}T00:00:00+09:00`).not('symbol', 'is', null),
       supabase.from('virtual_trades').select('symbol').eq('side', 'BUY'),
       supabase.from('split_trade_schedule').select('symbol').eq('status', 'pending'),
       supabase.from('favorite_stocks').select('symbol'),
-      supabase.from('watchlist').select('symbol'),
-      supabase.from('signals').select('symbol').gte('timestamp', new Date(Date.now() - 7 * 86400000).toISOString()),
     ]);
 
-    // daily-prices 대상 (일봉 + 수급 수집)
+    // daily-prices 대상 (일봉 수집)
     const dpSymbols = new Set<string>();
     todaySignals?.forEach((s) => s.symbol && dpSymbols.add(s.symbol));
     openTrades?.forEach((t) => dpSymbols.add(t.symbol));
     pendingSchedule?.forEach((s) => dpSymbols.add(s.symbol));
 
-    // stock-cache 우선순위 (지표 + forward 수집)
-    const prioritySet = new Set<string>();
-    for (const f of favs ?? []) prioritySet.add(f.symbol);
-    for (const w of watchlist ?? []) prioritySet.add(w.symbol);
-    for (const s of recentSignals ?? []) if (s.symbol) prioritySet.add(s.symbol);
-    const prioritySymbols = Array.from(prioritySet);
-
-    // 수급 수집 대상 = 둘의 합집합
-    const investorSymbols = [...new Set([...dpSymbols, ...prioritySet])];
-
-    lap(`대상: 일봉 ${dpSymbols.size}개, 지표 ${prioritySymbols.length}개, 수급 ${investorSymbols.length}개`);
-
-    // ═══ Step 2: 전종목 시세 + 공매도 + KRX 지표/수급 (벌크) ═══
-    const [priceMap, shortSellMap, krxIndicatorMap, krxInvestorMap] = await Promise.all([
-      fetchAllStockPrices(),
+    // ═══ Step 2: 전종목 통합 조회 (시세 + 지표 + 수급) + 공매도 ═══
+    const [integrationMap, shortSellMap] = await Promise.all([
+      fetchNaverBulkIntegration(),
       fetchKrxShortSell(),
-      fetchKrxIndicators(),
-      fetchKrxInvestorData(),
     ]);
-    lap(`시세 ${priceMap.size} + 공매도 ${shortSellMap.size} + KRX지표 ${krxIndicatorMap.size} + KRX수급 ${krxInvestorMap.size} 조회`);
+    lap(`통합 ${integrationMap.size}종목 + 공매도 ${shortSellMap.size} 조회`);
 
-    // 우선순위 종목만 Naver 컨센서스(forward PER/목표가/52주 고저가) + Naver 수급(연속일수) 조회
-    const [indicatorMap, investorMap] = await Promise.all([
-      fetchBulkIndicators(prioritySymbols, 30),
-      fetchBulkInvestorData(investorSymbols, 30),
-    ]);
-    lap(`Naver 컨센서스 ${indicatorMap.size} + Naver 수급 ${investorMap.size} 조회 (우선순위)`);
-
-    // ═══ Step 3: stock_cache 일괄 업데이트 (네이버 전종목 기준) ═══
-    // priceMap 기준으로 upsert → 신규 종목도 자동 추가됨
-    const allSymbols = [...priceMap.keys()];
+    // ═══ Step 3: stock_cache 일괄 업데이트 ═══
+    const allSymbols = [...integrationMap.keys()];
     let updated = 0;
 
     for (let i = 0; i < allSymbols.length; i += 500) {
       const batch = allSymbols.slice(i, i + 500);
       const rows = batch.map((symbol) => {
-        const price = priceMap.get(symbol)!;
-        const krxInd = krxIndicatorMap.get(symbol);   // KRX 벌크 (전종목)
-        const naverInd = indicatorMap.get(symbol);     // Naver 개별 (우선순위)
-        const krxInv = krxInvestorMap.get(symbol);     // KRX 벌크 (전종목)
-        const naverInv = investorMap.get(symbol);      // Naver 개별 (우선순위)
+        const d = integrationMap.get(symbol)!;
         const row: Record<string, unknown> = {
           symbol,
-          name: price.name,
-          market: price.market,
-          current_price: price.current_price,
-          market_cap: price.market_cap,
+          name: d.name,
+          market: d.market,
+          current_price: d.current_price,
+          market_cap: d.market_cap,
           updated_at: ts,
         };
 
-        if (price.volume > 0) {
-          row.volume = price.volume;
-          row.price_change = price.price_change;
-          row.price_change_pct = price.price_change_pct;
+        if (d.volume > 0) {
+          row.volume = d.volume;
+          row.price_change = d.price_change;
+          row.price_change_pct = d.price_change_pct;
         }
 
-        // 지표: KRX 벌크 기본 → Naver로 보충 (52주 고저가, 컨센서스)
-        if (krxInd || naverInd) {
-          row.per = krxInd?.per ?? naverInd?.per ?? null;
-          row.pbr = krxInd?.pbr ?? naverInd?.pbr ?? null;
-          row.eps = krxInd?.eps ?? naverInd?.eps ?? null;
-          row.bps = krxInd?.bps ?? naverInd?.bps ?? null;
-          row.dividend_yield = krxInd?.dividend_yield ?? naverInd?.dividend_yield ?? null;
-          // ROE는 Naver만 제공
-          row.roe = naverInd?.roe ?? null;
-          // 52주 고저가는 Naver만 제공
-          row.high_52w = naverInd?.high_52w ?? null;
-          row.low_52w = naverInd?.low_52w ?? null;
-          // 컨센서스(forward)는 Naver만 제공
-          row.forward_per = naverInd?.forward_per ?? null;
-          row.forward_eps = naverInd?.forward_eps ?? null;
-          row.target_price = naverInd?.target_price ?? null;
-          row.invest_opinion = naverInd?.invest_opinion ?? null;
+        // 지표 (전종목)
+        if (d.per !== null || d.pbr !== null) {
+          row.per = d.per;
+          row.pbr = d.pbr;
+          row.eps = d.eps;
+          row.bps = d.bps;
+          row.dividend_yield = d.dividend_yield;
+          row.roe = d.roe;
+          row.roe_estimated = d.roe_estimated;
+          row.high_52w = d.high_52w;
+          row.low_52w = d.low_52w;
+          row.forward_per = d.forward_per;
+          row.forward_eps = d.forward_eps;
+          row.target_price = d.target_price;
+          row.invest_opinion = d.invest_opinion;
           row.consensus_updated_at = ts;
         }
 
-        // 수급: KRX 벌크 기본 (당일) → Naver로 5일누적/연속일수 보충
-        if (krxInv || naverInv) {
-          row.foreign_net_qty = krxInv?.foreign_net ?? naverInv?.foreign_net ?? null;
-          row.institution_net_qty = krxInv?.institution_net ?? naverInv?.institution_net ?? null;
-          // 5일 누적, 연속일수는 Naver만 제공
-          row.foreign_net_5d = naverInv?.foreign_net_5d ?? null;
-          row.institution_net_5d = naverInv?.institution_net_5d ?? null;
-          row.foreign_streak = naverInv?.foreign_streak ?? null;
-          row.institution_streak = naverInv?.institution_streak ?? null;
+        // 수급 (전종목)
+        if (d.foreign_net !== null || d.institution_net !== null) {
+          row.foreign_net_qty = d.foreign_net;
+          row.institution_net_qty = d.institution_net;
+          row.foreign_net_5d = d.foreign_net_5d;
+          row.institution_net_5d = d.institution_net_5d;
+          row.foreign_streak = d.foreign_streak;
+          row.institution_streak = d.institution_streak;
           row.investor_updated_at = ts;
         }
 
@@ -311,25 +276,38 @@ export async function GET(request: Request) {
       console.error('[daily-sync] 스냅샷 정리 실패:', e);
     }
 
+    // ═══ Step 10: 시장지표 + 점수 + 포트폴리오 (market-indicators 통합) ═══
+    let marketResult = null;
+    try {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000';
+      const miRes = await fetch(
+        `${baseUrl}/api/v1/cron/market-indicators`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+        },
+      );
+      if (miRes.ok) marketResult = await miRes.json();
+      lap(`시장지표: ${miRes.ok ? '성공' : `실패(${miRes.status})`}`);
+    } catch (e) {
+      console.error('[daily-sync] 시장지표 수집 실패:', e);
+    }
+
     lap('완료');
 
     return NextResponse.json({
       success: true,
       date: today,
-      stock_cache: {
-        updated,
-        prices: priceMap.size,
-        krx_indicators: krxIndicatorMap.size,
-        krx_investors: krxInvestorMap.size,
-        naver_consensus: indicatorMap.size,
-        naver_investors: investorMap.size,
-      },
+      stock_cache: { updated, integration: integrationMap.size },
       daily_prices: { symbols: dpSymbols.size, saved: savedCount },
       short_sell: shortSellMap.size,
       splits: splitResult,
       report: reportResult,
       snapshot: snapshotSaved,
       snapshot_cleaned: snapshotCleaned,
+      market: marketResult,
       elapsed: `${((Date.now() - startTime) / 1000).toFixed(1)}초`,
     });
   } catch (e) {
