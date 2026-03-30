@@ -790,6 +790,67 @@ export async function GET(request: NextRequest) {
           item.score_supply = scores.score_supply;
           item.score_risk = scores.score_risk;
           item.score_total = scores.score_total;
+
+          // 근거 레이어 생성 (스냅샷 경로)
+          if (!item.ai) {
+            const fmt = (n: number | null) => n !== null ? Math.round(n).toLocaleString('ko-KR') : '-';
+            const foreignBuying = item.foreign_net_qty !== null && (item.foreign_net_qty as number) > 0;
+            const instBuying = item.institution_net_qty !== null && (item.institution_net_qty as number) > 0;
+            const pct = (item.price_change_pct as number) ?? 0;
+
+            const trendReasons: ScoreReason[] = [
+              { label: '등락률', points: pct > 0 ? 10 : 0, detail: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, met: pct > 0 },
+            ];
+            if (item.high_52w && item.low_52w && item.current_price) {
+              const pos = (((item.current_price as number) - (item.low_52w as number)) / ((item.high_52w as number) - (item.low_52w as number))) * 100;
+              trendReasons.push({ label: '52주 위치', points: pos < 30 ? 8 : 0, detail: `${pos.toFixed(0)}% (저점 ${fmt(item.low_52w as number)} ~ 고점 ${fmt(item.high_52w as number)})`, met: pos < 30 });
+            }
+
+            const supplyReasons: ScoreReason[] = [
+              { label: '외국인', points: foreignBuying ? 9 : 0, detail: foreignBuying ? `순매수 +${fmt(item.foreign_net_qty as number)}주` : (item.foreign_net_qty !== null ? `순매도 ${fmt(item.foreign_net_qty as number)}주` : '데이터 없음'), met: foreignBuying },
+              { label: '기관', points: instBuying ? 9 : 0, detail: instBuying ? `순매수 +${fmt(item.institution_net_qty as number)}주` : (item.institution_net_qty !== null ? `순매도 ${fmt(item.institution_net_qty as number)}주` : '데이터 없음'), met: instBuying },
+            ];
+            if (item.foreign_streak) {
+              const fs = item.foreign_streak as number;
+              supplyReasons.push({ label: '외국인 연속', points: fs > 0 ? 5 : 0, detail: fs > 0 ? `${fs}일 연속 매수` : `${Math.abs(fs)}일 연속 매도`, met: fs > 0 });
+            }
+            if (item.institution_streak) {
+              const is_ = item.institution_streak as number;
+              supplyReasons.push({ label: '기관 연속', points: is_ > 0 ? 5 : 0, detail: is_ > 0 ? `${is_}일 연속 매수` : `${Math.abs(is_)}일 연속 매도`, met: is_ > 0 });
+            }
+
+            const valReasons: ScoreReason[] = [];
+            if (item.forward_per) valReasons.push({ label: 'Forward PER', points: (item.forward_per as number) < 15 ? 8 : 0, detail: `${(item.forward_per as number).toFixed(1)}`, met: (item.forward_per as number) < 15 });
+            else if (item.per) valReasons.push({ label: 'PER', points: (item.per as number) < 12 ? 8 : 0, detail: `${(item.per as number).toFixed(1)}`, met: (item.per as number) < 12 });
+            if (item.roe) valReasons.push({ label: 'ROE', points: (item.roe as number) > 10 ? 6 : 0, detail: `${(item.roe as number).toFixed(1)}%`, met: (item.roe as number) > 10 });
+            if (item.target_price && item.current_price && (item.current_price as number) > 0) {
+              const upside = (((item.target_price as number) - (item.current_price as number)) / (item.current_price as number)) * 100;
+              valReasons.push({ label: '목표주가', points: upside >= 15 ? 8 : 0, detail: `목표 ${fmt(item.target_price as number)} vs 현재 ${fmt(item.current_price as number)} (${upside >= 0 ? '+' : ''}${upside.toFixed(0)}%)`, met: upside >= 15 });
+            }
+
+            const sigReasons: ScoreReason[] = [];
+            const sigCount = (item.signal_count_30d as number) ?? 0;
+            sigReasons.push({ label: '30일 신호', points: sigCount >= 3 ? 10 : sigCount > 0 ? 5 : 0, detail: `최근 30일 ${sigCount}회`, met: sigCount > 0 });
+
+            item.ai = {
+              total_score: scores.score_total,
+              signal_score: 0, trend_score: 0, valuation_score: 0, supply_score: 0,
+              rsi: null,
+              golden_cross: false, bollinger_bottom: false, phoenix_pattern: false,
+              macd_cross: false, volume_surge: false, week52_low_near: false,
+              double_top: false, disparity_rebound: false, volume_breakout: false,
+              consecutive_drop_rebound: false, foreign_buying: foreignBuying,
+              institution_buying: instBuying, volume_vs_sector: false, low_short_sell: false,
+              trend_norm: scores.score_momentum,
+              supply_norm: scores.score_supply,
+              signal_norm: scores.score_signal,
+              valuation_norm: scores.score_valuation,
+              trend_reasons: trendReasons,
+              supply_reasons: supplyReasons,
+              valuation_reasons: valReasons,
+              signal_reasons: sigReasons,
+            };
+          }
         }
 
         // 검색 필터 적용
@@ -1099,13 +1160,44 @@ export async function GET(request: NextRequest) {
         };
         if (aiRec) {
           // AI 추천 데이터는 패턴 정보만 보존 (점수는 calcScore 결과 사용)
+          const rsiVal = aiRec.rsi as number | null;
+          // boolean 플래그 기반 추세 근거 생성
+          const trendReasons: ScoreReason[] = [];
+          const pushTrend = (met: boolean, label: string, detailMet: string, detailNot: string) =>
+            trendReasons.push({ label, points: met ? 8 : 0, detail: met ? detailMet : detailNot, met });
+          pushTrend(!!aiRec.golden_cross, '골든크로스', '5일선 > 20일선 상향돌파', '미발생');
+          pushTrend(!!aiRec.macd_cross, 'MACD 크로스', 'MACD > Signal 상향돌파', '미발생');
+          pushTrend(!!aiRec.bollinger_bottom, '볼린저 하단', '볼린저 하단 이탈 후 복귀', '미이탈');
+          pushTrend(!!aiRec.phoenix_pattern, '불새패턴', '음봉 후 장대양봉 반등', '미발생');
+          pushTrend(!!aiRec.volume_surge, '거래량 급증', '20일 평균 대비 2배+ 거래량', '평균 범위');
+          pushTrend(!!aiRec.disparity_rebound, '이격도 반등', '20일선 저이격 + 양봉', '미발생');
+          pushTrend(!!aiRec.volume_breakout, '거래량 바닥 탈출', '거래량 바닥에서 급증', '미발생');
+          pushTrend(!!aiRec.consecutive_drop_rebound, '연속하락 반등', '연속 하락 후 반등', '미발생');
+          if (rsiVal !== null) {
+            const inZone = rsiVal >= 30 && rsiVal <= 50;
+            trendReasons.push({ label: 'RSI', points: inZone ? 6 : 0, detail: `RSI ${rsiVal.toFixed(1)} ${inZone ? '(매수구간)' : ''}`, met: inZone });
+          }
+
+          // 수급 근거
+          const supplyReasons: ScoreReason[] = [];
+          supplyReasons.push({ label: '외국인', points: aiRec.foreign_buying ? 9 : 0, detail: aiRec.foreign_buying ? '외국인 순매수' : '순매도 또는 데이터 없음', met: !!aiRec.foreign_buying });
+          supplyReasons.push({ label: '기관', points: aiRec.institution_buying ? 9 : 0, detail: aiRec.institution_buying ? '기관 순매수' : '순매도 또는 데이터 없음', met: !!aiRec.institution_buying });
+          supplyReasons.push({ label: '섹터 거래대금', points: aiRec.volume_vs_sector ? 4 : 0, detail: aiRec.volume_vs_sector ? '섹터 평균 대비 2배+ 거래대금' : '평균 범위', met: !!aiRec.volume_vs_sector });
+          supplyReasons.push({ label: '공매도', points: aiRec.low_short_sell ? 2 : 0, detail: aiRec.low_short_sell ? '공매도 비율 1% 미만' : '공매도 비율 1% 이상 또는 데이터 없음', met: !!aiRec.low_short_sell });
+
+          // 정규화 점수 (원점수 → 0~100)
+          const trendNorm = Math.round(Math.min(100, Math.max(0, ((aiRec.technical_score ?? 0) / 65) * 100)) * 10) / 10;
+          const supplyNorm = Math.round(Math.min(100, Math.max(0, (((aiRec.supply_score ?? 0) + 10) / 55) * 100)) * 10) / 10;
+          const signalNorm = Math.round(Math.min(100, Math.max(0, ((aiRec.signal_score ?? 0) / 30) * 100)) * 10) / 10;
+          const valuationNorm = Math.round(Math.min(100, Math.max(0, ((aiRec.valuation_score ?? 0) / 25) * 100)) * 10) / 10;
+
           item.ai = {
             total_score: aiRec.total_score ?? 0,
             signal_score: aiRec.signal_score ?? 0,
             trend_score: aiRec.technical_score ?? 0,
             valuation_score: aiRec.valuation_score ?? 0,
             supply_score: aiRec.supply_score ?? 0,
-            rsi: aiRec.rsi ?? null,
+            rsi: rsiVal,
             golden_cross: aiRec.golden_cross ?? false,
             bollinger_bottom: aiRec.bollinger_bottom ?? false,
             phoenix_pattern: aiRec.phoenix_pattern ?? false,
@@ -1120,6 +1212,70 @@ export async function GET(request: NextRequest) {
             institution_buying: aiRec.institution_buying ?? false,
             volume_vs_sector: aiRec.volume_vs_sector ?? false,
             low_short_sell: aiRec.low_short_sell ?? false,
+            trend_norm: trendNorm,
+            supply_norm: supplyNorm,
+            signal_norm: signalNorm,
+            valuation_norm: valuationNorm,
+            trend_reasons: trendReasons,
+            supply_reasons: supplyReasons,
+          };
+        } else {
+          // AI 추천 없는 종목: calcScore 결과 기반 요약 근거 생성
+          const fmt = (n: number | null) => n !== null ? Math.round(n).toLocaleString('ko-KR') : '-';
+          const foreignBuying = base.foreign_net_qty !== null && base.foreign_net_qty > 0;
+          const instBuying = base.institution_net_qty !== null && base.institution_net_qty > 0;
+
+          const trendReasons: ScoreReason[] = [];
+          const pct = base.price_change_pct ?? 0;
+          trendReasons.push({ label: '등락률', points: pct > 0 ? 10 : 0, detail: `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`, met: pct > 0 });
+          if (base.high_52w && base.low_52w && base.current_price) {
+            const pos = ((base.current_price - base.low_52w) / (base.high_52w - base.low_52w)) * 100;
+            trendReasons.push({ label: '52주 위치', points: pos < 30 ? 8 : 0, detail: `${pos.toFixed(0)}% (저점 ${fmt(base.low_52w)} ~ 고점 ${fmt(base.high_52w)})`, met: pos < 30 });
+          }
+
+          const supplyReasons: ScoreReason[] = [];
+          supplyReasons.push({ label: '외국인', points: foreignBuying ? 9 : 0, detail: foreignBuying ? `순매수 +${fmt(base.foreign_net_qty)}주` : (base.foreign_net_qty !== null ? `순매도 ${fmt(base.foreign_net_qty)}주` : '데이터 없음'), met: foreignBuying });
+          supplyReasons.push({ label: '기관', points: instBuying ? 9 : 0, detail: instBuying ? `순매수 +${fmt(base.institution_net_qty)}주` : (base.institution_net_qty !== null ? `순매도 ${fmt(base.institution_net_qty)}주` : '데이터 없음'), met: instBuying });
+          if (base.foreign_streak) {
+            const fs = base.foreign_streak;
+            supplyReasons.push({ label: '외국인 연속', points: fs > 0 ? 5 : 0, detail: fs > 0 ? `${fs}일 연속 매수` : `${Math.abs(fs)}일 연속 매도`, met: fs > 0 });
+          }
+          if (base.institution_streak) {
+            const is_ = base.institution_streak;
+            supplyReasons.push({ label: '기관 연속', points: is_ > 0 ? 5 : 0, detail: is_ > 0 ? `${is_}일 연속 매수` : `${Math.abs(is_)}일 연속 매도`, met: is_ > 0 });
+          }
+
+          const valReasons: ScoreReason[] = [];
+          if (base.forward_per) valReasons.push({ label: 'Forward PER', points: base.forward_per < 15 ? 8 : 0, detail: `${base.forward_per.toFixed(1)}`, met: base.forward_per < 15 });
+          else if (base.per) valReasons.push({ label: 'PER', points: base.per < 12 ? 8 : 0, detail: `${base.per.toFixed(1)}`, met: base.per < 12 });
+          if (base.pbr) valReasons.push({ label: 'PBR', points: base.pbr < 1 ? 6 : 0, detail: `${base.pbr.toFixed(2)}`, met: base.pbr < 1 });
+          if (base.roe) valReasons.push({ label: 'ROE', points: base.roe > 10 ? 6 : 0, detail: `${base.roe.toFixed(1)}%`, met: base.roe > 10 });
+          if (base.target_price && base.current_price && base.current_price > 0) {
+            const upside = ((base.target_price - base.current_price) / base.current_price) * 100;
+            valReasons.push({ label: '목표주가', points: upside >= 15 ? 8 : 0, detail: `목표 ${fmt(base.target_price)} vs 현재 ${fmt(base.current_price)} (${upside >= 0 ? '+' : ''}${upside.toFixed(0)}%)`, met: upside >= 15 });
+          }
+
+          const sigReasons: ScoreReason[] = [];
+          const sigCount = base.signal_count_30d ?? 0;
+          sigReasons.push({ label: '30일 신호', points: sigCount >= 3 ? 10 : sigCount > 0 ? 5 : 0, detail: `최근 30일 ${sigCount}회`, met: sigCount > 0 });
+
+          item.ai = {
+            total_score: scores.score_total,
+            signal_score: 0, trend_score: 0, valuation_score: 0, supply_score: 0,
+            rsi: null,
+            golden_cross: false, bollinger_bottom: false, phoenix_pattern: false,
+            macd_cross: false, volume_surge: false, week52_low_near: false,
+            double_top: false, disparity_rebound: false, volume_breakout: false,
+            consecutive_drop_rebound: false, foreign_buying: foreignBuying,
+            institution_buying: instBuying, volume_vs_sector: false, low_short_sell: false,
+            trend_norm: scores.score_momentum,
+            supply_norm: scores.score_supply,
+            signal_norm: scores.score_signal,
+            valuation_norm: scores.score_valuation,
+            trend_reasons: trendReasons,
+            supply_reasons: supplyReasons,
+            valuation_reasons: valReasons,
+            signal_reasons: sigReasons,
           };
         }
         return item;
