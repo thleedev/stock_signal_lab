@@ -108,26 +108,31 @@ export async function generateChecklist(
 
   const symbols = candidates.map(c => c.symbol);
 
-  // 병렬 데이터 조회
-  const [{ data: cacheData }, { data: priceRows }] = await Promise.all([
-    supabase
-      .from('stock_cache')
-      .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, foreign_net_qty, institution_net_qty, investor_updated_at, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, market_cap, forward_per, target_price, invest_opinion')
-      .in('symbol', symbols),
-    supabase
-      .from('daily_prices')
-      .select('symbol, date, open, high, low, close, volume')
-      .in('symbol', symbols)
-      .order('date', { ascending: false })
-      .limit(symbols.length * 65),
-  ]);
-
-  const cacheMap = new Map((cacheData ?? []).map(c => [c.symbol, c]));
+  // ── 청크 단위 데이터 조회 (Supabase .in() URL 길이 제한 대응) ──
+  const CHUNK = 80; // .in() 안전 범위
+  const cacheMap = new Map<string, Record<string, unknown>>();
   const priceMap = new Map<string, DailyPrice[]>();
-  for (const row of priceRows ?? []) {
-    const sym = row.symbol as string;
-    if (!priceMap.has(sym)) priceMap.set(sym, []);
-    priceMap.get(sym)!.push(row as DailyPrice);
+
+  for (let i = 0; i < symbols.length; i += CHUNK) {
+    const chunk = symbols.slice(i, i + CHUNK);
+    const [{ data: cacheData }, { data: priceRows }] = await Promise.all([
+      supabase
+        .from('stock_cache')
+        .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, foreign_net_qty, institution_net_qty, investor_updated_at, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, market_cap, forward_per, target_price, invest_opinion')
+        .in('symbol', chunk),
+      supabase
+        .from('daily_prices')
+        .select('symbol, date, open, high, low, close, volume')
+        .in('symbol', chunk)
+        .order('date', { ascending: false })
+        .limit(chunk.length * 65),
+    ]);
+    for (const c of cacheData ?? []) cacheMap.set(c.symbol, c);
+    for (const row of priceRows ?? []) {
+      const sym = row.symbol as string;
+      if (!priceMap.has(sym)) priceMap.set(sym, []);
+      priceMap.get(sym)!.push(row as DailyPrice);
+    }
   }
   for (const [sym, rows] of priceMap) {
     priceMap.set(sym, rows.reverse().slice(-65));
@@ -155,10 +160,13 @@ export async function generateChecklist(
       (cache.investor_updated_at as string).slice(0, 10) === todayStr;
     const liveInv = liveInvestorMap.get(symbol);
 
-    const foreignNet: number | null = cachedFresh ? cache!.foreign_net_qty : (liveInv?.foreign_net ?? null);
-    const institutionNet: number | null = cachedFresh ? cache!.institution_net_qty : (liveInv?.institution_net ?? null);
-    const foreignStreak: number | null = cachedFresh ? cache!.foreign_streak : (liveInv?.foreign_streak ?? null);
-    const institutionStreak: number | null = cachedFresh ? cache!.institution_streak : (liveInv?.institution_streak ?? null);
+    // cache 필드 추출 (Record<string, unknown> → 명시적 캐스트)
+    const n = (v: unknown): number | null => (typeof v === 'number' ? v : null);
+
+    const foreignNet: number | null = cachedFresh ? n(cache!.foreign_net_qty) : (liveInv?.foreign_net ?? null);
+    const institutionNet: number | null = cachedFresh ? n(cache!.institution_net_qty) : (liveInv?.institution_net ?? null);
+    const foreignStreak: number | null = cachedFresh ? n(cache!.foreign_streak) : (liveInv?.foreign_streak ?? null);
+    const institutionStreak: number | null = cachedFresh ? n(cache!.institution_streak) : (liveInv?.institution_streak ?? null);
 
     const avgVol20 = volumes.length >= 21
       ? volumes.slice(-21, -1).reduce((a: number, b: number) => a + b, 0) / 20
@@ -170,24 +178,24 @@ export async function generateChecklist(
 
     const allConditions = evaluateConditions({
       prices,
-      high52w: cache?.high_52w ?? null,
-      low52w: cache?.low_52w ?? null,
+      high52w: n(cache?.high_52w),
+      low52w: n(cache?.low_52w),
       foreignNet,
       institutionNet,
       foreignStreak,
       institutionStreak,
-      currentVolume: cache?.volume ?? null,
+      currentVolume: n(cache?.volume),
       avgVolume20d: avgVol20,
-      per: cache?.per ?? null,
-      forwardPer: cache?.forward_per ?? null,
-      pbr: cache?.pbr ?? null,
-      roe: cache?.roe ?? null,
-      targetPrice: cache?.target_price ?? null,
-      currentPrice: cache?.current_price ?? null,
-      investOpinion: cache?.invest_opinion ?? null,
+      per: n(cache?.per),
+      forwardPer: n(cache?.forward_per),
+      pbr: n(cache?.pbr),
+      roe: n(cache?.roe),
+      targetPrice: n(cache?.target_price),
+      currentPrice: n(cache?.current_price),
+      investOpinion: n(cache?.invest_opinion),
       rsi: null,
       pct5d,
-      shortSellRatio: cache?.short_sell_ratio ?? null,
+      shortSellRatio: n(cache?.short_sell_ratio),
     });
 
     const activeConditions = allConditions.filter(c => activeConditionIds.includes(c.id));
@@ -200,7 +208,7 @@ export async function generateChecklist(
     return {
       symbol,
       name: name ?? symbol,
-      currentPrice: cache?.current_price ?? null,
+      currentPrice: (cache?.current_price as number) ?? null,
       grade, gradeLabel, metCount, activeCount, metRatio,
       conditions: allConditions,
     };
