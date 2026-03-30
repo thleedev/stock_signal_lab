@@ -92,14 +92,20 @@ export async function GET(request: Request) {
 
     lap(`대상: 일봉 ${dpSymbols.size}개, 지표 ${prioritySymbols.length}개, 수급 ${investorSymbols.length}개`);
 
-    // ═══ Step 2: 전종목 시세 + 지표 + 투자자 + 공매도 (병렬) ═══
-    const [priceMap, indicatorMap, investorMap, shortSellMap] = await Promise.all([
+    // ═══ Step 2: 전종목 시세 + 공매도 (빠름) → 전종목 지표 + 수급 (느림) ═══
+    const [priceMap, shortSellMap] = await Promise.all([
       fetchAllStockPrices(),
-      prioritySymbols.length > 0 ? fetchBulkIndicators(prioritySymbols, 30) : Promise.resolve(new Map()),
-      investorSymbols.length > 0 ? fetchBulkInvestorData(investorSymbols) : Promise.resolve(new Map()),
       fetchKrxShortSell(),
     ]);
-    lap(`시세 ${priceMap.size} + 지표 ${indicatorMap.size} + 수급 ${investorMap.size} + 공매도 ${shortSellMap.size} 조회`);
+    lap(`시세 ${priceMap.size} + 공매도 ${shortSellMap.size} 조회`);
+
+    // 전종목 지표 + 수급 (병렬, concurrency 높임)
+    const allSymbols_indicator = [...priceMap.keys()];
+    const [indicatorMap, investorMap] = await Promise.all([
+      fetchBulkIndicators(allSymbols_indicator, 50),
+      fetchBulkInvestorData(allSymbols_indicator, 50),
+    ]);
+    lap(`지표 ${indicatorMap.size} + 수급 ${investorMap.size} 조회 (전종목)`);
 
     // ═══ Step 3: stock_cache 일괄 업데이트 (네이버 전종목 기준) ═══
     // priceMap 기준으로 upsert → 신규 종목도 자동 추가됨
