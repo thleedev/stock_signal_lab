@@ -7,7 +7,6 @@ import { createAiProvider } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
-const DAILY_PRICE_LOOKBACK_DAYS = 120;
 
 const SOURCE_LABELS: Record<string, string> = {
   lassi: '라씨매매',
@@ -34,7 +33,8 @@ const INDICATOR_LABELS: Record<string, string> = {
  * Vercel Cron: 평일 16:00 KST (UTC 07:00)
  *
  * [stock-cache 통합] 전종목 시세 + 우선순위 지표/forward + 신호 집계
- * [daily-prices] 신호/보유 종목 일봉 + 공매도 + 투자자 수급
+ * [daily-prices] 신호/보유 종목 당일 일봉 + 투자자 수급
+ * [short-sell] 공매도는 평일 별도 단계로 분리 (실패 시 전체 크론 실패 방지)
  * [daily-prices] 분할매매 + AI 리포트
  */
 export async function GET(request: Request) {
@@ -52,8 +52,6 @@ export async function GET(request: Request) {
   const today = kst.toISOString().slice(0, 10);
   const todayCompact = today.replace(/-/g, '');
   const d30 = new Date(Date.now() - 30 * 86400000);
-  const historyStart = new Date(Date.now() - DAILY_PRICE_LOOKBACK_DAYS * 86400000);
-  const startDate = historyStart.toISOString().slice(0, 10).replace(/-/g, '');
   const ts = new Date().toISOString();
 
   try {
@@ -76,12 +74,21 @@ export async function GET(request: Request) {
     openTrades?.forEach((t) => dpSymbols.add(t.symbol));
     pendingSchedule?.forEach((s) => dpSymbols.add(s.symbol));
 
-    // ═══ Step 2: 전종목 통합 조회 (시세 + 지표 + 수급) + 공매도 ═══
-    const [integrationMap, shortSellMap] = await Promise.all([
-      fetchNaverBulkIntegration(),
-      fetchKrxShortSell(),
-    ]);
-    lap(`통합 ${integrationMap.size}종목 + 공매도 ${shortSellMap.size} 조회`);
+    // ═══ Step 2: 전종목 통합 조회 (시세 + 지표 + 수급) ═══
+    const integrationMap = await fetchNaverBulkIntegration();
+    lap(`통합 ${integrationMap.size}종목 조회`);
+
+    // ═══ Step 2-b: 공매도 조회 (평일 필수이지만 실패 분리) ═══
+    let shortSellMap = new Map<string, number>();
+    let shortSellSuccess = false;
+    try {
+      shortSellMap = await fetchKrxShortSell();
+      shortSellSuccess = true;
+      lap(`공매도 ${shortSellMap.size}종목 조회`);
+    } catch (e) {
+      console.error('[daily-sync] 공매도 조회 실패:', e);
+      lap('공매도 조회 실패');
+    }
 
     // ═══ Step 3: stock_cache 일괄 업데이트 ═══
     const allSymbols = [...integrationMap.keys()];
@@ -151,20 +158,28 @@ export async function GET(request: Request) {
     lap(`stock_cache 업데이트: ${updated}종목 (전종목 upsert)`);
 
     // ═══ Step 4: KIS API 일봉 수집 ═══
-    // 최근 30일만 수집하면 신규/재편입 종목은 60일선, MACD 계산용 히스토리가 계속 부족할 수 있다.
-    // 120일(달력일) 정도를 매번 upsert해서 최소 60거래일 이상을 안정적으로 확보한다.
+    // 평일에는 당일 캔들만 upsert한다. 장기 히스토리 복구/백필은 주말 repair 크론에서 처리한다.
     let savedCount = 0;
     const dpArr = [...dpSymbols];
     for (let i = 0; i < dpArr.length; i += 5) {
       const chunk = dpArr.slice(i, i + 5);
       const results = await Promise.allSettled(
         chunk.map(async (symbol) => {
-          const prices = await getDailyPrices(symbol, startDate, todayCompact);
+          const prices = await getDailyPrices(symbol, todayCompact, todayCompact);
           if (prices.length === 0) return 0;
-          const rows = prices.map((p) => ({
-            symbol, date: p.date, open: p.open, high: p.high,
-            low: p.low, close: p.close, volume: p.volume,
-          }));
+
+          const todayPrice = prices.find((p) => p.date === today);
+          if (!todayPrice) return 0;
+
+          const rows = [{
+            symbol,
+            date: todayPrice.date,
+            open: todayPrice.open,
+            high: todayPrice.high,
+            low: todayPrice.low,
+            close: todayPrice.close,
+            volume: todayPrice.volume,
+          }];
           const { error } = await supabase
             .from('daily_prices')
             .upsert(rows, { onConflict: 'symbol,date' });
@@ -223,7 +238,7 @@ export async function GET(request: Request) {
 
     // ═══ Step 7: 분할매매 + AI 리포트 ═══
     const splitResult = await executePendingSplitTrades(supabase, today);
-    const reportResult = await generateDailyReport(supabase, today, todayCompact);
+    const reportResult = await generateDailyReport(supabase, today);
     lap('분할매매 + 리포트 완료');
 
     // ═══ Step 8: 랭킹 스냅샷 저장 ═══
@@ -306,7 +321,7 @@ export async function GET(request: Request) {
       date: today,
       stock_cache: { updated, integration: integrationMap.size },
       daily_prices: { symbols: dpSymbols.size, saved: savedCount },
-      short_sell: shortSellMap.size,
+      short_sell: { success: shortSellSuccess, updated: shortSellMap.size },
       splits: splitResult,
       report: reportResult,
       snapshot: snapshotSaved,
@@ -380,8 +395,7 @@ async function executePendingSplitTrades(
 
 async function generateDailyReport(
   supabase: ReturnType<typeof createServiceClient>,
-  today: string,
-  _todayCompact: string
+  today: string
 ): Promise<{ generated: boolean; total?: number }> {
   const dateStart = `${today}T00:00:00+09:00`;
   const dateEnd = `${today}T23:59:59+09:00`;
