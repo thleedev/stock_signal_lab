@@ -4,7 +4,7 @@ import { getDailyPrices, delay } from '@/lib/kis-api';
 import { fetchKrxShortSell } from '@/lib/krx-shortsell-api';
 import { fetchAllStockPrices } from '@/lib/naver-stock-api';
 import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
-import { fetchBulkIndicators } from '@/lib/krx-api';
+import { fetchBulkIndicators, fetchKrxIndicators, fetchKrxInvestorData } from '@/lib/krx-api';
 import { createAiProvider } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
@@ -92,20 +92,21 @@ export async function GET(request: Request) {
 
     lap(`대상: 일봉 ${dpSymbols.size}개, 지표 ${prioritySymbols.length}개, 수급 ${investorSymbols.length}개`);
 
-    // ═══ Step 2: 전종목 시세 + 공매도 (빠름) → 전종목 지표 + 수급 (느림) ═══
-    const [priceMap, shortSellMap] = await Promise.all([
+    // ═══ Step 2: 전종목 시세 + 공매도 + KRX 지표/수급 (벌크) ═══
+    const [priceMap, shortSellMap, krxIndicatorMap, krxInvestorMap] = await Promise.all([
       fetchAllStockPrices(),
       fetchKrxShortSell(),
+      fetchKrxIndicators(),
+      fetchKrxInvestorData(),
     ]);
-    lap(`시세 ${priceMap.size} + 공매도 ${shortSellMap.size} 조회`);
+    lap(`시세 ${priceMap.size} + 공매도 ${shortSellMap.size} + KRX지표 ${krxIndicatorMap.size} + KRX수급 ${krxInvestorMap.size} 조회`);
 
-    // 전종목 지표 + 수급 (병렬, concurrency 높임)
-    const allSymbols_indicator = [...priceMap.keys()];
+    // 우선순위 종목만 Naver 컨센서스(forward PER/목표가/52주 고저가) + Naver 수급(연속일수) 조회
     const [indicatorMap, investorMap] = await Promise.all([
-      fetchBulkIndicators(allSymbols_indicator, 50),
-      fetchBulkInvestorData(allSymbols_indicator, 50),
+      fetchBulkIndicators(prioritySymbols, 30),
+      fetchBulkInvestorData(investorSymbols, 30),
     ]);
-    lap(`지표 ${indicatorMap.size} + 수급 ${investorMap.size} 조회 (전종목)`);
+    lap(`Naver 컨센서스 ${indicatorMap.size} + Naver 수급 ${investorMap.size} 조회 (우선순위)`);
 
     // ═══ Step 3: stock_cache 일괄 업데이트 (네이버 전종목 기준) ═══
     // priceMap 기준으로 upsert → 신규 종목도 자동 추가됨
@@ -116,8 +117,10 @@ export async function GET(request: Request) {
       const batch = allSymbols.slice(i, i + 500);
       const rows = batch.map((symbol) => {
         const price = priceMap.get(symbol)!;
-        const indicator = indicatorMap.get(symbol);
-        const investor = investorMap.get(symbol);
+        const krxInd = krxIndicatorMap.get(symbol);   // KRX 벌크 (전종목)
+        const naverInd = indicatorMap.get(symbol);     // Naver 개별 (우선순위)
+        const krxInv = krxInvestorMap.get(symbol);     // KRX 벌크 (전종목)
+        const naverInv = investorMap.get(symbol);      // Naver 개별 (우선순위)
         const row: Record<string, unknown> = {
           symbol,
           name: price.name,
@@ -132,30 +135,39 @@ export async function GET(request: Request) {
           row.price_change = price.price_change;
           row.price_change_pct = price.price_change_pct;
         }
-        if (indicator) {
-          row.per = indicator.per || null;
-          row.pbr = indicator.pbr || null;
-          row.eps = indicator.eps || null;
-          row.bps = indicator.bps || null;
-          row.roe = indicator.roe || null;
-          row.high_52w = indicator.high_52w || null;
-          row.low_52w = indicator.low_52w || null;
-          row.dividend_yield = indicator.dividend_yield || null;
-          row.forward_per = indicator.forward_per;
-          row.forward_eps = indicator.forward_eps;
-          row.target_price = indicator.target_price;
-          row.invest_opinion = indicator.invest_opinion;
+
+        // 지표: KRX 벌크 기본 → Naver로 보충 (52주 고저가, 컨센서스)
+        if (krxInd || naverInd) {
+          row.per = krxInd?.per ?? naverInd?.per ?? null;
+          row.pbr = krxInd?.pbr ?? naverInd?.pbr ?? null;
+          row.eps = krxInd?.eps ?? naverInd?.eps ?? null;
+          row.bps = krxInd?.bps ?? naverInd?.bps ?? null;
+          row.dividend_yield = krxInd?.dividend_yield ?? naverInd?.dividend_yield ?? null;
+          // ROE는 Naver만 제공
+          row.roe = naverInd?.roe ?? null;
+          // 52주 고저가는 Naver만 제공
+          row.high_52w = naverInd?.high_52w ?? null;
+          row.low_52w = naverInd?.low_52w ?? null;
+          // 컨센서스(forward)는 Naver만 제공
+          row.forward_per = naverInd?.forward_per ?? null;
+          row.forward_eps = naverInd?.forward_eps ?? null;
+          row.target_price = naverInd?.target_price ?? null;
+          row.invest_opinion = naverInd?.invest_opinion ?? null;
           row.consensus_updated_at = ts;
         }
-        if (investor) {
-          row.foreign_net_qty = investor.foreign_net;
-          row.institution_net_qty = investor.institution_net;
-          row.foreign_net_5d = investor.foreign_net_5d;
-          row.institution_net_5d = investor.institution_net_5d;
-          row.foreign_streak = investor.foreign_streak;
-          row.institution_streak = investor.institution_streak;
+
+        // 수급: KRX 벌크 기본 (당일) → Naver로 5일누적/연속일수 보충
+        if (krxInv || naverInv) {
+          row.foreign_net_qty = krxInv?.foreign_net ?? naverInv?.foreign_net ?? null;
+          row.institution_net_qty = krxInv?.institution_net ?? naverInv?.institution_net ?? null;
+          // 5일 누적, 연속일수는 Naver만 제공
+          row.foreign_net_5d = naverInv?.foreign_net_5d ?? null;
+          row.institution_net_5d = naverInv?.institution_net_5d ?? null;
+          row.foreign_streak = naverInv?.foreign_streak ?? null;
+          row.institution_streak = naverInv?.institution_streak ?? null;
           row.investor_updated_at = ts;
         }
+
         if (shortSellMap.has(symbol)) {
           row.short_sell_ratio = shortSellMap.get(symbol)!;
           row.short_sell_updated_at = ts;
@@ -304,7 +316,14 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       date: today,
-      stock_cache: { updated, prices: priceMap.size, indicators: indicatorMap.size, investors: investorMap.size },
+      stock_cache: {
+        updated,
+        prices: priceMap.size,
+        krx_indicators: krxIndicatorMap.size,
+        krx_investors: krxInvestorMap.size,
+        naver_consensus: indicatorMap.size,
+        naver_investors: investorMap.size,
+      },
       daily_prices: { symbols: dpSymbols.size, saved: savedCount },
       short_sell: shortSellMap.size,
       splits: splitResult,

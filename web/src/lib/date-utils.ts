@@ -16,11 +16,9 @@ export function getLastNWeekdays(n: number): string[] {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   let d = new Date(kst);
   while (days.length < n) {
-    // KST 날짜 문자열에서 요일을 판단해야 정확함
-    // (getDay()는 UTC 기준이라 KST +9h 후 날짜와 불일치할 수 있음)
     const dateStr = d.toISOString().slice(0, 10);
-    const kstDate = new Date(dateStr + 'T00:00:00+09:00');
-    const day = kstDate.getUTCDay();
+    // dateStr 자체가 KST 날짜이므로 UTC 자정으로 요일 판정 (+09:00 사용 시 UTC 날짜가 하루 밀림)
+    const day = new Date(dateStr + 'T00:00:00Z').getUTCDay();
     if (day !== 0 && day !== 6) days.push(dateStr);
     d = new Date(d.getTime() - 86400000);
   }

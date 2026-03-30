@@ -175,7 +175,7 @@ export async function generateChecklist(
     const judgeable = activeConditions.filter(c => !c.na);
     const metCount = judgeable.filter(c => c.met).length;
     const activeCount = judgeable.length;
-    const dataInsufficient = activeConditions.length > 0 && activeCount < activeConditions.length / 2;
+    const dataInsufficient = activeConditions.length > 0 && activeCount < 3;
     const metRatio = dataInsufficient ? 0 : (activeCount > 0 ? metCount / activeCount : 0);
     const { grade, gradeLabel } = dataInsufficient
       ? { grade: 'D' as const, gradeLabel: '데이터 부족' }
