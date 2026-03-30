@@ -100,7 +100,7 @@ export async function generateChecklist(
   activeConditionIds: string[],
   dateMode: 'today' | 'signal_all' | 'all' = 'today',
   market = 'all',
-  limit = 100,
+  limit = 0, // 0 = 전체 반환
 ): Promise<{ items: ChecklistItem[]; total_candidates: number }> {
   const todayKst = getTodayKst();
   const candidates = await fetchCandidates(supabase, dateMode, market);
@@ -207,5 +207,5 @@ export async function generateChecklist(
   });
 
   items.sort((a, b) => b.metRatio - a.metRatio);
-  return { items: items.slice(0, limit), total_candidates: candidates.length };
+  return { items: limit > 0 ? items.slice(0, limit) : items, total_candidates: candidates.length };
 }

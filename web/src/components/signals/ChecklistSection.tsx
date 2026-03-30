@@ -265,8 +265,8 @@ export default function ChecklistSection() {
       )}
       {!loading && items.length > 0 && (
         <div className="text-xs text-[var(--muted)]">
-          {total}개 종목 중 {filtered.length}개 표시
-          {search.trim() && ` (검색: "${search.trim()}")`}
+          {filtered.length}개 종목
+          {(search.trim() || gradeFilter !== 'all') && ` (전체 ${total}개 중 필터)`}
         </div>
       )}
 
