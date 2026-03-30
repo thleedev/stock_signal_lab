@@ -22,14 +22,23 @@ async function fetchCandidates(
   const todayKst = getTodayKst();
 
   if (dateMode === 'all') {
-    // 종목전체: stock_cache의 모든 종목 (신호 무관)
-    let query = supabase
-      .from('stock_cache')
-      .select('symbol, name, market')
-      .not('current_price', 'is', null);
-    if (market !== 'all') query = query.eq('market', market);
-    const { data } = await query.limit(500);
-    return (data ?? []).map(r => ({ symbol: r.symbol, name: r.name, market: r.market }));
+    // 종목전체: stock_cache의 모든 종목 (신호 무관) — 페이지네이션으로 전체 조회
+    const allRows: { symbol: string; name: string; market?: string }[] = [];
+    let from = 0;
+    while (true) {
+      let query = supabase
+        .from('stock_cache')
+        .select('symbol, name, market')
+        .not('current_price', 'is', null)
+        .range(from, from + 999);
+      if (market !== 'all') query = query.eq('market', market);
+      const { data } = await query;
+      if (!data || data.length === 0) break;
+      allRows.push(...data.map(r => ({ symbol: r.symbol, name: r.name, market: r.market })));
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+    return allRows;
   }
 
   // today / signal_all: 신호 기반
@@ -45,12 +54,14 @@ async function fetchCandidates(
     endDate = `${todayKst}T23:59:59+09:00`;
   }
 
+  // 신호 조회 (limit 충분히 확보)
   const { data } = await supabase
     .from('signals')
     .select('symbol, name')
     .in('signal_type', ['BUY', 'BUY_FORECAST'])
     .gte('timestamp', startDate)
-    .lte('timestamp', endDate);
+    .lte('timestamp', endDate)
+    .limit(5000);
 
   if (!data) return [];
 
@@ -62,19 +73,26 @@ async function fetchCandidates(
     return true;
   });
 
-  // 시장 필터 적용 (stock_cache에서 market 조회)
+  // stock_cache에서 name/market 보강 (signals의 name이 null일 수 있으므로)
+  const symbols = unique.map(s => s.symbol);
+  const { data: cacheRows } = await supabase
+    .from('stock_cache')
+    .select('symbol, name, market')
+    .in('symbol', symbols);
+  const cacheNameMap = new Map((cacheRows ?? []).map(r => [r.symbol, { name: r.name as string, market: r.market as string }]));
+
+  let enriched = unique.map(s => ({
+    symbol: s.symbol,
+    name: cacheNameMap.get(s.symbol)?.name ?? s.name ?? s.symbol,
+    market: cacheNameMap.get(s.symbol)?.market,
+  }));
+
+  // 시장 필터 적용
   if (market !== 'all') {
-    const symbols = unique.map(s => s.symbol);
-    const { data: cacheRows } = await supabase
-      .from('stock_cache')
-      .select('symbol, market')
-      .in('symbol', symbols)
-      .eq('market', market);
-    const marketSymbols = new Set((cacheRows ?? []).map(r => r.symbol));
-    return unique.filter(s => marketSymbols.has(s.symbol));
+    enriched = enriched.filter(s => s.market === market);
   }
 
-  return unique;
+  return enriched;
 }
 
 export async function generateChecklist(
@@ -82,7 +100,7 @@ export async function generateChecklist(
   activeConditionIds: string[],
   dateMode: 'today' | 'signal_all' | 'all' = 'today',
   market = 'all',
-  limit = 50,
+  limit = 100,
 ): Promise<{ items: ChecklistItem[]; total_candidates: number }> {
   const todayKst = getTodayKst();
   const candidates = await fetchCandidates(supabase, dateMode, market);
