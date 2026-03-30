@@ -2,7 +2,6 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { getTodayKst } from '@/lib/ai-recommendation/index';
 import { getLastNWeekdays } from '@/lib/date-utils';
 import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
-import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
 import { evaluateConditions } from './checklist-conditions';
 import type { ChecklistItem, ChecklistGrade } from './types';
 
@@ -102,7 +101,6 @@ export async function generateChecklist(
   market = 'all',
   limit = 0, // 0 = 전체 반환
 ): Promise<{ items: ChecklistItem[]; total_candidates: number }> {
-  const todayKst = getTodayKst();
   const candidates = await fetchCandidates(supabase, dateMode, market);
   if (candidates.length === 0) return { items: [], total_candidates: 0 };
 
@@ -138,16 +136,7 @@ export async function generateChecklist(
     priceMap.set(sym, rows.reverse().slice(-65));
   }
 
-  // 캐시가 오래된 종목은 실시간 수급 데이터 조회
-  const todayStr = todayKst;
-  const symbolsNeedingLive = symbols.filter(sym => {
-    const c = cacheMap.get(sym);
-    if (!c?.investor_updated_at) return true;
-    return (c.investor_updated_at as string).slice(0, 10) !== todayStr;
-  });
-  const liveInvestorMap = symbolsNeedingLive.length > 0
-    ? await fetchBulkInvestorData(symbolsNeedingLive)
-    : new Map();
+  // stock_cache에 크론이 이미 수급/밸류 데이터를 저장해둠 — live fetch 불필요
 
   // 각 종목 조건 평가
   const items: ChecklistItem[] = candidates.map(({ symbol, name }) => {
@@ -156,17 +145,13 @@ export async function generateChecklist(
     const volumes = prices.map(p => p.volume);
     const closes = prices.map(p => p.close);
 
-    const cachedFresh = cache?.investor_updated_at &&
-      (cache.investor_updated_at as string).slice(0, 10) === todayStr;
-    const liveInv = liveInvestorMap.get(symbol);
-
     // cache 필드 추출 (Record<string, unknown> → 명시적 캐스트)
     const n = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 
-    const foreignNet: number | null = cachedFresh ? n(cache!.foreign_net_qty) : (liveInv?.foreign_net ?? null);
-    const institutionNet: number | null = cachedFresh ? n(cache!.institution_net_qty) : (liveInv?.institution_net ?? null);
-    const foreignStreak: number | null = cachedFresh ? n(cache!.foreign_streak) : (liveInv?.foreign_streak ?? null);
-    const institutionStreak: number | null = cachedFresh ? n(cache!.institution_streak) : (liveInv?.institution_streak ?? null);
+    const foreignNet = n(cache?.foreign_net_qty);
+    const institutionNet = n(cache?.institution_net_qty);
+    const foreignStreak = n(cache?.foreign_streak);
+    const institutionStreak = n(cache?.institution_streak);
 
     const avgVol20 = volumes.length >= 21
       ? volumes.slice(-21, -1).reduce((a: number, b: number) => a + b, 0) / 20
