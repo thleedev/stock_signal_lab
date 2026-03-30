@@ -491,15 +491,27 @@ function RankCard({
           { label: '수급', value: sup, color: 'bg-sky-500' },
           { label: '신호', value: sig, color: 'bg-amber-500' },
           { label: '밸류', value: val, color: 'bg-violet-500' },
-        ]).map(b => (
-          <div key={b.label} className="flex items-center gap-1">
-            <span className="text-[10px] text-[var(--muted)] w-5">{b.label}</span>
-            <div className="w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-              <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
-            </div>
-            <span className="text-[10px] tabular-nums text-[var(--muted)] w-5">{b.value}</span>
-          </div>
-        ))}
+        ]).map(b => {
+          const reasonsMap: Record<string, { norm: number; reasons: ScoreReason[] }> = {
+            '기술': { norm: item.ai?.trend_norm ?? tech, reasons: item.ai?.trend_reasons ?? [] },
+            '모멘텀': { norm: item.ai?.trend_norm ?? tech, reasons: item.ai?.trend_reasons ?? [] },
+            '수급': { norm: item.ai?.supply_norm ?? sup, reasons: item.ai?.supply_reasons ?? [] },
+            '신호': { norm: item.ai?.signal_norm ?? sig, reasons: item.ai?.signal_reasons ?? [] },
+            '밸류': { norm: item.ai?.valuation_norm ?? val, reasons: item.ai?.valuation_reasons ?? [] },
+          };
+          const r = reasonsMap[b.label] ?? { norm: b.value, reasons: [] };
+          return (
+            <ScoreReasonPopover key={b.label} label={b.label} normalizedScore={r.norm} reasons={r.reasons}>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-[var(--muted)] w-5">{b.label}</span>
+                <div className="w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+                  <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
+                </div>
+                <span className="text-[10px] tabular-nums text-[var(--muted)] w-5">{b.value}</span>
+              </div>
+            </ScoreReasonPopover>
+          );
+        })}
       </div>
     </div>
   );
