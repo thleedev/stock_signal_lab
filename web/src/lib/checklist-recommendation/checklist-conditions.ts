@@ -181,7 +181,7 @@ export function evaluateConditions(input: ConditionInput): ConditionResult[] {
         if (input.forwardPer === null && input.per === null) {
           return { ...base, met: false, detail: '데이터 없음', na: true };
         }
-        if (input.forwardPer !== null) {
+        if (input.forwardPer !== null && input.forwardPer > 0) {
           const met = input.forwardPer < 15;
           return {
             ...base,
@@ -190,8 +190,11 @@ export function evaluateConditions(input: ConditionInput): ConditionResult[] {
             na: false,
           };
         }
-        // forwardPer 없으면 trailing PER < 12
-        const met = input.per! < 12;
+        if (input.per === null || input.per <= 0) {
+          return { ...base, met: false, detail: `PER ${input.forwardPer ?? input.per}배 (적자/음수)`, na: false };
+        }
+        // forwardPer 없거나 음수면 trailing PER < 12
+        const met = input.per < 12;
         return {
           ...base,
           met,

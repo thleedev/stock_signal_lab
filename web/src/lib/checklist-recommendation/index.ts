@@ -184,11 +184,16 @@ export async function generateChecklist(
     });
 
     const activeConditions = allConditions.filter(c => activeConditionIds.includes(c.id));
+    const naCount = activeConditions.filter(c => c.na).length;
     const judgeable = activeConditions.filter(c => !c.na);
     const metCount = judgeable.filter(c => c.met).length;
     const activeCount = judgeable.length;
-    const metRatio = activeCount > 0 ? metCount / activeCount : 0;
-    const { grade, gradeLabel } = calcGrade(metRatio);
+    // 판정 가능 조건이 전체의 절반 미만이면 데이터 부족 → 비율 0 처리
+    const dataInsufficient = activeConditions.length > 0 && activeCount < activeConditions.length / 2;
+    const metRatio = dataInsufficient ? 0 : (activeCount > 0 ? metCount / activeCount : 0);
+    const { grade, gradeLabel } = dataInsufficient
+      ? { grade: 'D' as const, gradeLabel: '데이터 부족' }
+      : calcGrade(metRatio);
 
     return {
       symbol,
