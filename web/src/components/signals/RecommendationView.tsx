@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/ui';
 import { UnifiedAnalysisSection, type SignalMap } from './UnifiedAnalysisSection';
 import ShortTermRecommendationSection from './ShortTermRecommendationSection';
+import ChecklistSection from './ChecklistSection';
 import type { WatchlistGroup } from '@/types/stock';
 
 interface Props {
-  initialTab: 'analysis' | 'short-term';
+  initialTab: 'analysis' | 'short-term' | 'checklist';
   initialDateMode?: 'today' | 'signal_all';
   signalMap: SignalMap;
   favoriteSymbols: string[];
@@ -32,7 +33,7 @@ export default function RecommendationView({
 }: Props) {
   const [activeTab, setActiveTab] = useState(initialTab);
 
-  const handleTabChange = (tab: 'analysis' | 'short-term') => {
+  const handleTabChange = (tab: 'analysis' | 'short-term' | 'checklist') => {
     setActiveTab(tab);
     // URL을 동기화하되 서버 네비게이션은 트리거하지 않음
     window.history.replaceState(null, '', `/signals?tab=${tab}`);
@@ -64,12 +65,17 @@ export default function RecommendationView({
               <button onClick={() => handleTabChange('short-term')} className={tabCls('short-term')}>
                 단기추천
               </button>
+              <button onClick={() => handleTabChange('checklist')} className={tabCls('checklist')}>
+                체크리스트
+              </button>
             </div>
           </div>
         }
       />
 
-      {activeTab === 'analysis' ? (
+      {activeTab === 'checklist' ? (
+        <ChecklistSection />
+      ) : activeTab === 'analysis' ? (
         <UnifiedAnalysisSection
           initialDateMode={initialDateMode}
           signalMap={signalMap}
