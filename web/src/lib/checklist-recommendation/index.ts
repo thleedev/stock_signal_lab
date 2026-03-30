@@ -106,26 +106,40 @@ export async function generateChecklist(
 
   const symbols = candidates.map(c => c.symbol);
 
-  // ── 청크 단위 데이터 조회 (Supabase .in() URL 길이 제한 대응) ──
-  const CHUNK = 80; // .in() 안전 범위
+  // ── 청크 단위 데이터 조회 ──
+  // stock_cache: .in() URL 제한만 고려 → 80개씩
+  // daily_prices: Supabase max rows 1000 제한 → 종목당 65행 필요 → 15개씩
+  const CACHE_CHUNK = 80;
+  const PRICE_CHUNK = 15;
   const cacheMap = new Map<string, Record<string, unknown>>();
   const priceMap = new Map<string, DailyPrice[]>();
 
-  for (let i = 0; i < symbols.length; i += CHUNK) {
-    const chunk = symbols.slice(i, i + CHUNK);
-    const [{ data: cacheData }, { data: priceRows }] = await Promise.all([
-      supabase
-        .from('stock_cache')
-        .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, foreign_net_qty, institution_net_qty, investor_updated_at, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, market_cap, forward_per, target_price, invest_opinion')
-        .in('symbol', chunk),
+  // stock_cache 조회 (밸류/수급 데이터)
+  for (let i = 0; i < symbols.length; i += CACHE_CHUNK) {
+    const chunk = symbols.slice(i, i + CACHE_CHUNK);
+    const { data: cacheData } = await supabase
+      .from('stock_cache')
+      .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, foreign_net_qty, institution_net_qty, investor_updated_at, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, market_cap, forward_per, target_price, invest_opinion')
+      .in('symbol', chunk);
+    for (const c of cacheData ?? []) cacheMap.set(c.symbol, c);
+  }
+
+  // daily_prices 조회 (추세 데이터) — 15개씩 병렬
+  const priceChunks: string[][] = [];
+  for (let i = 0; i < symbols.length; i += PRICE_CHUNK) {
+    priceChunks.push(symbols.slice(i, i + PRICE_CHUNK));
+  }
+  const priceResults = await Promise.all(
+    priceChunks.map(chunk =>
       supabase
         .from('daily_prices')
         .select('symbol, date, open, high, low, close, volume')
         .in('symbol', chunk)
         .order('date', { ascending: false })
-        .limit(chunk.length * 65),
-    ]);
-    for (const c of cacheData ?? []) cacheMap.set(c.symbol, c);
+        .limit(chunk.length * 65)
+    )
+  );
+  for (const { data: priceRows } of priceResults) {
     for (const row of priceRows ?? []) {
       const sym = row.symbol as string;
       if (!priceMap.has(sym)) priceMap.set(sym, []);
