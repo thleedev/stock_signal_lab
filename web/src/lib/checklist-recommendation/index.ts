@@ -2,6 +2,8 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { getTodayKst } from '@/lib/ai-recommendation/index';
 import { getLastNWeekdays } from '@/lib/date-utils';
 import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
+import { fetchBulkInvestorData } from '@/lib/naver-stock-api';
+import { fetchBulkIndicators } from '@/lib/krx-api';
 import { evaluateConditions } from './checklist-conditions';
 import type { ChecklistItem, ChecklistGrade } from './types';
 
@@ -127,6 +129,48 @@ export async function generateChecklist(
   }
   for (const [sym, rows] of priceMap) {
     priceMap.set(sym, rows.reverse().slice(-65));
+  }
+
+  // ── Step 2.5: stock_cache에 데이터 없는 종목은 실시간 보강 (종목전체 제외) ──
+  if (dateMode !== 'all') {
+    const needIndicator = symbols.filter(s => {
+      const c = cacheMap.get(s);
+      return !c || (c.per == null && c.forward_per == null);
+    });
+    const needInvestor = symbols.filter(s => {
+      const c = cacheMap.get(s);
+      return !c || c.foreign_net_qty == null;
+    });
+
+    if (needIndicator.length > 0 || needInvestor.length > 0) {
+      const [indMap, invMap] = await Promise.all([
+        needIndicator.length > 0 ? fetchBulkIndicators(needIndicator, 30) : Promise.resolve(new Map()),
+        needInvestor.length > 0 ? fetchBulkInvestorData(needInvestor, 30) : Promise.resolve(new Map()),
+      ]);
+
+      for (const [sym, ind] of indMap) {
+        const c = cacheMap.get(sym) ?? {};
+        if (ind.per != null) c.per = ind.per;
+        if (ind.pbr != null) c.pbr = ind.pbr;
+        if (ind.roe != null) c.roe = ind.roe;
+        if (ind.high_52w != null) c.high_52w = ind.high_52w;
+        if (ind.low_52w != null) c.low_52w = ind.low_52w;
+        if (ind.forward_per != null) c.forward_per = ind.forward_per;
+        if (ind.target_price != null) c.target_price = ind.target_price;
+        if (ind.invest_opinion != null) c.invest_opinion = ind.invest_opinion;
+        cacheMap.set(sym, c);
+      }
+      for (const [sym, inv] of invMap) {
+        const c = cacheMap.get(sym) ?? {};
+        c.foreign_net_qty = inv.foreign_net;
+        c.institution_net_qty = inv.institution_net;
+        c.foreign_net_5d = inv.foreign_net_5d;
+        c.institution_net_5d = inv.institution_net_5d;
+        c.foreign_streak = inv.foreign_streak;
+        c.institution_streak = inv.institution_streak;
+        cacheMap.set(sym, c);
+      }
+    }
   }
 
   // ── Step 3: 각 종목 조건 평가 ──
