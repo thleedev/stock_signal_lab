@@ -12,119 +12,98 @@ function calcGrade(ratio: number): { grade: ChecklistGrade; gradeLabel: string }
   return { grade: 'D', gradeLabel: '주의' };
 }
 
-/** 날짜 모드별 매수 신호 종목 조회 */
-async function fetchCandidates(
-  supabase: SupabaseClient,
-  dateMode: 'today' | 'signal_all' | 'all',
-  market: string,
-): Promise<{ symbol: string; name: string; market?: string }[]> {
-  const todayKst = getTodayKst();
-
-  if (dateMode === 'all') {
-    // 종목전체: stock_cache의 모든 종목 (신호 무관) — 페이지네이션으로 전체 조회
-    const allRows: { symbol: string; name: string; market?: string }[] = [];
-    let from = 0;
-    while (true) {
-      let query = supabase
-        .from('stock_cache')
-        .select('symbol, name, market')
-        .not('current_price', 'is', null)
-        .range(from, from + 999);
-      if (market !== 'all') query = query.eq('market', market);
-      const { data } = await query;
-      if (!data || data.length === 0) break;
-      allRows.push(...data.map(r => ({ symbol: r.symbol, name: r.name, market: r.market })));
-      if (data.length < 1000) break;
-      from += 1000;
-    }
-    return allRows;
-  }
-
-  // today / signal_all: 신호 기반
-  let startDate: string;
-  let endDate: string;
-
-  if (dateMode === 'signal_all') {
-    const last7 = getLastNWeekdays(7);
-    startDate = `${last7[last7.length - 1]}T00:00:00+09:00`;
-    endDate = `${last7[0]}T23:59:59+09:00`;
-  } else {
-    startDate = `${todayKst}T00:00:00+09:00`;
-    endDate = `${todayKst}T23:59:59+09:00`;
-  }
-
-  // 신호 조회 (limit 충분히 확보)
-  const { data } = await supabase
-    .from('signals')
-    .select('symbol, name')
-    .in('signal_type', ['BUY', 'BUY_FORECAST'])
-    .gte('timestamp', startDate)
-    .lte('timestamp', endDate)
-    .limit(5000);
-
-  if (!data) return [];
-
-  // 중복 제거
-  const seen = new Set<string>();
-  const unique = data.filter(s => {
-    if (seen.has(s.symbol)) return false;
-    seen.add(s.symbol);
-    return true;
-  });
-
-  // stock_cache에서 name/market 보강 (signals의 name이 null일 수 있으므로)
-  const symbols = unique.map(s => s.symbol);
-  const { data: cacheRows } = await supabase
-    .from('stock_cache')
-    .select('symbol, name, market')
-    .in('symbol', symbols);
-  const cacheNameMap = new Map((cacheRows ?? []).map(r => [r.symbol, { name: r.name as string, market: r.market as string }]));
-
-  let enriched = unique.map(s => ({
-    symbol: s.symbol,
-    name: cacheNameMap.get(s.symbol)?.name ?? s.name ?? s.symbol,
-    market: cacheNameMap.get(s.symbol)?.market,
-  }));
-
-  // 시장 필터 적용
-  if (market !== 'all') {
-    enriched = enriched.filter(s => s.market === market);
-  }
-
-  return enriched;
-}
+const CACHE_FIELDS = 'symbol, name, market, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, market_cap, forward_per, target_price, invest_opinion';
 
 export async function generateChecklist(
   supabase: SupabaseClient,
   activeConditionIds: string[],
   dateMode: 'today' | 'signal_all' | 'all' = 'today',
   market = 'all',
-  limit = 0, // 0 = 전체 반환
 ): Promise<{ items: ChecklistItem[]; total_candidates: number }> {
-  const candidates = await fetchCandidates(supabase, dateMode, market);
-  if (candidates.length === 0) return { items: [], total_candidates: 0 };
+  const todayKst = getTodayKst();
 
-  const symbols = candidates.map(c => c.symbol);
-
-  // ── 청크 단위 데이터 조회 ──
-  // stock_cache: .in() URL 제한만 고려 → 80개씩
-  // daily_prices: Supabase max rows 1000 제한 → 종목당 65행 필요 → 15개씩
-  const CACHE_CHUNK = 80;
-  const PRICE_CHUNK = 15;
+  // ── Step 1: 후보 종목 + stock_cache 데이터 한번에 조회 ──
   const cacheMap = new Map<string, Record<string, unknown>>();
-  const priceMap = new Map<string, DailyPrice[]>();
+  let candidateSymbols: { symbol: string; name: string }[] = [];
 
-  // stock_cache 조회 (밸류/수급 데이터)
-  for (let i = 0; i < symbols.length; i += CACHE_CHUNK) {
-    const chunk = symbols.slice(i, i + CACHE_CHUNK);
-    const { data: cacheData } = await supabase
-      .from('stock_cache')
-      .select('symbol, per, pbr, roe, volume, current_price, high_52w, low_52w, short_sell_ratio, foreign_net_qty, institution_net_qty, investor_updated_at, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, market_cap, forward_per, target_price, invest_opinion')
-      .in('symbol', chunk);
-    for (const c of cacheData ?? []) cacheMap.set(c.symbol, c);
+  if (dateMode === 'all') {
+    // 종목전체: stock_cache 전체를 페이지네이션으로 조회 (필요 필드 포함)
+    let from = 0;
+    while (true) {
+      let query = supabase
+        .from('stock_cache')
+        .select(CACHE_FIELDS)
+        .not('current_price', 'is', null)
+        .range(from, from + 999);
+      if (market !== 'all') query = query.eq('market', market);
+      const { data } = await query;
+      if (!data || data.length === 0) break;
+      for (const r of data) {
+        cacheMap.set(r.symbol, r);
+        candidateSymbols.push({ symbol: r.symbol, name: r.name });
+      }
+      if (data.length < 1000) break;
+      from += 1000;
+    }
+  } else {
+    // today / signal_all: 신호 기반 후보
+    let startDate: string;
+    let endDate: string;
+    if (dateMode === 'signal_all') {
+      const last7 = getLastNWeekdays(7);
+      startDate = `${last7[last7.length - 1]}T00:00:00+09:00`;
+      endDate = `${last7[0]}T23:59:59+09:00`;
+    } else {
+      startDate = `${todayKst}T00:00:00+09:00`;
+      endDate = `${todayKst}T23:59:59+09:00`;
+    }
+
+    const { data: sigData } = await supabase
+      .from('signals')
+      .select('symbol, name')
+      .in('signal_type', ['BUY', 'BUY_FORECAST'])
+      .gte('timestamp', startDate)
+      .lte('timestamp', endDate)
+      .limit(5000);
+
+    // 중복 제거
+    const seen = new Set<string>();
+    candidateSymbols = (sigData ?? []).filter(s => {
+      if (seen.has(s.symbol)) return false;
+      seen.add(s.symbol);
+      return true;
+    });
+
+    // stock_cache 조회 (80개씩 청크)
+    const symbols = candidateSymbols.map(s => s.symbol);
+    for (let i = 0; i < symbols.length; i += 80) {
+      const chunk = symbols.slice(i, i + 80);
+      const { data } = await supabase
+        .from('stock_cache')
+        .select(CACHE_FIELDS)
+        .in('symbol', chunk);
+      for (const c of data ?? []) cacheMap.set(c.symbol, c);
+    }
+
+    // name/market 보강 + 시장 필터
+    candidateSymbols = candidateSymbols.map(s => ({
+      symbol: s.symbol,
+      name: (cacheMap.get(s.symbol)?.name as string) ?? s.name ?? s.symbol,
+    }));
+    if (market !== 'all') {
+      candidateSymbols = candidateSymbols.filter(s =>
+        (cacheMap.get(s.symbol)?.market as string) === market
+      );
+    }
   }
 
-  // daily_prices 조회 (추세 데이터) — 15개씩 병렬
+  if (candidateSymbols.length === 0) return { items: [], total_candidates: 0 };
+
+  const symbols = candidateSymbols.map(c => c.symbol);
+
+  // ── Step 2: daily_prices 조회 (추세 데이터) — 15개씩 병렬 ──
+  const priceMap = new Map<string, DailyPrice[]>();
+  const PRICE_CHUNK = 15;
   const priceChunks: string[][] = [];
   for (let i = 0; i < symbols.length; i += PRICE_CHUNK) {
     priceChunks.push(symbols.slice(i, i + PRICE_CHUNK));
@@ -150,22 +129,14 @@ export async function generateChecklist(
     priceMap.set(sym, rows.reverse().slice(-65));
   }
 
-  // stock_cache에 크론이 이미 수급/밸류 데이터를 저장해둠 — live fetch 불필요
+  // ── Step 3: 각 종목 조건 평가 ──
+  const n = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 
-  // 각 종목 조건 평가
-  const items: ChecklistItem[] = candidates.map(({ symbol, name }) => {
+  const items: ChecklistItem[] = candidateSymbols.map(({ symbol, name }) => {
     const cache = cacheMap.get(symbol);
     const prices = priceMap.get(symbol) ?? [];
     const volumes = prices.map(p => p.volume);
     const closes = prices.map(p => p.close);
-
-    // cache 필드 추출 (Record<string, unknown> → 명시적 캐스트)
-    const n = (v: unknown): number | null => (typeof v === 'number' ? v : null);
-
-    const foreignNet = n(cache?.foreign_net_qty);
-    const institutionNet = n(cache?.institution_net_qty);
-    const foreignStreak = n(cache?.foreign_streak);
-    const institutionStreak = n(cache?.institution_streak);
 
     const avgVol20 = volumes.length >= 21
       ? volumes.slice(-21, -1).reduce((a: number, b: number) => a + b, 0) / 20
@@ -179,10 +150,10 @@ export async function generateChecklist(
       prices,
       high52w: n(cache?.high_52w),
       low52w: n(cache?.low_52w),
-      foreignNet,
-      institutionNet,
-      foreignStreak,
-      institutionStreak,
+      foreignNet: n(cache?.foreign_net_qty),
+      institutionNet: n(cache?.institution_net_qty),
+      foreignStreak: n(cache?.foreign_streak),
+      institutionStreak: n(cache?.institution_streak),
       currentVolume: n(cache?.volume),
       avgVolume20d: avgVol20,
       per: n(cache?.per),
@@ -202,7 +173,6 @@ export async function generateChecklist(
     const judgeable = activeConditions.filter(c => !c.na);
     const metCount = judgeable.filter(c => c.met).length;
     const activeCount = judgeable.length;
-    // 판정 가능 조건이 전체의 절반 미만이면 데이터 부족 → 비율 0 처리
     const dataInsufficient = activeConditions.length > 0 && activeCount < activeConditions.length / 2;
     const metRatio = dataInsufficient ? 0 : (activeCount > 0 ? metCount / activeCount : 0);
     const { grade, gradeLabel } = dataInsufficient
@@ -212,12 +182,12 @@ export async function generateChecklist(
     return {
       symbol,
       name: name ?? symbol,
-      currentPrice: (cache?.current_price as number) ?? null,
+      currentPrice: n(cache?.current_price),
       grade, gradeLabel, metCount, activeCount, metRatio,
       conditions: allConditions,
     };
   });
 
   items.sort((a, b) => b.metRatio - a.metRatio);
-  return { items: limit > 0 ? items.slice(0, limit) : items, total_candidates: candidates.length };
+  return { items, total_candidates: candidateSymbols.length };
 }
