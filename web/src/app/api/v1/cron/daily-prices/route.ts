@@ -7,6 +7,7 @@ import { createAiProvider } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+const DAILY_PRICE_LOOKBACK_DAYS = 120;
 
 const SOURCE_LABELS: Record<string, string> = {
   lassi: '라씨매매',
@@ -51,7 +52,8 @@ export async function GET(request: Request) {
   const today = kst.toISOString().slice(0, 10);
   const todayCompact = today.replace(/-/g, '');
   const d30 = new Date(Date.now() - 30 * 86400000);
-  const startDate = d30.toISOString().slice(0, 10).replace(/-/g, '');
+  const historyStart = new Date(Date.now() - DAILY_PRICE_LOOKBACK_DAYS * 86400000);
+  const startDate = historyStart.toISOString().slice(0, 10).replace(/-/g, '');
   const ts = new Date().toISOString();
 
   try {
@@ -149,6 +151,8 @@ export async function GET(request: Request) {
     lap(`stock_cache 업데이트: ${updated}종목 (전종목 upsert)`);
 
     // ═══ Step 4: KIS API 일봉 수집 ═══
+    // 최근 30일만 수집하면 신규/재편입 종목은 60일선, MACD 계산용 히스토리가 계속 부족할 수 있다.
+    // 120일(달력일) 정도를 매번 upsert해서 최소 60거래일 이상을 안정적으로 확보한다.
     let savedCount = 0;
     const dpArr = [...dpSymbols];
     for (let i = 0; i < dpArr.length; i += 5) {
