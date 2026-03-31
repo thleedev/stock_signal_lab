@@ -74,10 +74,10 @@ export function SignalFilterBar({ dates, selectedDate, activeSource }: SignalFil
 
   const buildUrl = (date: string, source: string) => {
     const p = new URLSearchParams();
-    if (date !== dates[0]) p.set('date', date);
+    p.set('date', date);
     if (source !== 'all') p.set('source', source);
     const qs = p.toString();
-    return qs ? `/signals?${qs}` : '/signals';
+    return `/signals?${qs}`;
   };
 
   const handleDateSelect = (key: DateKey) => {

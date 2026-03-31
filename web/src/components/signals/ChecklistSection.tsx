@@ -4,6 +4,7 @@ import { Search, RefreshCw, ChevronDown } from 'lucide-react';
 import ChecklistFilterPanel from './ChecklistFilterPanel';
 import { ALL_CONDITIONS } from '@/lib/checklist-recommendation/types';
 import type { ChecklistItem, ConditionCategory, ChecklistGrade } from '@/lib/checklist-recommendation/types';
+import { useChecklistRanking } from '@/hooks/use-checklist-ranking';
 
 // ── 상수 ──────────────────────────────────────────────────────────────────────
 const GRADE_COLORS: Record<ChecklistGrade, string> = {
@@ -59,12 +60,14 @@ function makeSummary(item: ChecklistItem, activeIds: string[]): string {
   return parts.join('  ') || '데이터 부족';
 }
 
+const EMPTY_ITEMS: ChecklistItem[] = [];
+
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function ChecklistSection() {
   const [activeIds, setActiveIds] = useState<string[]>(ALL_CONDITIONS.map(c => c.id));
-  const [items, setItems] = useState<ChecklistItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [total, setTotal] = useState(0);
+  const { data, loading, doFetch } = useChecklistRanking();
+  const items = data?.items ?? EMPTY_ITEMS;
+  const total = data?.total_candidates ?? 0;
   const [expandedSymbols, setExpandedSymbols] = useState<Set<string>>(new Set());
 
   // 필터/검색 상태
@@ -75,25 +78,9 @@ export default function ChecklistSection() {
   const [market, setMarket] = useState<MarketFilter>('all');
   const [conditionPanelOpen, setConditionPanelOpen] = useState(false);
 
-  const fetchData = useCallback(async (ids: string[], date: DateMode, mkt: MarketFilter) => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/v1/stock-ranking?mode=checklist&conditions=${ids.join(',')}&date=${date}&market=${mkt}`);
-      if (!res.ok) throw new Error('fetch failed');
-      const data = await res.json();
-      setItems(data.items ?? []);
-      setTotal(data.total_candidates ?? 0);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (activeIds.length > 0) fetchData(activeIds, dateMode, market);
-    else setItems([]);
-  }, [activeIds, dateMode, market, fetchData]);
+    if (activeIds.length > 0) doFetch(activeIds, dateMode, market);
+  }, [activeIds, dateMode, market, doFetch]);
 
   const handleFilterChange = useCallback((ids: string[]) => {
     setActiveIds(ids);
@@ -109,6 +96,7 @@ export default function ChecklistSection() {
 
   // 필터링 + 정렬
   const filtered = useMemo(() => {
+    if (activeIds.length === 0) return [];
     let result = items;
 
     // 검색
@@ -130,7 +118,7 @@ export default function ChecklistSection() {
     }
 
     return result;
-  }, [items, search, gradeFilter, sortMode]);
+  }, [items, search, gradeFilter, sortMode, activeIds.length]);
 
   const categories = ['trend', 'supply', 'valuation', 'risk'] as ConditionCategory[];
 
@@ -247,7 +235,7 @@ export default function ChecklistSection() {
         <button
           type="button"
           aria-label="새로고침"
-          onClick={() => fetchData(activeIds, dateMode, market)}
+          onClick={() => doFetch(activeIds, dateMode, market)}
           disabled={loading}
           className="ml-auto p-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors disabled:opacity-50"
         >

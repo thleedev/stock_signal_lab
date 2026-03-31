@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { getDailyPrices, delay } from '@/lib/kis-api';
 import { fetchKrxShortSell } from '@/lib/krx-shortsell-api';
-import { fetchNaverBulkIntegration } from '@/lib/naver-stock-api';
+import { fetchNaverBulkIntegration, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import { createAiProvider } from '@/lib/ai';
 
 export const dynamic = 'force-dynamic';
@@ -43,12 +43,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // 주말(토·일)이면 repair 모드로 분기
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const dayOfWeek = kst.getUTCDay(); // KST 기준 요일
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    return runRepairMode(request);
+  }
+
   const supabase = createServiceClient();
   const startTime = Date.now();
   const lap = (label: string) => console.log(`[daily-sync] ${label} (${((Date.now() - startTime) / 1000).toFixed(1)}초)`);
 
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const today = kst.toISOString().slice(0, 10);
   const todayCompact = today.replace(/-/g, '');
   const d30 = new Date(Date.now() - 30 * 86400000);
@@ -644,4 +650,139 @@ ${trendsText}
 (3-4문장) 30년 경력의 관점에서 구체적인 투자 전략과 포지션 조언을 제시합니다.
 
 한국어로 작성하되, 간결하고 핵심적인 내용만 담아주세요.`;
+}
+
+// ─── 주말 Repair 모드 (daily-prices-repair 통합) ──────────────────────
+
+const REPAIR_MIN_REQUIRED_HISTORY = 60;
+const REPAIR_SYMBOL_PAGE_SIZE = 200;
+const REPAIR_FETCH_CONCURRENCY = 20;
+const REPAIR_NAVER_HISTORY_DAYS = 90;
+const REPAIR_UPSERT_BATCH_SIZE = 1000;
+
+async function runRepairMode(_request: Request): Promise<NextResponse> {
+  const supabase = createServiceClient();
+  const startedAt = Date.now();
+  const lap = (label: string) =>
+    console.log(`[daily-repair] ${label} (${((Date.now() - startedAt) / 1000).toFixed(1)}초)`);
+
+  try {
+    const allSymbols = await repairFetchAllSymbols(supabase);
+    lap(`심볼 ${allSymbols.length}개 로드`);
+
+    let inspected = 0;
+    let repairedSymbols = 0;
+    let savedRows = 0;
+
+    for (let i = 0; i < allSymbols.length; i += REPAIR_SYMBOL_PAGE_SIZE) {
+      const chunk = allSymbols.slice(i, i + REPAIR_SYMBOL_PAGE_SIZE);
+      const historyCounts = await repairFetchRecentHistoryCounts(supabase, chunk);
+      const missingSymbols = chunk.filter((symbol) => (historyCounts.get(symbol) ?? 0) < REPAIR_MIN_REQUIRED_HISTORY);
+
+      inspected += chunk.length;
+
+      if (missingSymbols.length === 0) continue;
+
+      for (let j = 0; j < missingSymbols.length; j += REPAIR_FETCH_CONCURRENCY) {
+        const fetchChunk = missingSymbols.slice(j, j + REPAIR_FETCH_CONCURRENCY);
+        const results = await Promise.allSettled(
+          fetchChunk.map(async (symbol) => ({
+            symbol,
+            prices: await fetchNaverDailyPrices(symbol, REPAIR_NAVER_HISTORY_DAYS),
+          })),
+        );
+
+        const rows: Array<{
+          symbol: string; date: string; open: number; high: number;
+          low: number; close: number; volume: number;
+        }> = [];
+
+        for (const result of results) {
+          if (result.status !== 'fulfilled') continue;
+          if (result.value.prices.length === 0) continue;
+          repairedSymbols += 1;
+          rows.push(
+            ...result.value.prices.map((price) => ({
+              symbol: result.value.symbol,
+              date: price.date, open: price.open, high: price.high,
+              low: price.low, close: price.close, volume: price.volume,
+            })),
+          );
+        }
+
+        for (let k = 0; k < rows.length; k += REPAIR_UPSERT_BATCH_SIZE) {
+          const batch = rows.slice(k, k + REPAIR_UPSERT_BATCH_SIZE);
+          const { error } = await supabase
+            .from('daily_prices')
+            .upsert(batch, { onConflict: 'symbol,date' });
+          if (error) throw error;
+          savedRows += batch.length;
+        }
+      }
+    }
+
+    lap(`점검 ${inspected}개, 보정 ${repairedSymbols}개 종목`);
+
+    return NextResponse.json({
+      success: true,
+      mode: 'repair',
+      inspected_symbols: inspected,
+      repaired_symbols: repairedSymbols,
+      saved_rows: savedRows,
+      min_required_history: REPAIR_MIN_REQUIRED_HISTORY,
+      elapsed: `${((Date.now() - startedAt) / 1000).toFixed(1)}초`,
+    });
+  } catch (e) {
+    console.error('[daily-repair] error:', e);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+async function repairFetchAllSymbols(
+  supabase: ReturnType<typeof createServiceClient>,
+): Promise<string[]> {
+  const symbols: string[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('stock_cache')
+      .select('symbol')
+      .order('symbol', { ascending: true })
+      .range(from, from + 999);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      if (row.symbol) symbols.push(row.symbol);
+    }
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  return symbols;
+}
+
+async function repairFetchRecentHistoryCounts(
+  supabase: ReturnType<typeof createServiceClient>,
+  symbols: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  if (symbols.length === 0) return counts;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('daily_prices')
+      .select('symbol, date')
+      .in('symbol', symbols)
+      .order('symbol', { ascending: true })
+      .order('date', { ascending: false })
+      .range(from, from + 999);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      const symbol = row.symbol as string;
+      counts.set(symbol, (counts.get(symbol) ?? 0) + 1);
+    }
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  return counts;
 }
