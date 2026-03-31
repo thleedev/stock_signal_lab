@@ -588,6 +588,16 @@ export async function GET(request: NextRequest) {
     const model = searchParams.get('model') || 'standard';
     const style = searchParams.get('style') || 'balanced';
     const refresh = searchParams.get('refresh') === 'true';
+
+    // 커스텀 가중치 파라미터 (w_st, w_su, w_vg, w_mo, w_ri)
+    const parseW = (key: string) => { const v = Number(searchParams.get(key)); return isNaN(v) ? null : v; };
+    const customWeights = (() => {
+      const st = parseW('w_st'), su = parseW('w_su'), vg = parseW('w_vg'), mo = parseW('w_mo'), ri = parseW('w_ri');
+      if (st === null || su === null || vg === null || mo === null || ri === null) return undefined;
+      const sum = st + su + vg + mo + ri;
+      if (Math.abs(sum - 100) > 1) return undefined; // 합계 검증
+      return { signalTech: st, supply: su, valueGrowth: vg, momentum: mo, risk: ri };
+    })();
     const saveSnapshot = searchParams.get('snapshot') === 'true';
 
     const supabase = createServiceClient();
@@ -611,11 +621,30 @@ export async function GET(request: NextRequest) {
         .eq('symbol', singleSymbol)
         .maybeSingle();
 
-      // 수급 + 지표 실시간 fetch (병렬)
-      const [invMap, indMap] = await Promise.all([
+      // 수급 + 지표 + 신호 + 일봉 실시간 fetch (병렬)
+      const singleThirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+      const singleSixtyDaysAgo = new Date(Date.now() - 62 * 86400000).toISOString().slice(0, 10);
+      const [invMap, indMap, singleSigData, singlePriceData] = await Promise.all([
         fetchBulkInvestorData([singleSymbol], 1),
         fetchBulkIndicators([singleSymbol], 1),
+        supabase.from('signals').select('source, timestamp').eq('symbol', singleSymbol)
+          .in('signal_type', ['BUY', 'BUY_FORECAST'])
+          .gte('timestamp', `${singleThirtyDaysAgo}T00:00:00+09:00`)
+          .order('timestamp', { ascending: false }).limit(100),
+        supabase.from('daily_prices').select('date, open, high, low, close, volume')
+          .eq('symbol', singleSymbol).gte('date', singleSixtyDaysAgo)
+          .order('date', { ascending: false }),
       ]);
+      const singleSignalSources = Array.from(new Set((singleSigData.data ?? []).map((r) => r.source as string).filter(Boolean)));
+      const singleLatestSigDate = (singleSigData.data ?? [])[0]?.timestamp as string | undefined;
+      const singleLatestSigDaysAgo = singleLatestSigDate
+        ? Math.floor((Date.now() - new Date(singleLatestSigDate).getTime()) / 86400000)
+        : null;
+      const singleDailyPrices = (singlePriceData.data ?? []).map((r) => ({
+        date: r.date as string,
+        open: Number(r.open), high: Number(r.high), low: Number(r.low),
+        close: Number(r.close), volume: Number(r.volume),
+      }));
 
       const inv = invMap.get(singleSymbol);
       if (inv) {
@@ -688,8 +717,8 @@ export async function GET(request: NextRequest) {
         signalCount30d: row.signal_count_30d as number | null,
         latestSignalPrice: row.latest_signal_price as number | null,
         latestSignalDate: row.latest_signal_date as string | null,
-        signalSources: [],
-        latestSignalDaysAgo: null,
+        signalSources: singleSignalSources,
+        latestSignalDaysAgo: singleLatestSigDaysAgo,
         isManaged: (row.is_managed as boolean) ?? false,
         hasRecentCbw: (row.has_recent_cbw as boolean) ?? false,
         auditOpinion: (row.audit_opinion as string | null) ?? null,
@@ -698,7 +727,7 @@ export async function GET(request: NextRequest) {
         hasTreasuryBuyback: (row.has_treasury_buyback as boolean) ?? false,
         revenueGrowthYoy: (row.revenue_growth_yoy as number | null) ?? null,
         operatingProfitGrowthYoy: (row.operating_profit_growth_yoy as number | null) ?? null,
-        dailyPrices: [],
+        dailyPrices: singleDailyPrices,
         volumeRatio: null,
         closePosition: null,
         gapPct: null,
@@ -708,7 +737,7 @@ export async function GET(request: NextRequest) {
         sectorRank: null,
         sectorTotal: null,
       };
-      const singleResult = calcUnifiedScore(singleInput, style);
+      const singleResult = calcUnifiedScore(singleInput, style, customWeights);
       const scores = {
         score_total: singleResult.totalScore,
         score_signal: singleResult.categories.signalTech.normalized,
@@ -755,6 +784,7 @@ export async function GET(request: NextRequest) {
 
         // ── 스냅샷 신호 데이터 실시간 보강 (필터링 전에 먼저 실행) ──
         // stock_cache가 stale일 수 있으므로 signals 테이블에서 직접 집계
+        const sigSourcesMap = new Map<string, Set<string>>();
         {
           const thirtyDaysAgo = new Date(new Date().getTime() + 9 * 60 * 60 * 1000 - 30 * 86400000)
             .toISOString().slice(0, 10);
@@ -762,7 +792,7 @@ export async function GET(request: NextRequest) {
           const allSignalRows: Record<string, unknown>[] = [];
           const { data: sigData } = await supabase
             .from('signals')
-            .select('symbol, timestamp, signal_type, raw_data')
+            .select('symbol, timestamp, signal_type, source, raw_data')
             .in('signal_type', ['BUY', 'BUY_FORECAST'])
             .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`)
             .order('timestamp', { ascending: false })
@@ -782,6 +812,12 @@ export async function GET(request: NextRequest) {
               });
             } else {
               existing.count++;
+            }
+            // 소스 집계
+            if (row.source) {
+              const sources = sigSourcesMap.get(sym) ?? new Set<string>();
+              sources.add(row.source as string);
+              sigSourcesMap.set(sym, sources);
             }
           }
 
@@ -883,7 +919,37 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // ── 일봉 데이터 벌크 조회 (기술적 지표 계산용) ──
+        // 500개 이하 종목에 대해 최근 62일 일봉 데이터를 한번에 조회
+        const dailyPricesMap = new Map<string, import('@/lib/unified-scoring/types').DailyCandle[]>();
+        const allSymbols = snapshotItems.map((s) => s.symbol);
+        if (allSymbols.length > 0 && allSymbols.length <= 500) {
+          const sixtyDaysAgo = new Date(Date.now() - 62 * 86400000).toISOString().slice(0, 10);
+          const { data: priceRows } = await supabase
+            .from('daily_prices')
+            .select('symbol, date, open, high, low, close, volume')
+            .in('symbol', allSymbols)
+            .gte('date', sixtyDaysAgo)
+            .order('date', { ascending: false });
+          if (priceRows) {
+            for (const row of priceRows) {
+              const sym = row.symbol as string;
+              const candles = dailyPricesMap.get(sym) ?? [];
+              candles.push({
+                date: row.date as string,
+                open: Number(row.open),
+                high: Number(row.high),
+                low: Number(row.low),
+                close: Number(row.close),
+                volume: Number(row.volume),
+              });
+              dailyPricesMap.set(sym, candles);
+            }
+          }
+        }
+
         // ── 전체 종목 점수 재계산 (수급/지표 보강 + 신호 보강 반영) ──
+        const nowMs = Date.now();
         for (const item of snapshotItems) {
           const snapInput: ScoringInput = {
             symbol: item.symbol,
@@ -917,8 +983,10 @@ export async function GET(request: NextRequest) {
             signalCount30d: item.signal_count_30d,
             latestSignalPrice: item.latest_signal_price,
             latestSignalDate: item.latest_signal_date,
-            signalSources: [],
-            latestSignalDaysAgo: null,
+            signalSources: Array.from(sigSourcesMap.get(item.symbol) ?? []),
+            latestSignalDaysAgo: item.latest_signal_date
+              ? Math.floor((nowMs - new Date(item.latest_signal_date as string).getTime()) / 86400000)
+              : null,
             isManaged: item.is_managed ?? false,
             hasRecentCbw: item.has_recent_cbw ?? false,
             auditOpinion: item.audit_opinion ?? null,
@@ -927,7 +995,7 @@ export async function GET(request: NextRequest) {
             hasTreasuryBuyback: item.has_treasury_buyback ?? false,
             revenueGrowthYoy: item.revenue_growth_yoy ?? null,
             operatingProfitGrowthYoy: item.operating_profit_growth_yoy ?? null,
-            dailyPrices: [],
+            dailyPrices: dailyPricesMap.get(item.symbol) ?? [],
             volumeRatio: item.volume_ratio,
             closePosition: item.close_position,
             gapPct: item.gap_pct,
@@ -937,7 +1005,7 @@ export async function GET(request: NextRequest) {
             sectorRank: null,
             sectorTotal: null,
           };
-          const snapResult = calcUnifiedScore(snapInput, style);
+          const snapResult = calcUnifiedScore(snapInput, style, customWeights);
           item.score_signal = snapResult.categories.signalTech.normalized;
           item.score_momentum = snapResult.categories.momentum.normalized;
           item.score_valuation = snapResult.categories.valueGrowth.normalized;
@@ -1388,7 +1456,7 @@ export async function GET(request: NextRequest) {
           sectorRank: null,
           sectorTotal: null,
         };
-        const unifiedResult = calcUnifiedScore(scoringInput, style);
+        const unifiedResult = calcUnifiedScore(scoringInput, style, customWeights);
         const scores = {
           score_total: unifiedResult.totalScore,
           score_signal: unifiedResult.categories.signalTech.normalized,

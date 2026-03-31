@@ -11,6 +11,8 @@ import { ConsensusSection } from "./ConsensusSection";
 import { DartInfoSection } from "./DartInfoSection";
 import { PortfolioGroupAccordion } from "./PortfolioGroupAccordion";
 import { ReturnTrendSection } from "./ReturnTrendSection";
+import { SupplyDemandSection } from "./SupplyDemandSection";
+import { TechnicalSignalSection } from "./TechnicalSignalSection";
 import dynamic from "next/dynamic";
 import { useScoreHistory } from "@/hooks/use-score-history";
 
@@ -299,6 +301,18 @@ export function StockDetailPanel() {
 
               {/* DART 공시 섹션 */}
               {data && <DartInfoSection data={data} />}
+
+              {/* 수급 동향 */}
+              {data && <SupplyDemandSection data={data} />}
+
+              {/* 기술적 시그널 */}
+              {data && (
+                <TechnicalSignalSection
+                  data={data}
+                  signals={signals}
+                  signalsLoading={phase1Loading}
+                />
+              )}
 
               {/* 에러 메시지 및 재시도 버튼 */}
               {phase1Error && (
