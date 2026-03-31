@@ -10,11 +10,12 @@ import { useStockModal } from '@/contexts/stock-modal-context';
 import { StyleSelector } from './StyleSelector';
 import { AnalysisHoverCard } from './AnalysisHoverCard';
 import type { WatchlistGroup } from '@/types/stock';
+import type { StyleWeights } from '@/lib/unified-scoring/types';
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 
 interface StockAnalysisSectionProps {
-  initialDateMode?: 'today' | 'signal_all';
+  initialDateMode?: 'today' | 'signal_all' | 'all';
   favoriteSymbols: string[];
   watchlistSymbols: string[];
   groups?: WatchlistGroup[];
@@ -209,7 +210,7 @@ export function StockAnalysisSection({
   // 필터 / 정렬 / 검색
   const [q, setQ] = useState('');
   const [market, setMarket] = useState<MarketFilter>('all');
-  const [dateMode, setDateMode] = useState<'today' | 'signal_all'>(initialDateMode);
+  const [dateMode, setDateMode] = useState<'today' | 'signal_all' | 'all'>(initialDateMode ?? 'today');
   const [sort, setSort] = useState<SortMode>('score');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [visibleCount, setVisibleCount] = useState(50);
@@ -241,12 +242,12 @@ export function StockAnalysisSection({
 
   // ── 데이터 조회 ───────────────────────────────────────────────────────────────
   const getDateParam = useCallback(
-    (mode: 'today' | 'signal_all') => (mode === 'today' ? todayStr : mode),
+    (mode: 'today' | 'signal_all' | 'all') => (mode === 'today' ? todayStr : mode),
     [todayStr],
   );
 
   useEffect(() => {
-    doFetch(styleId, getDateParam(initialDateMode), market);
+    doFetch(styleId, getDateParam(initialDateMode ?? 'today'), market);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -259,7 +260,7 @@ export function StockAnalysisSection({
     doFetch(id, getDateParam(dateMode), market);
   }, [dateMode, doFetch, getDateParam, market]);
 
-  const handleDateMode = useCallback((mode: 'today' | 'signal_all') => {
+  const handleDateMode = useCallback((mode: 'today' | 'signal_all' | 'all') => {
     setDateMode(mode);
     resetScroll(); setQ(''); setMarket('all');
     doFetch(styleId, getDateParam(mode), 'all');
@@ -478,17 +479,21 @@ export function StockAnalysisSection({
 
         {/* 날짜 모드 */}
         <div className="flex rounded-lg border border-[var(--border)] overflow-hidden text-xs">
-          {(['today', 'signal_all'] as const).map((mode) => (
+          {([
+            { key: 'today', label: '오늘' },
+            { key: 'signal_all', label: '신호전체' },
+            { key: 'all', label: '전체종목' },
+          ] as const).map(({ key, label }) => (
             <button
-              key={mode}
-              onClick={() => handleDateMode(mode)}
+              key={key}
+              onClick={() => handleDateMode(key)}
               className={`px-2.5 py-1.5 transition-colors ${
-                dateMode === mode
+                dateMode === key
                   ? 'bg-[var(--accent)] text-white'
                   : 'bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)]'
               }`}
             >
-              {mode === 'today' ? '오늘' : '전체신호'}
+              {label}
             </button>
           ))}
         </div>
