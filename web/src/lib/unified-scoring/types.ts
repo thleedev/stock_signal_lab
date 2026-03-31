@@ -9,6 +9,9 @@ export type CategoryKey = 'signalTech' | 'supply' | 'valueGrowth' | 'momentum' |
 /** 트레이딩 스타일 ID */
 export type StyleId = 'balanced' | 'supply' | 'value' | 'momentum' | 'contrarian';
 
+/** 종목 등급 */
+export type Grade = 'A+' | 'A' | 'B+' | 'B' | 'C' | 'D';
+
 /** 카테고리별 가중치 (합계 = 100) */
 export interface StyleWeights {
   signalTech: number;
@@ -44,14 +47,24 @@ export interface CategoryScore {
 /** 통합 스코어링 전체 결과 */
 export interface UnifiedScoreResult {
   totalScore: number;  // 0~100
-  grade: string;       // A+, A, B+, B, C, D
+  grade: Grade;        // A+, A, B+, B, C, D
   categories: Record<CategoryKey, CategoryScore>;
   checklist: ConditionResult[];
   checklistMet: number;
   checklistTotal: number;
   tier: MarketCapTier;
-  style: StyleId | string; // 커스텀이면 커스텀 ID
+  style: StyleId | (string & {}); // 커스텀이면 커스텀 ID
   weights: StyleWeights;
+}
+
+/** 일봉 캔들 데이터 */
+export interface DailyCandle {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
 }
 
 /** 스코어링 엔진에 전달할 종목 입력 데이터 */
@@ -103,7 +116,7 @@ export interface ScoringInput {
   revenueGrowthYoy: number | null;
   operatingProfitGrowthYoy: number | null;
   // 일봉 기반 파생 (daily_prices에서 미리 계산)
-  dailyPrices: { date: string; open: number; high: number; low: number; close: number; volume: number }[];
+  dailyPrices: DailyCandle[];
   // 모멘텀 파생
   volumeRatio: number | null;      // 당일거래량 / 20일평균
   closePosition: number | null;    // (종가-저가)/(고가-저가)
@@ -117,7 +130,7 @@ export interface ScoringInput {
 }
 
 /** 등급 계산 */
-export function calcGrade(score: number): string {
+export function calcGrade(score: number): Grade {
   if (score >= 85) return 'A+';
   if (score >= 70) return 'A';
   if (score >= 55) return 'B+';
