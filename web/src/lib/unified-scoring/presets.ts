@@ -64,7 +64,9 @@ export function loadCustomPresets(): CustomPreset[] {
   }
 }
 
+/** 클라이언트 전용 - SSR 환경에서 호출 시 no-op */
 export function saveCustomPreset(preset: CustomPreset): CustomPreset[] {
+  if (typeof window === 'undefined') return [];
   const presets = loadCustomPresets();
   const idx = presets.findIndex(p => p.id === preset.id);
   if (idx >= 0) {
@@ -77,7 +79,9 @@ export function saveCustomPreset(preset: CustomPreset): CustomPreset[] {
   return presets;
 }
 
+/** 클라이언트 전용 - SSR 환경에서 호출 시 no-op */
 export function deleteCustomPreset(id: string): CustomPreset[] {
+  if (typeof window === 'undefined') return [];
   const presets = loadCustomPresets().filter(p => p.id !== id);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
   return presets;
