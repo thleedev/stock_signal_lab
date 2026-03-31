@@ -7,7 +7,6 @@ import type { WatchlistGroup } from "@/types/stock";
 import { TradeModal } from "@/app/my-portfolio/components/trade-modal";
 import { useStockModal } from "@/contexts/stock-modal-context";
 import type { StockRankItem } from "@/app/api/v1/stock-ranking/route";
-import type { ShortTermDisplayScores } from "@/components/stock-modal/AiOpinionCard";
 
 interface Portfolio {
   id: number;
@@ -30,10 +29,6 @@ interface StockActionMenuProps {
   onGroupToggle?: (group: WatchlistGroup) => void;
   /** 즉시 렌더링을 위한 초기 종목 데이터 (선택적) */
   initialData?: StockRankItem;
-  /** 점수 표시 모드 */
-  scoreMode?: 'standard' | 'short_term';
-  /** 단기추천 점수 */
-  shortTermScores?: ShortTermDisplayScores;
 }
 
 export default function StockActionMenu({
@@ -50,8 +45,6 @@ export default function StockActionMenu({
   symbolGroupIds,
   onGroupToggle,
   initialData,
-  scoreMode,
-  shortTermScores,
 }: StockActionMenuProps) {
   const router = useRouter();
   const { openStockModal } = useStockModal();
@@ -145,8 +138,8 @@ export default function StockActionMenu({
   const handleViewDetail = useCallback(() => {
     onClose();
     // initialData가 있으면 함께 전달하여 패널이 즉시 렌더링되도록 함
-    openStockModal(symbol, name, initialData, scoreMode, shortTermScores);
-  }, [symbol, name, initialData, scoreMode, shortTermScores, onClose, openStockModal]);
+    openStockModal(symbol, name, initialData);
+  }, [symbol, name, initialData, onClose, openStockModal]);
 
   if (!isOpen) return null;
 

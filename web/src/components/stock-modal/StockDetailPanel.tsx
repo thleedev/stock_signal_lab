@@ -5,15 +5,14 @@ import { useStockModal } from "@/contexts/stock-modal-context";
 import type { StockRankItem } from "@/app/api/v1/stock-ranking/route";
 import { usePriceRefresh } from "@/hooks/use-price-refresh";
 import { PanelHeader } from "./PanelHeader";
-import { AiOpinionCard } from "./AiOpinionCard";
-import { SupplyDemandSection } from "./SupplyDemandSection";
-import { TechnicalSignalSection } from "./TechnicalSignalSection";
+import { UnifiedScoreCard } from "./UnifiedScoreCard";
 import { MetricsGrid } from "./MetricsGrid";
 import { ConsensusSection } from "./ConsensusSection";
 import { DartInfoSection } from "./DartInfoSection";
 import { PortfolioGroupAccordion } from "./PortfolioGroupAccordion";
 import { ReturnTrendSection } from "./ReturnTrendSection";
 import dynamic from "next/dynamic";
+import { useScoreHistory } from "@/hooks/use-score-history";
 
 // 차트 컴포넌트 — SSR 비활성화
 const StockChartSection = dynamic(
@@ -83,6 +82,9 @@ export function StockDetailPanel() {
 
   // initialData 없을 때 랭킹 데이터 fallback
   const [rankingData, setRankingData] = useState<StockRankItem | null>(null);
+
+  // 점수 추이
+  const { history, fetchHistory } = useScoreHistory();
 
   // 거래 모달 상태
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
@@ -191,8 +193,9 @@ export function StockDetailPanel() {
       setRankingData(null);
       setPhase1Error(null);
       fetchPhase1(modal.symbol, !!modal.initialData);
+      fetchHistory(modal.symbol);
     }
-  }, [modal?.symbol, modal?.initialData, fetchPhase1]);
+  }, [modal?.symbol, modal?.initialData, fetchPhase1, fetchHistory]);
 
   // ESC 키로 패널 닫기
   useEffect(() => {
@@ -252,21 +255,13 @@ export function StockDetailPanel() {
           {/* 좌측 컬럼: AI 분석 영역 */}
           <div className="md:w-[55%] overflow-y-auto border-r border-[var(--border)] max-md:border-r-0">
             {data ? (
-              <div className="space-y-0 divide-y divide-[var(--border)]">
-                <AiOpinionCard data={data} scoreMode={modal?.scoreMode} shortTermScores={modal?.shortTermScores} />
-                <SupplyDemandSection data={data} />
-                <TechnicalSignalSection
-                  data={data}
-                  signals={signals}
-                  signalsLoading={phase1Loading}
-                />
-              </div>
+              <UnifiedScoreCard data={data} history={history} />
             ) : (
-              // AI 분석 로딩 스켈레톤
+              // 로딩 스켈레톤
               <div className="p-4 space-y-4 animate-pulse">
-                <div className="h-40 bg-[var(--muted)]/20 rounded-xl" />
-                <div className="h-24 bg-[var(--muted)]/20 rounded-xl" />
-                <div className="h-32 bg-[var(--muted)]/20 rounded-xl" />
+                <div className="h-20 bg-[var(--muted)]/20 rounded-xl" />
+                <div className="h-36 bg-[var(--muted)]/20 rounded-xl" />
+                <div className="h-48 bg-[var(--muted)]/20 rounded-xl" />
               </div>
             )}
           </div>
