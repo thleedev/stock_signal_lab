@@ -3,7 +3,6 @@ import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
 import { getLastNWeekdays, getKstDayRange, getKstWeekRange } from "@/lib/date-utils";
 import SignalColumns from "./signal-columns";
-import { type SignalMap } from "@/components/signals/UnifiedAnalysisSection";
 import { extractSignalPrice } from "@/lib/signal-constants";
 import { SignalFilterBar } from "./signal-filter-bar";
 import RecommendationView from "@/components/signals/RecommendationView";
@@ -18,11 +17,7 @@ export default async function SignalsPage({
 }) {
   const params = await searchParams;
   const activeSource = params.source || "all";
-  const activeTab =
-    params.tab === "analysis" ? "analysis"
-    : params.tab === "short-term" ? "short-term"
-    : params.tab === "checklist" ? "checklist"
-    : "signals";
+  const activeTab = params.tab === "stock-analysis" ? "stock-analysis" : "signals";
   const supabase = createServiceClient();
 
   const last7 = getLastNWeekdays(7);
@@ -139,37 +134,6 @@ export default async function SignalsPage({
     sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
   }
 
-  // ── 종목추천 탭 ──────────────────────────────────────────
-  const signalMap: SignalMap = {};
-
-  if (activeTab === "analysis" || activeTab === "short-term" || activeTab === "checklist") {
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const since30d = thirtyDaysAgo.toISOString();
-
-    const { data: buySignals } = await supabase
-      .from("signals")
-      .select("symbol, source, signal_type, raw_data, timestamp")
-      .in("signal_type", ["BUY", "BUY_FORECAST"])
-      .in("source", ["lassi", "stockbot", "quant"])
-      .gte("timestamp", since30d)
-      .order("timestamp", { ascending: false });
-
-    for (const sig of buySignals ?? []) {
-      if (!sig.symbol) continue;
-      const rd = sig.raw_data as Record<string, number> | null;
-      const buyPrice =
-        rd?.signal_price || rd?.recommend_price || rd?.buy_range_low || 0;
-      if (buyPrice <= 0) continue;
-      if (!signalMap[sig.symbol]) signalMap[sig.symbol] = {};
-      if (!signalMap[sig.symbol][sig.source]) {
-        signalMap[sig.symbol][sig.source] = {
-          buyPrice,
-          date: sig.timestamp,
-        };
-      }
-    }
-  }
 
   return (
     <PageLayout>
@@ -184,22 +148,10 @@ export default async function SignalsPage({
                   AI 신호
                 </span>
                 <Link
-                  href="/signals?tab=analysis"
+                  href="/signals?tab=stock-analysis"
                   className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
                 >
-                  종목추천
-                </Link>
-                <Link
-                  href="/signals?tab=short-term"
-                  className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
-                >
-                  단기추천
-                </Link>
-                <Link
-                  href="/signals?tab=checklist"
-                  className="px-3 py-1.5 text-sm font-medium rounded-md transition-colors text-[var(--muted)] hover:text-[var(--text)]"
-                >
-                  체크리스트
+                  종목분석
                 </Link>
               </div>
             }
@@ -216,9 +168,7 @@ export default async function SignalsPage({
         </>
       ) : (
         <RecommendationView
-          initialTab={activeTab as "analysis" | "short-term" | "checklist"}
           initialDateMode={defaultDateMode}
-          signalMap={signalMap}
           favoriteSymbols={favoriteSymbols}
           watchlistSymbols={watchlistSymbols}
           groups={groups}
