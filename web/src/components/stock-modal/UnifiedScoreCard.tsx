@@ -227,8 +227,8 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
                     <YAxis domain={[0, 100]} hide />
                     <Tooltip
                       contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', fontSize: 11 }}
-                      formatter={(v: number) => [`${v}점`, '점수']}
-                      labelFormatter={(l: string) => l.slice(5)}
+                      formatter={(v) => [`${v}점`, '점수']}
+                      labelFormatter={(l) => String(l).slice(5)}
                     />
                     <Line type="monotone" dataKey="score" stroke="var(--accent)" strokeWidth={1.5} dot={false} />
                   </LineChart>

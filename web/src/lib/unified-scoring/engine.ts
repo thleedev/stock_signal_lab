@@ -1,7 +1,8 @@
 // web/src/lib/unified-scoring/engine.ts
 import type { ScoringInput, UnifiedScoreResult, StyleWeights, CategoryKey } from './types';
 import { calcGrade } from './types';
-import { getPreset, type StyleId } from './presets';
+import { getPreset } from './presets';
+import type { StyleId } from './types';
 import { calcSignalTechScore } from './signal-tech-score';
 import { calcSupplyScore } from './supply-score';
 import { calcValueGrowthScore } from './value-growth-score';

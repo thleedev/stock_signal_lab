@@ -991,7 +991,7 @@ export async function GET(request: NextRequest) {
             sigReasons.push({ label: '30일 신호', points: sigCount >= 3 ? 10 : sigCount > 0 ? 5 : 0, detail: `최근 30일 ${sigCount}회`, met: sigCount > 0 });
 
             item.ai = {
-              total_score: scores.score_total,
+              total_score: item.score_total,
               signal_score: 0, trend_score: 0, valuation_score: 0, supply_score: 0,
               rsi: null,
               golden_cross: false, bollinger_bottom: false, phoenix_pattern: false,
@@ -999,10 +999,10 @@ export async function GET(request: NextRequest) {
               double_top: false, disparity_rebound: false, volume_breakout: false,
               consecutive_drop_rebound: false, foreign_buying: foreignBuying,
               institution_buying: instBuying, volume_vs_sector: false, low_short_sell: false,
-              trend_norm: scores.score_momentum,
-              supply_norm: scores.score_supply,
-              signal_norm: scores.score_signal,
-              valuation_norm: scores.score_valuation,
+              trend_norm: item.score_momentum,
+              supply_norm: item.score_supply,
+              signal_norm: item.score_signal,
+              valuation_norm: item.score_valuation,
               trend_reasons: trendReasons,
               supply_reasons: supplyReasons,
               valuation_reasons: valReasons,
