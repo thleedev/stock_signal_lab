@@ -1,4 +1,6 @@
 import { createServiceClient } from "@/lib/supabase";
+
+export const dynamic = 'force-dynamic';
 import { PageLayout, PageHeader } from "@/components/ui";
 import InvestmentClient from "@/components/investment/investment-client";
 import type { StockCache } from "@/types/stock";

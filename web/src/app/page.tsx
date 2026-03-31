@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
 import { DashboardRiskBanner } from "@/components/dashboard/dashboard-risk-banner";

@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
 import { DateSelector } from "@/components/common/date-selector";
