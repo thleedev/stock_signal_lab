@@ -8,8 +8,7 @@ import { calcSupplyAdditions } from '@/lib/scoring/supply-score-additions';
 import { calcValuationAdditions } from '@/lib/scoring/valuation-score-additions';
 import { getMarketCapTier, type MarketCapTier } from '@/lib/ai-recommendation/market-cap-tier';
 import type { ScoreReason } from '@/types/score-reason';
-import { calcUnifiedScore } from '@/lib/unified-scoring/engine';
-import type { ScoringInput } from '@/lib/unified-scoring/types';
+import { calcCompositeScore } from '@/lib/scoring/composite-score';
 import type { ConditionResult } from '@/lib/checklist-recommendation/types';
 import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
 
@@ -692,66 +691,45 @@ export async function GET(request: NextRequest) {
       const volume = row.volume as number | null;
       row.turnover_rate = floatShares ? ((volume ?? 0) / floatShares) * 100 : null;
 
-      const singleInput: ScoringInput = {
-        symbol: row.symbol as string,
-        name: (row.name as string) ?? '',
-        market: (row.market as string) ?? '',
-        currentPrice: row.current_price as number | null,
-        priceChangePct: row.price_change_pct as number | null,
+      const singleResult = calcCompositeScore({
+        prices: [...singleDailyPrices].reverse(),  // oldest-first (Supabase returns newest-first)
         high52w: row.high_52w as number | null,
         low52w: row.low_52w as number | null,
-        marketCap: row.market_cap as number | null,
-        per: row.per as number | null,
-        forwardPer: row.forward_per as number | null,
-        forwardEps: null,
-        eps: null,
-        pbr: row.pbr as number | null,
-        bps: null,
-        roe: row.roe as number | null,
-        roeEstimated: null,
-        dividendYield: row.dividend_yield as number | null,
-        targetPrice: row.target_price as number | null,
-        investOpinion: row.invest_opinion as number | null,
+        foreignStreak: row.foreign_streak as number | null,
+        institutionStreak: row.institution_streak as number | null,
         foreignNetQty: row.foreign_net_qty as number | null,
         institutionNetQty: row.institution_net_qty as number | null,
         foreignNet5d: row.foreign_net_5d as number | null,
         institutionNet5d: row.institution_net_5d as number | null,
-        foreignStreak: row.foreign_streak as number | null,
-        institutionStreak: row.institution_streak as number | null,
         shortSellRatio: row.short_sell_ratio as number | null,
-        volume: volume,
-        floatShares: floatShares,
-        signalCount30d: row.signal_count_30d as number | null,
-        latestSignalPrice: row.latest_signal_price as number | null,
-        latestSignalDate: row.latest_signal_date as string | null,
-        signalSources: singleSignalSources,
-        latestSignalDaysAgo: singleLatestSigDaysAgo,
+        currentPrice: row.current_price as number | null,
+        targetPrice: row.target_price as number | null,
+        forwardPer: row.forward_per as number | null,
+        per: row.per as number | null,
+        pbr: row.pbr as number | null,
+        roe: row.roe as number | null,
+        dividendYield: row.dividend_yield as number | null,
+        investOpinion: row.invest_opinion as number | null,
+        todaySourceCount: singleLatestSigDaysAgo === 0 ? singleSignalSources.length : 0,
+        daysSinceLastSignal: singleLatestSigDaysAgo,
+        recentCount30d: (row.signal_count_30d as number | null) ?? 0,
+        lastSignalPrice: row.latest_signal_price as number | null,
+        marketCap: row.market_cap as number | null,
         isManaged: (row.is_managed as boolean) ?? false,
         hasRecentCbw: (row.has_recent_cbw as boolean) ?? false,
         auditOpinion: (row.audit_opinion as string | null) ?? null,
         majorShareholderPct: (row.major_shareholder_pct as number | null) ?? null,
         majorShareholderDelta: (row.major_shareholder_delta as number | null) ?? null,
         hasTreasuryBuyback: (row.has_treasury_buyback as boolean) ?? false,
-        revenueGrowthYoy: (row.revenue_growth_yoy as number | null) ?? null,
-        operatingProfitGrowthYoy: (row.operating_profit_growth_yoy as number | null) ?? null,
-        dailyPrices: singleDailyPrices,
-        volumeRatio: null,
-        closePosition: null,
-        gapPct: null,
-        cumReturn3d: null,
-        tradingValue: null,
-        sectorAvgChangePct: null,
-        sectorRank: null,
-        sectorTotal: null,
-      };
-      const singleResult = calcUnifiedScore(singleInput, style, customWeights, disabledConditionIds);
+      });
+      const singleGrade = singleResult.score_total >= 90 ? 'A+' : singleResult.score_total >= 80 ? 'A' : singleResult.score_total >= 65 ? 'B+' : singleResult.score_total >= 50 ? 'B' : singleResult.score_total >= 35 ? 'C' : 'D';
       const scores = {
-        score_total: singleResult.totalScore,
-        score_signal: singleResult.categories.signalTech.normalized,
-        score_valuation: singleResult.categories.valueGrowth.normalized,
-        score_supply: singleResult.categories.supply.normalized,
-        score_momentum: singleResult.categories.momentum.normalized,
-        score_risk: singleResult.categories.risk.normalized * -1,
+        score_total: singleResult.score_total,
+        score_signal: singleResult.score_signal,
+        score_valuation: singleResult.score_valuation,
+        score_supply: singleResult.score_supply,
+        score_momentum: singleResult.score_technical,
+        score_risk: singleResult.score_risk,
       };
       const item: StockRankItem = {
         ...row,
@@ -761,16 +739,17 @@ export async function GET(request: NextRequest) {
         trading_value: null,
         gap_pct: null,
         cum_return_3d: null,
+        grade: singleGrade,
         categories: {
-          signalTech: { normalized: singleResult.categories.signalTech.normalized, reasons: singleResult.categories.signalTech.reasons },
-          supply: { normalized: singleResult.categories.supply.normalized, reasons: singleResult.categories.supply.reasons },
-          valueGrowth: { normalized: singleResult.categories.valueGrowth.normalized, reasons: singleResult.categories.valueGrowth.reasons },
-          momentum: { normalized: singleResult.categories.momentum.normalized, reasons: singleResult.categories.momentum.reasons },
-          risk: { normalized: singleResult.categories.risk.normalized, reasons: singleResult.categories.risk.reasons },
+          signalTech: { normalized: singleResult.score_signal, reasons: [] },
+          supply: { normalized: singleResult.score_supply, reasons: [] },
+          valueGrowth: { normalized: singleResult.score_valuation, reasons: [] },
+          momentum: { normalized: singleResult.score_technical, reasons: [] },
+          risk: { normalized: Math.abs(singleResult.score_risk), reasons: [] },
         },
-        checklist: singleResult.checklist,
-        checklistMet: singleResult.checklistMet,
-        checklistTotal: singleResult.checklistTotal,
+        checklist: undefined,
+        checklistMet: undefined,
+        checklistTotal: undefined,
         appliedStyle: style,
       } as unknown as StockRankItem;
 
@@ -1014,78 +993,58 @@ export async function GET(request: NextRequest) {
           const cumReturn3d = item.cum_return_3d
             ?? (dp.length >= 4 ? ((dp[0].close / dp[3].close) - 1) * 100 : null);
           const itemAny = item as unknown as Record<string, unknown>;
-          const snapInput: ScoringInput = {
-            symbol: item.symbol,
-            name: item.name ?? '',
-            market: item.market ?? '',
-            currentPrice: item.current_price,
-            priceChangePct: item.price_change_pct,
+          const snapLatestDaysAgo = item.latest_signal_date
+            ? Math.floor((nowMs - new Date(item.latest_signal_date as string).getTime()) / 86400000)
+            : null;
+          const snapSnapSources = sigSourcesMap.get(item.symbol);
+          const snapResult = calcCompositeScore({
+            prices: [...dp].reverse(),  // oldest-first (Supabase returns newest-first)
             high52w: item.high_52w,
             low52w: item.low_52w,
-            marketCap: item.market_cap,
-            per: item.per,
-            forwardPer: item.forward_per,
-            forwardEps: null,
-            eps: null,
-            pbr: item.pbr,
-            bps: null,
-            roe: item.roe,
-            roeEstimated: null,
-            dividendYield: item.dividend_yield,
-            targetPrice: item.target_price,
-            investOpinion: item.invest_opinion,
+            foreignStreak: item.foreign_streak,
+            institutionStreak: item.institution_streak,
             foreignNetQty: item.foreign_net_qty,
             institutionNetQty: item.institution_net_qty,
             foreignNet5d: item.foreign_net_5d,
             institutionNet5d: item.institution_net_5d,
-            foreignStreak: item.foreign_streak,
-            institutionStreak: item.institution_streak,
             shortSellRatio: item.short_sell_ratio,
-            volume: (itemAny.volume as number | null) ?? null,
-            floatShares: (itemAny.float_shares as number | null) ?? null,
-            signalCount30d: item.signal_count_30d,
-            latestSignalPrice: item.latest_signal_price,
-            latestSignalDate: item.latest_signal_date,
-            signalSources: Array.from(sigSourcesMap.get(item.symbol) ?? []),
-            latestSignalDaysAgo: item.latest_signal_date
-              ? Math.floor((nowMs - new Date(item.latest_signal_date as string).getTime()) / 86400000)
-              : null,
+            currentPrice: item.current_price,
+            targetPrice: item.target_price,
+            forwardPer: item.forward_per,
+            per: item.per,
+            pbr: item.pbr,
+            roe: item.roe,
+            dividendYield: item.dividend_yield,
+            investOpinion: item.invest_opinion,
+            todaySourceCount: snapLatestDaysAgo === 0 ? (snapSnapSources?.size ?? 0) : 0,
+            daysSinceLastSignal: snapLatestDaysAgo,
+            recentCount30d: item.signal_count_30d ?? 0,
+            lastSignalPrice: item.latest_signal_price,
+            marketCap: item.market_cap,
             isManaged: item.is_managed ?? false,
             hasRecentCbw: item.has_recent_cbw ?? false,
             auditOpinion: item.audit_opinion ?? null,
             majorShareholderPct: item.major_shareholder_pct ?? null,
             majorShareholderDelta: item.major_shareholder_delta ?? null,
             hasTreasuryBuyback: item.has_treasury_buyback ?? false,
-            revenueGrowthYoy: item.revenue_growth_yoy ?? null,
-            operatingProfitGrowthYoy: item.operating_profit_growth_yoy ?? null,
-            dailyPrices: dp,
-            volumeRatio: item.volume_ratio,
-            closePosition: item.close_position,
-            gapPct: item.gap_pct,
-            cumReturn3d,
-            tradingValue: item.trading_value,
-            sectorAvgChangePct: null,
-            sectorRank: null,
-            sectorTotal: null,
-          };
-          const snapResult = calcUnifiedScore(snapInput, style, customWeights, disabledConditionIds);
-          item.score_signal = snapResult.categories.signalTech.normalized;
-          item.score_momentum = snapResult.categories.momentum.normalized;
-          item.score_valuation = snapResult.categories.valueGrowth.normalized;
-          item.score_supply = snapResult.categories.supply.normalized;
-          item.score_risk = snapResult.categories.risk.normalized * -1;
-          item.score_total = snapResult.totalScore;
-          item.grade = snapResult.grade;
-          item.checklist = snapResult.checklist;
-          item.checklistMet = snapResult.checklistMet;
-          item.checklistTotal = snapResult.checklistTotal;
+          });
+          item.score_signal = snapResult.score_signal;
+          item.score_momentum = snapResult.score_technical;
+          item.score_valuation = snapResult.score_valuation;
+          item.score_supply = snapResult.score_supply;
+          item.score_risk = snapResult.score_risk;
+          item.score_total = snapResult.score_total;
+          item.grade = snapResult.score_total >= 90 ? 'A+' : snapResult.score_total >= 80 ? 'A' : snapResult.score_total >= 65 ? 'B+' : snapResult.score_total >= 50 ? 'B' : snapResult.score_total >= 35 ? 'C' : 'D';
+          item.checklist = undefined;
+          item.checklistMet = undefined;
+          item.checklistTotal = undefined;
           item.appliedStyle = style;
           (item as unknown as Record<string, unknown>).categories = {
-            signalTech: { normalized: snapResult.categories.signalTech.normalized, reasons: snapResult.categories.signalTech.reasons },
-            supply:     { normalized: snapResult.categories.supply.normalized,     reasons: snapResult.categories.supply.reasons },
-            valueGrowth:{ normalized: snapResult.categories.valueGrowth.normalized,reasons: snapResult.categories.valueGrowth.reasons },
-            momentum:   { normalized: snapResult.categories.momentum.normalized,   reasons: snapResult.categories.momentum.reasons },
-            risk:       { normalized: snapResult.categories.risk.normalized,       reasons: snapResult.categories.risk.reasons },
+            signalTech: { normalized: snapResult.score_signal,    reasons: [] },
+            supply:     { normalized: snapResult.score_supply,    reasons: [] },
+            valueGrowth:{ normalized: snapResult.score_valuation, reasons: [] },
+            momentum:   { normalized: snapResult.score_technical, reasons: [] },
+            risk:       { normalized: Math.abs(snapResult.score_risk), reasons: [] },
           };
 
           // 근거 레이어 생성 (스냅샷 경로)
@@ -1516,67 +1475,45 @@ export async function GET(request: NextRequest) {
           base.latest_signal_price = sigEntry.latestSignalPrice;
         }
 
-        // ScoringInput 빌드 후 통합 스코어링 엔진 호출
-        const scoringInput: ScoringInput = {
-          symbol: base.symbol,
-          name: base.name ?? '',
-          market: base.market ?? '',
-          currentPrice: base.current_price,
-          priceChangePct: base.price_change_pct,
+        // 4축 통합 스코어링 (CompositeScore)
+        const batchResult = calcCompositeScore({
+          prices: batchDailyPricesMap.get(base.symbol) ?? [],  // 배치 조회: oldest-first
           high52w: base.high_52w,
           low52w: base.low_52w,
-          marketCap: base.market_cap,
-          per: base.per,
-          forwardPer: base.forward_per,
-          forwardEps: null,
-          eps: null,
-          pbr: base.pbr,
-          bps: null,
-          roe: base.roe,
-          roeEstimated: null,
-          dividendYield: base.dividend_yield,
-          targetPrice: base.target_price,
-          investOpinion: base.invest_opinion,
+          foreignStreak: base.foreign_streak,
+          institutionStreak: base.institution_streak,
           foreignNetQty: base.foreign_net_qty,
           institutionNetQty: base.institution_net_qty,
           foreignNet5d: base.foreign_net_5d,
           institutionNet5d: base.institution_net_5d,
-          foreignStreak: base.foreign_streak,
-          institutionStreak: base.institution_streak,
           shortSellRatio: base.short_sell_ratio,
-          volume: (r.volume as number | null) ?? null,
-          floatShares: (r.float_shares as number | null) ?? null,
-          signalCount30d: base.signal_count_30d,
-          latestSignalPrice: base.latest_signal_price,
-          latestSignalDate: base.latest_signal_date,
-          signalSources: sigEntry?.sources ?? [],
-          latestSignalDaysAgo: sigEntry?.latestDaysAgo ?? null,
+          currentPrice: base.current_price,
+          targetPrice: base.target_price,
+          forwardPer: base.forward_per,
+          per: base.per,
+          pbr: base.pbr,
+          roe: base.roe,
+          dividendYield: base.dividend_yield,
+          investOpinion: base.invest_opinion,
+          todaySourceCount: sigEntry?.latestDaysAgo === 0 ? (sigEntry?.sources.length ?? 0) : 0,
+          daysSinceLastSignal: sigEntry?.latestDaysAgo ?? null,
+          recentCount30d: base.signal_count_30d ?? 0,
+          lastSignalPrice: base.latest_signal_price,
+          marketCap: base.market_cap,
           isManaged: (r.is_managed as boolean) ?? false,
           hasRecentCbw: (r.has_recent_cbw as boolean) ?? false,
           auditOpinion: (r.audit_opinion as string | null) ?? null,
           majorShareholderPct: (r.major_shareholder_pct as number | null) ?? null,
           majorShareholderDelta: (r.major_shareholder_delta as number | null) ?? null,
           hasTreasuryBuyback: (r.has_treasury_buyback as boolean) ?? false,
-          revenueGrowthYoy: (r.revenue_growth_yoy as number | null) ?? null,
-          operatingProfitGrowthYoy: (r.operating_profit_growth_yoy as number | null) ?? null,
-          dailyPrices: batchDailyPricesMap.get(base.symbol) ?? [],  // 배치 조회 결과 공급
-          volumeRatio: null,
-          closePosition: null,
-          gapPct: null,
-          cumReturn3d: null,
-          tradingValue: null,
-          sectorAvgChangePct: sectorAvgPct,
-          sectorRank: null,
-          sectorTotal: null,
-        };
-        const unifiedResult = calcUnifiedScore(scoringInput, style, customWeights, disabledConditionIds);
+        });
         const scores = {
-          score_total: unifiedResult.totalScore,
-          score_signal: unifiedResult.categories.signalTech.normalized,
-          score_valuation: unifiedResult.categories.valueGrowth.normalized,
-          score_supply: unifiedResult.categories.supply.normalized,
-          score_momentum: unifiedResult.categories.momentum.normalized,
-          score_risk: unifiedResult.categories.risk.normalized * -1,
+          score_total: batchResult.score_total,
+          score_signal: batchResult.score_signal,
+          score_valuation: batchResult.score_valuation,
+          score_supply: batchResult.score_supply,
+          score_momentum: batchResult.score_technical,
+          score_risk: batchResult.score_risk,
         };
         const aiRec = aiRecMap.get(base.symbol);
         const item: StockRankItem = {
@@ -1587,16 +1524,17 @@ export async function GET(request: NextRequest) {
           trading_value: null,
           gap_pct: null,
           cum_return_3d: null,
+          grade: batchResult.score_total >= 90 ? 'A+' : batchResult.score_total >= 80 ? 'A' : batchResult.score_total >= 65 ? 'B+' : batchResult.score_total >= 50 ? 'B' : batchResult.score_total >= 35 ? 'C' : 'D',
           categories: {
-            signalTech: { normalized: unifiedResult.categories.signalTech.normalized, reasons: unifiedResult.categories.signalTech.reasons },
-            supply: { normalized: unifiedResult.categories.supply.normalized, reasons: unifiedResult.categories.supply.reasons },
-            valueGrowth: { normalized: unifiedResult.categories.valueGrowth.normalized, reasons: unifiedResult.categories.valueGrowth.reasons },
-            momentum: { normalized: unifiedResult.categories.momentum.normalized, reasons: unifiedResult.categories.momentum.reasons },
-            risk: { normalized: unifiedResult.categories.risk.normalized, reasons: unifiedResult.categories.risk.reasons },
+            signalTech: { normalized: batchResult.score_signal,    reasons: [] },
+            supply:     { normalized: batchResult.score_supply,    reasons: [] },
+            valueGrowth:{ normalized: batchResult.score_valuation, reasons: [] },
+            momentum:   { normalized: batchResult.score_technical, reasons: [] },
+            risk:       { normalized: Math.abs(batchResult.score_risk), reasons: [] },
           },
-          checklist: unifiedResult.checklist,
-          checklistMet: unifiedResult.checklistMet,
-          checklistTotal: unifiedResult.checklistTotal,
+          checklist: undefined,
+          checklistMet: undefined,
+          checklistTotal: undefined,
           appliedStyle: style,
         };
         if (aiRec) {
