@@ -11,6 +11,7 @@ import type { ScoreReason } from '@/types/score-reason';
 import { calcUnifiedScore } from '@/lib/unified-scoring/engine';
 import type { ScoringInput } from '@/lib/unified-scoring/types';
 import type { ConditionResult } from '@/lib/checklist-recommendation/types';
+import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
 
 export const dynamic = 'force-dynamic';
 
@@ -342,8 +343,9 @@ function calcScore(
   score_signal = Math.max(0, Math.min(100, score_signal));
 
   // ── 기술/모멘텀 (0~100) ──
-  // 52주 범위 내 상대 위치(하단일수록 유리) + 단기 등락률(과열 감점)
-  let score_momentum = 0;
+  // 기본 점수(baseline) + 52주 위치 + 단기 등락률 + 섹터 상대강도
+  // 정상 주가 흐름에서도 40~50점대가 나와야 등급 분포가 합리적
+  let score_momentum = 15; // baseline: 시장에 상장된 것 자체가 기본 가치
 
   // 52주 범위 내 상대 위치: 티어별 차등
   if (stock.current_price && stock.high_52w && stock.low_52w &&
@@ -431,9 +433,10 @@ function calcScore(
   }, scoringModel as 'standard' | 'short_term');
 
   // 티어별 가중 합산 (risk는 비율 감산 방식)
+  // 대형주: supply 40→30 (외국인 매도만으로 총점 급락 방지), valuation 20→30 (밸류에이션 강화)
   const tierWeights = {
-    large:  { signal: 10, momentum: 30, valuation: 20, supply: 40 },
-    mid:    { signal: 10, momentum: 32, valuation: 22, supply: 36 },
+    large:  { signal: 10, momentum: 30, valuation: 30, supply: 30 },
+    mid:    { signal: 10, momentum: 32, valuation: 26, supply: 32 },
     small:  { signal: 12, momentum: 35, valuation: 23, supply: 30 },
   }[tier];
   const wSum = tierWeights.signal + tierWeights.momentum + tierWeights.valuation + tierWeights.supply;
@@ -598,6 +601,10 @@ export async function GET(request: NextRequest) {
       if (Math.abs(sum - 100) > 1) return undefined; // 합계 검증
       return { signalTech: st, supply: su, valueGrowth: vg, momentum: mo, risk: ri };
     })();
+    // 비활성 체크리스트 조건 (disabled_conds=ma_aligned,rsi_buy_zone,...)
+    const disabledCondsRaw = searchParams.get('disabled_conds');
+    const disabledConditionIds = disabledCondsRaw ? disabledCondsRaw.split(',').filter(Boolean) : undefined;
+
     const saveSnapshot = searchParams.get('snapshot') === 'true';
 
     const supabase = createServiceClient();
@@ -623,7 +630,7 @@ export async function GET(request: NextRequest) {
 
       // 수급 + 지표 + 신호 + 일봉 실시간 fetch (병렬)
       const singleThirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-      const singleSixtyDaysAgo = new Date(Date.now() - 62 * 86400000).toISOString().slice(0, 10);
+      const singleSixtyDaysAgo = new Date(Date.now() - 95 * 86400000).toISOString().slice(0, 10); // 95일 ≈ 68거래일 (SMA60 활성화)
       const [invMap, indMap, singleSigData, singlePriceData] = await Promise.all([
         fetchBulkInvestorData([singleSymbol], 1),
         fetchBulkIndicators([singleSymbol], 1),
@@ -737,7 +744,7 @@ export async function GET(request: NextRequest) {
         sectorRank: null,
         sectorTotal: null,
       };
-      const singleResult = calcUnifiedScore(singleInput, style, customWeights);
+      const singleResult = calcUnifiedScore(singleInput, style, customWeights, disabledConditionIds);
       const scores = {
         score_total: singleResult.totalScore,
         score_signal: singleResult.categories.signalTech.normalized,
@@ -792,7 +799,7 @@ export async function GET(request: NextRequest) {
           const allSignalRows: Record<string, unknown>[] = [];
           const { data: sigData } = await supabase
             .from('signals')
-            .select('symbol, timestamp, signal_type, source, raw_data')
+            .select('symbol, timestamp, signal_type, source, signal_price, raw_data')
             .in('signal_type', ['BUY', 'BUY_FORECAST'])
             .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`)
             .order('timestamp', { ascending: false })
@@ -808,7 +815,7 @@ export async function GET(request: NextRequest) {
               sigAggMap.set(sym, {
                 count: 1,
                 latestDate: row.timestamp as string,
-                latestPrice: null, // 매수가 추출은 생략 (성능)
+                latestPrice: (row.signal_price as number | null) ?? null,
               });
             } else {
               existing.count++;
@@ -829,6 +836,9 @@ export async function GET(request: NextRequest) {
               item.latest_signal_date = agg.latestDate;
               if (agg.latestDate) {
                 (item as unknown as Record<string, unknown>).signal_date = agg.latestDate.slice(0, 10);
+              }
+              if (agg.latestPrice) {
+                item.latest_signal_price = agg.latestPrice;
               }
             } else {
               // signals 테이블에 없으면 stale 데이터 제거
@@ -919,31 +929,79 @@ export async function GET(request: NextRequest) {
           }
         }
 
+        // ── 스냅샷 현재가 보강: stock_cache 최신 가격으로 덮어쓰기 ──
+        // 스냅샷 저장 이후 주가가 변동됐을 수 있으므로 stock_cache에서 최신 값 반영
+        {
+          const spSymbols = snapshotItems.map(s => s.symbol);
+          const spPriceMap = new Map<string, { current_price: number; price_change_pct: number | null }>();
+          for (let i = 0; i < spSymbols.length; i += 1000) {
+            const chunk = spSymbols.slice(i, i + 1000);
+            const { data: priceRows } = await supabase
+              .from('stock_cache')
+              .select('symbol, current_price, price_change_pct')
+              .in('symbol', chunk);
+            if (priceRows) {
+              for (const row of priceRows) {
+                if (row.current_price) {
+                  spPriceMap.set(row.symbol as string, {
+                    current_price: row.current_price as number,
+                    price_change_pct: row.price_change_pct as number | null,
+                  });
+                }
+              }
+            }
+          }
+          for (const item of snapshotItems) {
+            const latest = spPriceMap.get(item.symbol);
+            if (latest?.current_price) {
+              item.current_price = latest.current_price;
+              if (latest.price_change_pct != null) {
+                item.price_change_pct = latest.price_change_pct;
+              }
+            }
+          }
+        }
+
         // ── 일봉 데이터 벌크 조회 (기술적 지표 계산용) ──
-        // 500개 이하 종목에 대해 최근 62일 일봉 데이터를 한번에 조회
+        // Supabase 서버 최대 1000행 제한 → 청크당 20종목 (20×40=800행 < 1000)
+        // 5청크씩 배치 병렬 처리로 DB 과부하 방지
         const dailyPricesMap = new Map<string, import('@/lib/unified-scoring/types').DailyCandle[]>();
         const allSymbols = snapshotItems.map((s) => s.symbol);
-        if (allSymbols.length > 0 && allSymbols.length <= 500) {
-          const sixtyDaysAgo = new Date(Date.now() - 62 * 86400000).toISOString().slice(0, 10);
-          const { data: priceRows } = await supabase
-            .from('daily_prices')
-            .select('symbol, date, open, high, low, close, volume')
-            .in('symbol', allSymbols)
-            .gte('date', sixtyDaysAgo)
-            .order('date', { ascending: false });
-          if (priceRows) {
-            for (const row of priceRows) {
-              const sym = row.symbol as string;
-              const candles = dailyPricesMap.get(sym) ?? [];
-              candles.push({
-                date: row.date as string,
-                open: Number(row.open),
-                high: Number(row.high),
-                low: Number(row.low),
-                close: Number(row.close),
-                volume: Number(row.volume),
-              });
-              dailyPricesMap.set(sym, candles);
+        if (allSymbols.length > 0) {
+          const sixtyDaysAgo = new Date(Date.now() - 95 * 86400000).toISOString().slice(0, 10); // 95일 ≈ 68거래일 (SMA60 활성화)
+          const CHUNK_SIZE = 14;   // 14×68≈952행 < 1000 Supabase 서버 한도 (95일 기준)
+          const MAX_CONCURRENT = 5; // 동시 청크 수 제한 (연결 과부하 방지)
+          const chunks: string[][] = [];
+          for (let i = 0; i < allSymbols.length; i += CHUNK_SIZE) {
+            chunks.push(allSymbols.slice(i, i + CHUNK_SIZE));
+          }
+          for (let i = 0; i < chunks.length; i += MAX_CONCURRENT) {
+            const batch = chunks.slice(i, i + MAX_CONCURRENT);
+            const batchResults = await Promise.all(
+              batch.map((chunk) =>
+                supabase
+                  .from('daily_prices')
+                  .select('symbol, date, open, high, low, close, volume')
+                  .in('symbol', chunk)
+                  .gte('date', sixtyDaysAgo)
+                  .order('date', { ascending: false })
+              )
+            );
+            for (const { data: priceRows } of batchResults) {
+              if (!priceRows) continue;
+              for (const row of priceRows) {
+                const sym = row.symbol as string;
+                const candles = dailyPricesMap.get(sym) ?? [];
+                candles.push({
+                  date: row.date as string,
+                  open: Number(row.open),
+                  high: Number(row.high),
+                  low: Number(row.low),
+                  close: Number(row.close),
+                  volume: Number(row.volume),
+                });
+                dailyPricesMap.set(sym, candles);
+              }
             }
           }
         }
@@ -951,6 +1009,11 @@ export async function GET(request: NextRequest) {
         // ── 전체 종목 점수 재계산 (수급/지표 보강 + 신호 보강 반영) ──
         const nowMs = Date.now();
         for (const item of snapshotItems) {
+          const dp = dailyPricesMap.get(item.symbol) ?? [];
+          // cum_return_3d: stock_cache에 없으면 dailyPrices에서 직접 계산
+          const cumReturn3d = item.cum_return_3d
+            ?? (dp.length >= 4 ? ((dp[0].close / dp[3].close) - 1) * 100 : null);
+          const itemAny = item as unknown as Record<string, unknown>;
           const snapInput: ScoringInput = {
             symbol: item.symbol,
             name: item.name ?? '',
@@ -978,8 +1041,8 @@ export async function GET(request: NextRequest) {
             foreignStreak: item.foreign_streak,
             institutionStreak: item.institution_streak,
             shortSellRatio: item.short_sell_ratio,
-            volume: null,
-            floatShares: null,
+            volume: (itemAny.volume as number | null) ?? null,
+            floatShares: (itemAny.float_shares as number | null) ?? null,
             signalCount30d: item.signal_count_30d,
             latestSignalPrice: item.latest_signal_price,
             latestSignalDate: item.latest_signal_date,
@@ -995,27 +1058,35 @@ export async function GET(request: NextRequest) {
             hasTreasuryBuyback: item.has_treasury_buyback ?? false,
             revenueGrowthYoy: item.revenue_growth_yoy ?? null,
             operatingProfitGrowthYoy: item.operating_profit_growth_yoy ?? null,
-            dailyPrices: dailyPricesMap.get(item.symbol) ?? [],
+            dailyPrices: dp,
             volumeRatio: item.volume_ratio,
             closePosition: item.close_position,
             gapPct: item.gap_pct,
-            cumReturn3d: item.cum_return_3d,
+            cumReturn3d,
             tradingValue: item.trading_value,
             sectorAvgChangePct: null,
             sectorRank: null,
             sectorTotal: null,
           };
-          const snapResult = calcUnifiedScore(snapInput, style, customWeights);
+          const snapResult = calcUnifiedScore(snapInput, style, customWeights, disabledConditionIds);
           item.score_signal = snapResult.categories.signalTech.normalized;
           item.score_momentum = snapResult.categories.momentum.normalized;
           item.score_valuation = snapResult.categories.valueGrowth.normalized;
           item.score_supply = snapResult.categories.supply.normalized;
           item.score_risk = snapResult.categories.risk.normalized * -1;
           item.score_total = snapResult.totalScore;
+          item.grade = snapResult.grade;
           item.checklist = snapResult.checklist;
           item.checklistMet = snapResult.checklistMet;
           item.checklistTotal = snapResult.checklistTotal;
           item.appliedStyle = style;
+          (item as unknown as Record<string, unknown>).categories = {
+            signalTech: { normalized: snapResult.categories.signalTech.normalized, reasons: snapResult.categories.signalTech.reasons },
+            supply:     { normalized: snapResult.categories.supply.normalized,     reasons: snapResult.categories.supply.reasons },
+            valueGrowth:{ normalized: snapResult.categories.valueGrowth.normalized,reasons: snapResult.categories.valueGrowth.reasons },
+            momentum:   { normalized: snapResult.categories.momentum.normalized,   reasons: snapResult.categories.momentum.reasons },
+            risk:       { normalized: snapResult.categories.risk.normalized,       reasons: snapResult.categories.risk.reasons },
+          };
 
           // 근거 레이어 생성 (스냅샷 경로)
           if (!item.ai) {
@@ -1205,7 +1276,7 @@ export async function GET(request: NextRequest) {
       // 30일 BUY 신호: 소스 목록 + 최신 신호 일자 집계용
       supabase
         .from('signals')
-        .select('symbol, timestamp, source')
+        .select('symbol, timestamp, source, signal_price')
         .in('signal_type', ['BUY', 'BUY_FORECAST'])
         .gte('timestamp', `${thirtyDaysAgoStr}T00:00:00+09:00`)
         .order('timestamp', { ascending: false })
@@ -1227,8 +1298,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 30일 BUY 신호 소스 집계: symbol → { sources: string[], latestDaysAgo: number }
-    const signalSourceMap = new Map<string, { sources: string[]; latestDaysAgo: number }>();
+    // 30일 BUY 신호 소스 집계: symbol → { sources: string[], latestDaysAgo: number, latestSignalPrice: number | null }
+    const signalSourceMap = new Map<string, { sources: string[]; latestDaysAgo: number; latestSignalPrice: number | null }>();
     if (signalSourcesResult.data) {
       const nowMs = Date.now();
       for (const row of signalSourcesResult.data) {
@@ -1237,11 +1308,14 @@ export async function GET(request: NextRequest) {
         const ts = row.timestamp as string;
         const daysAgo = Math.floor((nowMs - new Date(ts).getTime()) / 86400000);
         if (!signalSourceMap.has(sym)) {
-          signalSourceMap.set(sym, { sources: [], latestDaysAgo: daysAgo });
+          signalSourceMap.set(sym, { sources: [], latestDaysAgo: daysAgo, latestSignalPrice: (row.signal_price as number | null) ?? null });
         }
         const entry = signalSourceMap.get(sym)!;
         if (src && !entry.sources.includes(src)) entry.sources.push(src);
-        if (daysAgo < entry.latestDaysAgo) entry.latestDaysAgo = daysAgo;
+        if (daysAgo < entry.latestDaysAgo) {
+          entry.latestDaysAgo = daysAgo;
+          if (row.signal_price) entry.latestSignalPrice = row.signal_price as number;
+        }
       }
     }
 
@@ -1389,6 +1463,40 @@ export async function GET(request: NextRequest) {
       sectorAvgPctMap.set(sec, pcts.reduce((a, b) => a + b, 0) / pcts.length);
     }
 
+    // ── daily_prices 배치 조회 (기술전환 점수용, 최근 70거래일) ──
+    const batchDailyPricesMap = new Map<string, DailyPrice[]>();
+    try {
+      const cutoffDate = new Date(now.getTime() + 9 * 60 * 60 * 1000 - 70 * 86400000)
+        .toISOString().slice(0, 10);
+      let dpOffset = 0;
+      while (true) {
+        const { data: dpRows } = await supabase
+          .from('daily_prices')
+          .select('symbol, date, open, high, low, close, volume')
+          .gte('date', cutoffDate)
+          .order('symbol')
+          .order('date')
+          .range(dpOffset, dpOffset + 9999);
+        if (!dpRows?.length) break;
+        for (const dp of dpRows) {
+          const sym = dp.symbol as string;
+          if (!batchDailyPricesMap.has(sym)) batchDailyPricesMap.set(sym, []);
+          batchDailyPricesMap.get(sym)!.push({
+            date: dp.date as string,
+            open: dp.open as number,
+            high: dp.high as number,
+            low: dp.low as number,
+            close: dp.close as number,
+            volume: dp.volume as number,
+          });
+        }
+        if (dpRows.length < 10000) break;
+        dpOffset += 10000;
+      }
+    } catch (e) {
+      console.error('[stock-ranking] daily_prices 배치 쿼리 실패:', e);
+    }
+
     // ── 점수 계산 + ai 병합 (날짜 필터는 스코어링 후 적용)
     const allScored: StockRankItem[] = allRows
       .filter((r) => r.symbol && r.name)
@@ -1402,6 +1510,11 @@ export async function GET(request: NextRequest) {
         const sector = sectorMap.get(base.symbol) ?? null;
         const sectorAvgPct = sector ? (sectorAvgPctMap.get(sector) ?? null) : null;
         const sigEntry = signalSourceMap.get(base.symbol);
+
+        // 신호가 보강: stock_cache에 없으면 signals 집계값으로 채움
+        if (!base.latest_signal_price && sigEntry?.latestSignalPrice) {
+          base.latest_signal_price = sigEntry.latestSignalPrice;
+        }
 
         // ScoringInput 빌드 후 통합 스코어링 엔진 호출
         const scoringInput: ScoringInput = {
@@ -1446,7 +1559,7 @@ export async function GET(request: NextRequest) {
           hasTreasuryBuyback: (r.has_treasury_buyback as boolean) ?? false,
           revenueGrowthYoy: (r.revenue_growth_yoy as number | null) ?? null,
           operatingProfitGrowthYoy: (r.operating_profit_growth_yoy as number | null) ?? null,
-          dailyPrices: [],  // daily_prices 조회 후 후속 처리에서 채워짐
+          dailyPrices: batchDailyPricesMap.get(base.symbol) ?? [],  // 배치 조회 결과 공급
           volumeRatio: null,
           closePosition: null,
           gapPct: null,
@@ -1456,7 +1569,7 @@ export async function GET(request: NextRequest) {
           sectorRank: null,
           sectorTotal: null,
         };
-        const unifiedResult = calcUnifiedScore(scoringInput, style, customWeights);
+        const unifiedResult = calcUnifiedScore(scoringInput, style, customWeights, disabledConditionIds);
         const scores = {
           score_total: unifiedResult.totalScore,
           score_signal: unifiedResult.categories.signalTech.normalized,
@@ -1644,7 +1757,7 @@ export async function GET(request: NextRequest) {
     // ── 초단기 모멘텀용 daily_prices 조회 ──
     const displaySymbols = scored.map(s => s.symbol);
     if (displaySymbols.length > 0) {
-      type DailyPrice = { date: string; open: number | null; high: number; low: number; close: number; volume: number };
+      type DpRow = { date: string; open: number | null; high: number; low: number; close: number; volume: number };
       const dpResults: Record<string, unknown>[] = [];
       for (let i = 0; i < displaySymbols.length; i += 300) {
         const chunk = displaySymbols.slice(i, i + 300);
@@ -1658,7 +1771,7 @@ export async function GET(request: NextRequest) {
       }
 
       // symbol별 그룹핑 (날짜 내림차순 유지)
-      const dpMap = new Map<string, DailyPrice[]>();
+      const dpMap = new Map<string, DpRow[]>();
       for (const p of dpResults) {
         const sym = p.symbol as string;
         if (!dpMap.has(sym)) dpMap.set(sym, []);

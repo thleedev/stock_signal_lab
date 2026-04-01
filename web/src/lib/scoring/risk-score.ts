@@ -21,6 +21,8 @@ interface RiskInput {
   major_shareholder_pct?: number | null
   /** 최대주주 지분율 변화량 (음수면 감소) */
   major_shareholder_delta?: number | null
+  /** 자사주 매입 여부 (긍정적 시그널) */
+  has_treasury_buyback?: boolean
   /** 당일 거래대금 (원) */
   daily_trading_value?: number | null
   /** 20일 평균 거래대금 (원) */
