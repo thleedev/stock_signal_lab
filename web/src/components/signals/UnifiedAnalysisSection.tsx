@@ -382,7 +382,7 @@ function RankCard({
         isWarning ? 'bg-orange-50/60 dark:bg-orange-950/10' : ''
       }`}
     >
-      {/* ── 줄 1: 순위 · 종목명 · 등급 · 등락률 ── */}
+      {/* ── 줄 1: 순위 · 종목명 · 등급 · [데스크탑: 가격정보 전부] ── */}
       <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
         {/* 순위 */}
         <span className={`text-sm font-bold tabular-nums w-6 shrink-0 text-right ${hasAi ? 'text-blue-500' : 'text-[var(--muted)]'}`}>
@@ -393,7 +393,7 @@ function RankCard({
         <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[6rem] sm:max-w-[10rem]">{item.name}</span>
         {favs.has(item.symbol) && <span className="text-yellow-400 text-xs shrink-0">★</span>}
 
-        {/* 등급 뱃지 + 툴팁 — ETF 모드에서는 숨김 */}
+        {/* 등급 뱃지 — ETF 모드에서는 간단한 점수 뱃지 */}
         {!isEtf && (
           <GradeTooltip weighted={weighted} grade={grade} gradeLabel={gradeLabel} gradeCls={gradeCls} scores={[
             { label: '신호', value: sig, color: 'bg-amber-500' },
@@ -402,7 +402,6 @@ function RankCard({
             { label: '수급', value: sup, color: 'bg-sky-500' },
           ]} />
         )}
-        {/* ETF 모드: 간단한 점수 뱃지 */}
         {isEtf && (
           <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
             {item.score_total}점
@@ -412,7 +411,7 @@ function RankCard({
         {/* 성격 태그 — 데스크탑만, ETF에서는 숨김 */}
         {!isEtf && characters.length > 0 && (
           <div className="hidden sm:flex items-center gap-1 shrink-0">
-            {characters.slice(0, 3).map(charKey => {
+            {characters.slice(0, 2).map(charKey => {
               const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
               return (
                 <span key={charKey} className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${BADGE_CLS[def.variant]}`}>
@@ -425,17 +424,17 @@ function RankCard({
 
         <div className="flex-1 min-w-0" />
 
-        {/* 신호 경과 */}
+        {/* 신호 경과 — 데스크탑 */}
         {signalAge && <span className="hidden sm:inline text-[11px] text-[var(--muted)] shrink-0">{signalAge}</span>}
+
+        {/* 현재가 */}
+        <span className="text-xs tabular-nums shrink-0 text-[var(--muted)]">
+          {item.current_price?.toLocaleString() ?? '-'}원
+        </span>
 
         {/* 등락률 */}
         <span className={`text-sm font-bold tabular-nums shrink-0 ${pctCls}`}>
           {pct != null ? `${pct > 0 ? '+' : ''}${fmtNum(pct)}%` : '-'}
-        </span>
-
-        {/* 현재가 — 데스크탑만 */}
-        <span className="hidden sm:inline text-xs text-[var(--muted)] tabular-nums shrink-0">
-          {item.current_price?.toLocaleString() ?? '-'}원
         </span>
 
         {/* Gap — 신호가 대비 */}
@@ -447,11 +446,11 @@ function RankCard({
         )}
       </div>
 
-      {/* ── 줄 2: 추천근거 + 모바일 성격태그 + 신호경과 ── */}
-      <div className="flex items-start gap-1.5 mt-0.5 pl-8">
+      {/* ── 줄 2: 추천근거 + 모바일 성격태그·신호경과 ── */}
+      <div className="flex items-center gap-1.5 mt-0.5 pl-8 min-w-0">
         {/* 모바일 성격태그 — ETF에서는 숨김 */}
         {!isEtf && characters.length > 0 && (
-          <div className="sm:hidden flex items-center gap-0.5 shrink-0 pt-px">
+          <div className="sm:hidden flex items-center gap-0.5 shrink-0">
             {characters.slice(0, 2).map(charKey => {
               const def = CHARACTER_DEFS.find(d => d.key === charKey)!;
               return (
@@ -463,11 +462,11 @@ function RankCard({
           </div>
         )}
         {/* 모바일 신호경과 */}
-        {signalAge && <span className="sm:hidden text-[10px] text-[var(--muted)] shrink-0 pt-px">{signalAge}</span>}
+        {signalAge && <span className="sm:hidden text-[10px] text-[var(--muted)] shrink-0">{signalAge}</span>}
 
-        {/* 추천근거 — ETF 모드에서는 간결한 수급 정보 */}
+        {/* 추천근거 */}
         {isEtf ? (
-          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">
+          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0 truncate">
             {[
               item.trading_value ? `거래대금 ${(item.trading_value / 100_000_000).toFixed(0)}억` : null,
               item.foreign_net_qty != null && item.foreign_net_qty > 0 ? '외국인 순매수' : item.foreign_net_qty != null && item.foreign_net_qty < 0 ? '외국인 순매도' : null,
@@ -476,42 +475,8 @@ function RankCard({
             ].filter(Boolean).join(' · ') || '-'}
           </p>
         ) : (
-          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0">{reason}</p>
+          <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0 truncate">{reason}</p>
         )}
-      </div>
-
-      {/* ── 줄 3 (데스크탑만): 세부 점수 미니바 ── */}
-      <div className="hidden sm:flex items-center gap-3 mt-1 pl-8">
-        {/* ETF: 모멘텀 + 수급만 표시, 일반: 4개 카테고리 */}
-        {(isEtf ? [
-          { label: '모멘텀', value: tech, color: 'bg-emerald-500' },
-          { label: '수급', value: sup, color: 'bg-sky-500' },
-        ] : [
-          { label: '기술', value: tech, color: 'bg-emerald-500' },
-          { label: '수급', value: sup, color: 'bg-sky-500' },
-          { label: '신호', value: sig, color: 'bg-amber-500' },
-          { label: '밸류', value: val, color: 'bg-violet-500' },
-        ]).map(b => {
-          const reasonsMap: Record<string, { norm: number; reasons: ScoreReason[] }> = {
-            '기술': { norm: item.ai?.trend_norm ?? tech, reasons: item.ai?.trend_reasons ?? [] },
-            '모멘텀': { norm: item.ai?.trend_norm ?? tech, reasons: item.ai?.trend_reasons ?? [] },
-            '수급': { norm: item.ai?.supply_norm ?? sup, reasons: item.ai?.supply_reasons ?? [] },
-            '신호': { norm: item.ai?.signal_norm ?? sig, reasons: item.ai?.signal_reasons ?? [] },
-            '밸류': { norm: item.ai?.valuation_norm ?? val, reasons: item.ai?.valuation_reasons ?? [] },
-          };
-          const r = reasonsMap[b.label] ?? { norm: b.value, reasons: [] };
-          return (
-            <ScoreReasonPopover key={b.label} label={b.label} normalizedScore={r.norm} reasons={r.reasons}>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-[var(--muted)] w-5">{b.label}</span>
-                <div className="w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-                  <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
-                </div>
-                <span className="text-[10px] tabular-nums text-[var(--muted)] w-5">{b.value}</span>
-              </div>
-            </ScoreReasonPopover>
-          );
-        })}
       </div>
     </div>
   );
@@ -539,7 +504,7 @@ function WeightPopup({
 
   const items = [
     { key: 'signal' as const, label: '신호' },
-    { key: 'trend' as const, label: '추세/모멘텀' },
+    { key: 'trend' as const, label: '기술전환' },
     { key: 'valuation' as const, label: '밸류' },
     { key: 'supply' as const, label: '수급' },
     { key: 'risk' as const, label: '리스크' },
