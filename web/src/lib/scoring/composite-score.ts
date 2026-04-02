@@ -100,27 +100,42 @@ export interface CompositeScoreResult {
   score_risk: number;
 }
 
-/** 티어별 가중치 설정 */
+/** 투자 스타일 ID */
+export type StyleId = 'balanced' | 'value' | 'supply' | 'momentum' | 'contrarian';
+
+/** 티어별 가중치 설정 (균형형 기본값) */
 const TIER_WEIGHTS = {
   large: { tech: 30, supply: 25, val: 35, signal: 10 },
   mid:   { tech: 35, supply: 25, val: 30, signal: 10 },
   small: { tech: 38, supply: 28, val: 24, signal: 10 },
 } as const;
 
+/** 스타일별 고정 가중치 (균형형 제외 — 균형형은 티어 가중치 사용) */
+const STYLE_WEIGHTS: Record<Exclude<StyleId, 'balanced'>, { tech: number; supply: number; val: number; signal: number }> = {
+  value:      { tech: 15, supply: 15, val: 60, signal: 10 },
+  supply:     { tech: 20, supply: 45, val: 20, signal: 15 },
+  momentum:   { tech: 50, supply: 25, val: 10, signal: 15 },
+  contrarian: { tech: 48, supply: 18, val: 24, signal: 10 },
+};
+
 /**
  * 4축 통합 점수를 계산한다.
  *
- * 1. 시총 티어에 따라 가중치를 결정한다.
+ * 1. 투자 스타일에 따라 가중치를 결정한다.
+ *    - 균형형(balanced): 시총 티어별 차등 가중치
+ *    - 그 외: 스타일 고정 가중치
  * 2. 각 축(기술전환, 수급강도, 가치매력, 신호보너스)의 normalizedScore를 가중 합산한다.
  * 3. 리스크 페널티를 최대 20% 감산하여 최종 점수를 산출한다.
  *
  * @param input - 통합 점수 계산 입력값
+ * @param style - 투자 스타일 (기본값: 'balanced')
  * @returns 축별 점수와 최종 종합 점수
  */
-export function calcCompositeScore(input: CompositeScoreInput): CompositeScoreResult {
-  // 시총 티어 결정
-  const tier = getMarketCapTier(input.marketCap);
-  const weights = TIER_WEIGHTS[tier];
+export function calcCompositeScore(input: CompositeScoreInput, style: StyleId = 'balanced'): CompositeScoreResult {
+  // 가중치 결정: 균형형이면 티어 기반, 그 외 스타일이면 고정 가중치
+  const weights = style === 'balanced'
+    ? TIER_WEIGHTS[getMarketCapTier(input.marketCap)]
+    : STYLE_WEIGHTS[style];
 
   // 각 축 점수 계산
   const techResult = calcTechnicalReversal(input.prices, input.high52w, input.low52w);

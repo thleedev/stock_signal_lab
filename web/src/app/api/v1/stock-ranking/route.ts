@@ -8,7 +8,7 @@ import { calcSupplyAdditions } from '@/lib/scoring/supply-score-additions';
 import { calcValuationAdditions } from '@/lib/scoring/valuation-score-additions';
 import { getMarketCapTier, type MarketCapTier } from '@/lib/ai-recommendation/market-cap-tier';
 import type { ScoreReason } from '@/types/score-reason';
-import { calcCompositeScore } from '@/lib/scoring/composite-score';
+import { calcCompositeScore, type StyleId } from '@/lib/scoring/composite-score';
 import type { ConditionResult } from '@/lib/checklist-recommendation/types';
 import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
 
@@ -588,7 +588,9 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get('q')?.trim().toLowerCase() ?? '';
     const market = searchParams.get('market') ?? 'all';
     const model = searchParams.get('model') || 'standard';
-    const style = searchParams.get('style') || 'balanced';
+    const VALID_STYLES: StyleId[] = ['balanced', 'value', 'supply', 'momentum', 'contrarian'];
+    const styleParam = searchParams.get('style') ?? 'balanced';
+    const style: StyleId = VALID_STYLES.includes(styleParam as StyleId) ? (styleParam as StyleId) : 'balanced';
     const refresh = searchParams.get('refresh') === 'true';
 
     // 커스텀 가중치 파라미터 (w_st, w_su, w_vg, w_mo, w_ri)
@@ -721,7 +723,7 @@ export async function GET(request: NextRequest) {
         majorShareholderPct: (row.major_shareholder_pct as number | null) ?? null,
         majorShareholderDelta: (row.major_shareholder_delta as number | null) ?? null,
         hasTreasuryBuyback: (row.has_treasury_buyback as boolean) ?? false,
-      });
+      }, style);
       const singleGrade = singleResult.score_total >= 90 ? 'A+' : singleResult.score_total >= 80 ? 'A' : singleResult.score_total >= 65 ? 'B+' : singleResult.score_total >= 50 ? 'B' : singleResult.score_total >= 35 ? 'C' : 'D';
       const scores = {
         score_total: singleResult.score_total,
@@ -1027,7 +1029,7 @@ export async function GET(request: NextRequest) {
             majorShareholderPct: item.major_shareholder_pct ?? null,
             majorShareholderDelta: item.major_shareholder_delta ?? null,
             hasTreasuryBuyback: item.has_treasury_buyback ?? false,
-          });
+          }, style);
           item.score_signal = snapResult.score_signal;
           item.score_momentum = snapResult.score_technical;
           item.score_valuation = snapResult.score_valuation;
@@ -1506,7 +1508,7 @@ export async function GET(request: NextRequest) {
           majorShareholderPct: (r.major_shareholder_pct as number | null) ?? null,
           majorShareholderDelta: (r.major_shareholder_delta as number | null) ?? null,
           hasTreasuryBuyback: (r.has_treasury_buyback as boolean) ?? false,
-        });
+        }, style);
         const scores = {
           score_total: batchResult.score_total,
           score_signal: batchResult.score_signal,
