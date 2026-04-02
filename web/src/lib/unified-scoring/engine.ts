@@ -22,6 +22,7 @@ export function calcUnifiedScore(
   input: ScoringInput,
   styleId: string,
   weights?: StyleWeights,
+  disabledConditionIds?: string[],
 ): UnifiedScoreResult {
   const w = weights ?? getPreset(styleId as StyleId).weights;
   const tier = getMarketCapTier(input.marketCap);
@@ -51,7 +52,7 @@ export function calcUnifiedScore(
   const grade = calcGrade(totalScore);
 
   // 체크리스트 매핑: reasons에서 12개 조건 추출
-  const checklist = extractChecklist(categories);
+  const checklist = extractChecklist(categories, disabledConditionIds);
   const judgeable = checklist.filter(c => !c.na);
   const checklistMet = judgeable.filter(c => c.met).length;
 
@@ -71,7 +72,9 @@ export function calcUnifiedScore(
 /** 체크리스트 12조건 → 카테고리 reasons에서 매핑 */
 function extractChecklist(
   categories: Record<CategoryKey, { reasons: { label: string; met: boolean; detail: string; points: number }[] }>,
+  disabledConditionIds?: string[],
 ): ConditionResult[] {
+  const disabledSet = new Set(disabledConditionIds ?? []);
   // 조건 ID → { 카테고리, 레이블 패턴 } 매핑
   const conditionMap: Record<string, { category: CategoryKey; labelPattern: string }> = {
     ma_aligned:      { category: 'signalTech', labelPattern: '이평 정배열' },
@@ -90,7 +93,7 @@ function extractChecklist(
 
   return ALL_CONDITIONS.map(cond => {
     const mapping = conditionMap[cond.id];
-    if (!mapping) {
+    if (!mapping || disabledSet.has(cond.id)) {
       return { id: cond.id, label: cond.label, category: cond.category, met: false, detail: '', na: true };
     }
 

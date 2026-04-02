@@ -34,6 +34,7 @@ export interface CustomPreset {
   id: string;
   name: string;
   weights: StyleWeights;
+  disabledConditions?: string[]; // 비활성 체크리스트 조건 ID 목록
 }
 
 /** 개별 카테고리 스코어 결과 */

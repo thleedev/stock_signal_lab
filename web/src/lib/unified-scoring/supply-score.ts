@@ -99,15 +99,15 @@ export function calcSupplyScore(input: ScoringInput, styleId: string): CategoryS
     }
   }
 
-  // 거래대금 (0~5)
+  // 거래대금 (0~5) — 억원 단위 기준 (100억+: 활발, 50억+: 보통)
   if (input.tradingValue !== null) {
-    const billionWon = input.tradingValue / 1_000_000_000;
-    if (billionWon >= 100) {
+    const hundredMillion = input.tradingValue / 100_000_000; // 억원 단위
+    if (hundredMillion >= 100) {
       raw += 5;
-      reasons.push({ label: '거래대금 활발', points: 5, detail: `${billionWon.toFixed(0)}억원`, met: true });
-    } else if (billionWon >= 50) {
+      reasons.push({ label: '거래대금 활발', points: 5, detail: `${hundredMillion.toFixed(0)}억원`, met: true });
+    } else if (hundredMillion >= 50) {
       raw += 3;
-      reasons.push({ label: '거래대금 보통', points: 3, detail: `${billionWon.toFixed(0)}억원`, met: true });
+      reasons.push({ label: '거래대금 보통', points: 3, detail: `${hundredMillion.toFixed(0)}억원`, met: true });
     }
   }
 
@@ -141,6 +141,7 @@ export function calcSupplyScore(input: ScoringInput, styleId: string): CategoryS
   }
 
   // 대주주 지분 변동 (±3)
+  // Note: majorShareholderPct 감점은 risk-score.ts에서 처리
   if (input.majorShareholderDelta !== null) {
     if (input.majorShareholderDelta > 0) {
       raw += 3;

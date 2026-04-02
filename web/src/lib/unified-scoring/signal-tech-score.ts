@@ -166,9 +166,13 @@ export function calcSignalTechScore(input: ScoringInput, styleId: string): Categ
     }
 
     // 연속하락 반등 (역발상: +8)
-    if (contrarian && closes.length >= 6) {
+    // closes[0]=오늘, closes[1]=어제, closes[2]=2일전 ...
+    // closes[i] > closes[i-1] (i>=2): i-1일전이 i일전보다 낮았다 = i-1일전은 하락일
+    // 즉 루프를 i=2..6 으로 돌면 어제(1일전)~5일전이 연속 하락인지 체크
+    // 최종: closes[0] > closes[1] = 오늘이 어제보다 높다 = 반등 → 위 루프와 비모순
+    if (contrarian && closes.length >= 7) {
       let consecDown = 0;
-      for (let i = 1; i < 6; i++) {
+      for (let i = 2; i < 7; i++) {
         if (closes[i] > closes[i - 1]) consecDown++;
         else break;
       }

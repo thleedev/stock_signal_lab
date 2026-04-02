@@ -217,8 +217,8 @@ export async function POST() {
   const data = await fetchAllStockPrices();
   naverCache = { data, ts: Date.now() };
 
-  // stock_cache 업데이트 (fire-and-forget, 사용자 응답 차단 안 함)
-  updateStockCache(data).catch(() => {});
+  // stock_cache 업데이트 (응답 전에 완료 — Vercel 서버리스에서 응답 후 백그라운드 태스크가 중단됨)
+  await updateStockCache(data).catch(() => {});
 
   // 가격 데이터를 직접 반환 (서버리스 인스턴스 간 메모리 캐시 미공유 문제 해결)
   const prices: Record<string, {

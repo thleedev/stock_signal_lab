@@ -82,8 +82,8 @@ export interface AiRecommendationWeights {
   risk: number; // 감산 가중치
 }
 
-// 시총 티어별 가중치: 저점매수 강화 — 수급 비중 축소, trend(저점신호 포함) 상향
-// 대형주: 수급이 핵심이므로 22% 유지, 중소형주는 trend 중심
+// 시총 티어별 가중치 — 양의 가중치 합 = 100으로 정규화
+// risk는 별도 감산 가중치 (base에서 차감)
 export const WEIGHTS_BY_TIER: Record<'large' | 'mid' | 'small', AiRecommendationWeights> = {
   large: { signal: 5, trend: 28, valuation: 15, supply: 22, earnings_momentum: 30, risk: 15 },
   mid:   { signal: 8, trend: 35, valuation: 20, supply: 18, earnings_momentum: 19, risk: 15 },

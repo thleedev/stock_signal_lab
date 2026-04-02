@@ -72,6 +72,7 @@ export async function generateRecommendations(
     { data: todaySignalRows },
     { data: recentSignalRows },
     { data: priceRows },
+    { data: dartRows },
   ] = await Promise.all([
     // 종목별 재무/가격 캐시
     supabase
@@ -105,12 +106,20 @@ export async function generateRecommendations(
       .in('symbol', symbols)
       .order('date', { ascending: false })
       .limit(symbols.length * 65),
+    // DART 재무 데이터 (이익성장률)
+    supabase
+      .from('stock_dart_info')
+      .select('symbol, revenue_growth_yoy, operating_profit_growth_yoy')
+      .in('symbol', symbols),
   ]);
 
   // 조회 결과를 symbol 기준 Map으로 변환
   const cacheMap = new Map((cacheData ?? []).map((c) => [c.symbol, c]));
   const sectorMap = new Map(
     (sectorData ?? []).map((s) => [s.symbol, s.sector as string | null])
+  );
+  const dartMap = new Map(
+    (dartRows ?? []).map((d) => [d.symbol as string, d as { symbol: string; revenue_growth_yoy: number | null; operating_profit_growth_yoy: number | null }])
   );
 
   // 섹터별 평균 거래대금 사전 집계
@@ -341,6 +350,7 @@ export async function generateRecommendations(
     const riskResult = calcRiskScore(riskInput);
 
     // 이익모멘텀 점수 (대형주/중형주에서 핵심)
+    const dart = dartMap.get(symbol);
     const earningsMomentumInput: EarningsMomentumInput = {
       forwardPer: fwdPer,
       trailingPer: perVal,
@@ -348,8 +358,8 @@ export async function generateRecommendations(
       currentPrice: cache?.current_price ?? null,
       investOpinion: fwdOpinion,
       roe: roeVal,
-      revenueGrowthYoy: null, // 오케스트레이터에서 아직 전달하지 않음
-      operatingProfitGrowthYoy: null,
+      revenueGrowthYoy: dart?.revenue_growth_yoy ?? null,
+      operatingProfitGrowthYoy: dart?.operating_profit_growth_yoy ?? null,
     };
     const earningsMomentumResult = calcEarningsMomentumScore(earningsMomentumInput);
 

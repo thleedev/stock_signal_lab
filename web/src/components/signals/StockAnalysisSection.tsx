@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Camera, Loader2, BarChart3 } from 'lucide-react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { GradeTooltip } from '@/components/common/grade-tooltip';
@@ -9,8 +10,47 @@ import { useScoreHistory } from '@/hooks/use-score-history';
 import { useStockModal } from '@/contexts/stock-modal-context';
 import { StyleSelector } from './StyleSelector';
 import { AnalysisHoverCard } from './AnalysisHoverCard';
+import { SnapshotTracker } from './SnapshotTracker';
+import { formatTimeAgo } from '@/lib/date-utils';
 import type { WatchlistGroup } from '@/types/stock';
 import type { StyleWeights } from '@/lib/unified-scoring/types';
+
+// ── 투자 성격 배지 ────────────────────────────────────────────────────────────
+const CHAR_BADGE_CLS: Record<string, string> = {
+  early_rise:    'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  value:         'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+  supply_strong: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300',
+  tech_rebound:  'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300',
+  multi_signal:  'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  top_pick:      'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300',
+  overheated:    'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+};
+const CHAR_LABEL: Record<string, string> = {
+  early_rise: '🚀상승초입', value: '💎가치주', supply_strong: '🏦수급강세',
+  tech_rebound: '📈기술반등', multi_signal: '⚡다중신호', top_pick: '⭐종합추천',
+  overheated: '⚠️과열',
+};
+
+/** item.categories 기반 투자 성격 계산 (스냅샷 characters 우선 사용) */
+function getCharacters(item: StockRankItem): string[] {
+  if (item.characters && item.characters.length > 0) return item.characters;
+  const cats = item.categories;
+  if (!cats) return [];
+  const pct = item.price_change_pct ?? 0;
+  const val = cats.valueGrowth.normalized;
+  const sup = cats.supply.normalized;
+  const sig = cats.signalTech.normalized;
+  const risk = cats.risk?.normalized ?? 0;
+  const total = item.score_total;
+  const chars: string[] = [];
+  if ((risk >= 60 && pct >= 10) || pct >= 25) chars.push('overheated');
+  if (sig >= 50 && pct >= 0 && pct < 5) chars.push('early_rise');
+  if (val >= 70) chars.push('value');
+  if (sup >= 60) chars.push('supply_strong');
+  if (sig >= 80) chars.push('multi_signal');
+  if (total >= 70) chars.push('top_pick');
+  return chars;
+}
 
 // ── 타입 정의 ─────────────────────────────────────────────────────────────────
 
@@ -71,6 +111,19 @@ function getCategoryScores(item: StockRankItem) {
   };
 }
 
+// ── 신호 경과 텍스트 (모듈 레벨 — Date.now 를 render 밖에서 호출) ──────────────
+function getSignalAge(d: string | undefined | null): string | null {
+  if (!d) return null;
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return null;
+  const diffD = Math.floor((Date.now() - date.getTime()) / 86400000);
+  if (diffD === 0) return '오늘';
+  if (diffD === 1) return '어제';
+  if (diffD < 7) return `${diffD}일전`;
+  if (diffD < 30) return `${Math.floor(diffD / 7)}주전`;
+  return `${Math.floor(diffD / 30)}달전`;
+}
+
 // ── StockRow ──────────────────────────────────────────────────────────────────
 function StockRow({
   item,
@@ -98,11 +151,20 @@ function StockRow({
     ? 'text-blue-500'
     : 'text-[var(--muted)]';
 
+  // 매수신호 대비 Gap
+  const signalGap = item.latest_signal_price && item.latest_signal_price > 0 && item.current_price && item.current_price > 0
+    ? ((item.current_price - item.latest_signal_price) / item.latest_signal_price) * 100
+    : null;
+
+  // 신호 경과
+  const sigDateRaw = item.latest_signal_date ?? (item as unknown as Record<string, unknown>).signal_date as string | undefined;
+  const signalAge = getSignalAge(sigDateRaw);
+
   const miniBars = [
-    { label: '신호', value: scores.signalTech, color: 'bg-amber-500' },
+    { label: '기술', value: scores.signalTech, color: 'bg-amber-500' },
     { label: '수급', value: scores.supply,     color: 'bg-sky-500' },
-    { label: '가치', value: scores.valueGrowth, color: 'bg-violet-500' },
-    { label: '모멘텀', value: scores.momentum,  color: 'bg-emerald-500' },
+    { label: '신호', value: scores.valueGrowth, color: 'bg-violet-500' },
+    { label: '밸류', value: scores.momentum,   color: 'bg-emerald-500' },
   ];
 
   return (
@@ -112,50 +174,92 @@ function StockRow({
       onMouseLeave={onHoverLeave}
       className="px-3 sm:px-4 py-2 sm:py-2.5 cursor-pointer hover:bg-[var(--card-hover)] transition-colors select-none"
     >
-      {/* 줄 1: 순위 · 종목명 · 즐겨찾기 · 등급 · 등락률 · 현재가 */}
+      {/* ── 단일 행: 종목명/등급 | 게이지(데스크탑) | 현재가/등락률/신호경과/Gap ── */}
       <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+
+        {/* 순위 */}
         <span className="text-sm font-bold tabular-nums w-6 shrink-0 text-right text-[var(--muted)]">
           {rank}
         </span>
 
-        <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[6rem] sm:max-w-[10rem]">
+        {/* 종목명 + 즐겨찾기 */}
+        <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[5rem] sm:max-w-[9rem] shrink-0">
           {item.name}
         </span>
         {favs.has(item.symbol) && <span className="text-yellow-400 text-xs shrink-0">★</span>}
 
+        {/* 등급 뱃지 */}
         <GradeTooltip
           weighted={item.score_total}
           grade={grade}
           gradeLabel={gradeLabel}
           gradeCls={gradeCls}
-          scores={[
-            { label: '신호', value: scores.signalTech, color: 'bg-amber-500' },
-            { label: '수급', value: scores.supply,     color: 'bg-sky-500' },
-            { label: '가치', value: scores.valueGrowth, color: 'bg-violet-500' },
-            { label: '모멘텀', value: scores.momentum,  color: 'bg-emerald-500' },
-          ]}
+          scores={[]}
         />
+
+        {/* 투자 성격 배지 — 데스크탑만 */}
+        {(() => {
+          const chars = getCharacters(item);
+          return chars.length > 0 ? (
+            <div className="hidden sm:flex items-center gap-0.5 shrink-0">
+              {chars.slice(0, 2).map((ch) => (
+                <span
+                  key={ch}
+                  className={`px-1 py-0.5 rounded text-[10px] font-bold leading-none ${CHAR_BADGE_CLS[ch] ?? 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}
+                >
+                  {CHAR_LABEL[ch] ?? ch}
+                </span>
+              ))}
+            </div>
+          ) : null;
+        })()}
+
+        {/* 체크리스트 배지 — 데스크탑만 */}
+        {item.checklistTotal != null && item.checklistTotal > 0 && (
+          <span className={`hidden sm:inline px-1.5 py-0.5 rounded text-[10px] font-medium tabular-nums shrink-0 ${
+            (item.checklistMet ?? 0) >= (item.checklistTotal ?? 1) * 0.75
+              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+              : (item.checklistMet ?? 0) >= (item.checklistTotal ?? 1) * 0.5
+              ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
+              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+          }`}>
+            {item.checklistMet}/{item.checklistTotal}
+          </span>
+        )}
+
+        {/* 카테고리 게이지 — 데스크탑만 */}
+        <div className="hidden sm:flex items-center gap-2 shrink-0">
+          {miniBars.map((b) => (
+            <div key={b.label} className="flex items-center gap-0.5">
+              <span className="text-[10px] text-[var(--muted)] w-5 shrink-0">{b.label}</span>
+              <div className="w-10 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+                <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
 
         <div className="flex-1 min-w-0" />
 
-        <span className={`text-sm font-bold tabular-nums shrink-0 ${pctCls}`}>
-          {pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%` : '-'}
+        {/* 현재가(등락률) */}
+        <span className="text-xs tabular-nums shrink-0 text-right">
+          <span className="text-[var(--muted)]">{item.current_price?.toLocaleString() ?? '-'}원</span>
+          <span className={`ml-0.5 font-bold ${pctCls}`}>
+            ({pct != null ? `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%` : '-'})
+          </span>
         </span>
 
-        <span className="hidden sm:inline text-xs text-[var(--muted)] tabular-nums shrink-0">
-          {item.current_price?.toLocaleString() ?? '-'}원
-        </span>
-
-        {/* 점수 바 */}
-        <div className="hidden sm:flex items-center gap-1 shrink-0">
-          <div className="w-16 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-            <div
-              className="h-full rounded-full bg-[var(--accent)]"
-              style={{ width: `${Math.min(100, Math.max(0, item.score_total))}%` }}
-            />
-          </div>
-          <span className="text-xs tabular-nums text-[var(--muted)] w-7 text-right">{item.score_total}</span>
-        </div>
+        {/* 신호경과(Gap) */}
+        {(signalAge || signalGap != null) && (
+          <span className="text-[11px] tabular-nums shrink-0 text-[var(--muted)]" title={signalGap != null ? `신호가 ${item.latest_signal_price?.toLocaleString()}원 대비` : undefined}>
+            {signalAge ?? ''}
+            {signalGap != null && (
+              <span className={`ml-0.5 font-semibold ${signalGap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                ({signalGap >= 0 ? '+' : ''}{signalGap.toFixed(1)}%)
+              </span>
+            )}
+          </span>
+        )}
 
         {/* 우클릭 메뉴 버튼 */}
         <button
@@ -167,22 +271,6 @@ function StockRow({
             <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
           </svg>
         </button>
-      </div>
-
-      {/* 줄 2 (데스크탑): 4카테고리 미니바 */}
-      <div className="hidden sm:flex items-center gap-3 mt-1 pl-8">
-        {miniBars.map((b) => (
-          <div key={b.label} className="flex items-center gap-1">
-            <span className="text-[10px] text-[var(--muted)] w-7">{b.label}</span>
-            <div className="w-14 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-              <div
-                className={`h-full rounded-full ${b.color}`}
-                style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }}
-              />
-            </div>
-            <span className="text-[10px] tabular-nums text-[var(--muted)] w-5 text-right">{b.value}</span>
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -203,6 +291,8 @@ export function StockAnalysisSection({
 
   // 스타일
   const [styleId, setStyleId] = useState('balanced');
+  const [styleWeights, setStyleWeights] = useState<StyleWeights | undefined>(undefined);
+  const [styleDisabledConds, setStyleDisabledConds] = useState<string[] | undefined>(undefined);
 
   // 데이터
   const { data, loading, doFetch } = useUnifiedRanking();
@@ -216,6 +306,26 @@ export function StockAnalysisSection({
   const [visibleCount, setVisibleCount] = useState(50);
   const PAGE_SIZE = 50;
   const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // 노이즈 필터 / 트래커 / 투자성격 필터
+  const [noiseFilter, setNoiseFilter] = useState(false);
+  const [trackerOpen, setTrackerOpen] = useState(false);
+  const [charFilter, setCharFilter] = useState<string>('all');
+
+  // 스냅샷
+  const [savingSnapshot, setSavingSnapshot] = useState(false);
+  const handleSaveSnapshot = useCallback(async () => {
+    setSavingSnapshot(true);
+    try {
+      await window.fetch('/api/v1/stock-ranking/snapshot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: 'standard' }),
+      });
+    } finally {
+      setSavingSnapshot(false);
+    }
+  }, []);
 
   // 즐겨찾기 / 워치리스트
   const [favs, setFavs] = useState<Set<string>>(new Set(favoriteSymbols));
@@ -247,30 +357,32 @@ export function StockAnalysisSection({
   );
 
   useEffect(() => {
-    doFetch(styleId, getDateParam(initialDateMode ?? 'today'), market);
+    doFetch(styleId, getDateParam(initialDateMode ?? 'today'), market, styleWeights, styleDisabledConds);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── 핸들러 ───────────────────────────────────────────────────────────────────
   const resetScroll = () => setVisibleCount(PAGE_SIZE);
 
-  const handleStyleChange = useCallback((id: string) => {
+  const handleStyleChange = useCallback((id: string, weights?: StyleWeights, disabledConds?: string[]) => {
     setStyleId(id);
+    setStyleWeights(weights);
+    setStyleDisabledConds(disabledConds);
     resetScroll();
-    doFetch(id, getDateParam(dateMode), market);
+    doFetch(id, getDateParam(dateMode), market, weights, disabledConds);
   }, [dateMode, doFetch, getDateParam, market]);
 
   const handleDateMode = useCallback((mode: 'today' | 'signal_all' | 'all') => {
     setDateMode(mode);
     resetScroll(); setQ(''); setMarket('all');
-    doFetch(styleId, getDateParam(mode), 'all');
-  }, [styleId, doFetch, getDateParam]);
+    doFetch(styleId, getDateParam(mode), 'all', styleWeights, styleDisabledConds);
+  }, [styleId, styleWeights, styleDisabledConds, doFetch, getDateParam]);
 
   const handleMarket = useCallback((mkt: MarketFilter) => {
     setMarket(mkt);
     resetScroll();
-    doFetch(styleId, getDateParam(dateMode), mkt);
-  }, [styleId, dateMode, doFetch, getDateParam]);
+    doFetch(styleId, getDateParam(dateMode), mkt, styleWeights, styleDisabledConds);
+  }, [styleId, styleWeights, styleDisabledConds, dateMode, doFetch, getDateParam]);
 
   const handleSearch = (v: string) => { setQ(v); resetScroll(); };
 
@@ -387,7 +499,7 @@ export function StockAnalysisSection({
   }, [menu, symGroups]);
 
   // ── 정렬 / 필터 ──────────────────────────────────────────────────────────────
-  const rawItems = data?.items ?? [];
+  const rawItems = useMemo(() => data?.items ?? [], [data]);
 
   const sortedItems = useMemo(() => {
     const list = [...rawItems];
@@ -423,8 +535,35 @@ export function StockAnalysisSection({
     );
   }, [sortedItems, q]);
 
-  const displayTotal = filteredBySearch.length;
-  const displayItems = filteredBySearch.slice(0, visibleCount);
+  const filteredByNoise = useMemo(() => {
+    if (!noiseFilter) return filteredBySearch;
+    return filteredBySearch.filter((item) => {
+      const r = item as unknown as Record<string, unknown>;
+      const tvRaw = (r.daily_trading_value as number | null) ?? (r.trading_value as number | null) ?? null;
+      const avgTvRaw = (r.avg_trading_value_20d as number | null) ?? null;
+      const tr = (r.turnover_rate as number) ?? 0;
+      const managed = (r.is_managed as boolean) ?? false;
+      const cbw = (r.has_recent_cbw as boolean) ?? false;
+      const shRaw = (r.major_shareholder_pct as number | null) ?? null;
+      const mc = (r.market_cap as number) ?? 0;
+      const isLargeCap = mc >= 10_000;
+      if (tvRaw != null && tvRaw < 10_000_000_000) return false;
+      if (avgTvRaw != null && avgTvRaw > 0 && avgTvRaw < 5_000_000_000) return false;
+      if (!isLargeCap && tr > 0 && tr < 1) return false;
+      if (managed) return false;
+      if (cbw) return false;
+      if (shRaw != null && shRaw > 0 && shRaw < 20) return false;
+      return true;
+    });
+  }, [filteredBySearch, noiseFilter]);
+
+  const filteredByChar = useMemo(() => {
+    if (charFilter === 'all') return filteredByNoise;
+    return filteredByNoise.filter((item) => getCharacters(item).includes(charFilter));
+  }, [filteredByNoise, charFilter]);
+
+  const displayTotal = filteredByChar.length;
+  const displayItems = filteredByChar.slice(0, visibleCount);
   const hasMore = visibleCount < displayTotal;
 
   // ── 무한스크롤 ───────────────────────────────────────────────────────────────
@@ -470,90 +609,136 @@ export function StockAnalysisSection({
     { key: 'change', label: '등락률순' },
   ];
 
+  const CHAR_OPTIONS = [
+    { key: 'all',           label: '투자성격' },
+    { key: 'early_rise',    label: '🚀상승초입' },
+    { key: 'value',         label: '💎가치주' },
+    { key: 'supply_strong', label: '🏦수급강세' },
+    { key: 'tech_rebound',  label: '📈기술반등' },
+    { key: 'multi_signal',  label: '⚡다중신호' },
+    { key: 'top_pick',      label: '⭐종합추천' },
+    { key: 'overheated',    label: '⚠️과열주의' },
+  ];
+
+  const iconBtnCls = 'p-1.5 rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors disabled:opacity-50';
+  const snapshotLabel = data?.snapshot_time ? formatTimeAgo(data.snapshot_time) : null;
+
   return (
     <div className="space-y-3">
-      {/* ── 스타일 셀렉터 + 필터 바 ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        {/* 스타일 셀렉터 */}
-        <StyleSelector currentStyleId={styleId} onStyleChange={handleStyleChange} />
-
-        {/* 날짜 모드 */}
-        <div className="flex rounded-lg border border-[var(--border)] overflow-hidden text-xs">
-          {([
-            { key: 'today', label: '오늘' },
-            { key: 'signal_all', label: '신호전체' },
-            { key: 'all', label: '전체종목' },
-          ] as const).map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => handleDateMode(key)}
-              className={`px-2.5 py-1.5 transition-colors ${
-                dateMode === key
-                  ? 'bg-[var(--accent)] text-white'
-                  : 'bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)]'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {/* 마켓 필터 */}
-        <div className="flex rounded-lg border border-[var(--border)] overflow-hidden text-xs">
-          {MARKET_BUTTONS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => handleMarket(key)}
-              className={`px-2.5 py-1.5 transition-colors ${
-                market === key
-                  ? 'bg-[var(--accent)] text-white'
-                  : 'bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)]'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* ── 필터 바 ── */}
+      <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
 
         {/* 검색 */}
         <input
           type="text"
           value={q}
           onChange={(e) => handleSearch(e.target.value)}
-          placeholder="종목명 · 코드 검색"
-          className="flex-1 min-w-[120px] max-w-[200px] px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--card)] placeholder:text-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+          placeholder="검색..."
+          className="w-24 sm:w-28 px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--card)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] shrink-0"
         />
 
-        {/* 정렬 */}
-        <div className="flex rounded-lg border border-[var(--border)] overflow-hidden text-xs ml-auto">
-          {SORT_BUTTONS.map(({ key, label }) => (
-            <button
-              key={key}
-              onClick={() => handleSortChange(key)}
-              className={`px-2.5 py-1.5 transition-colors flex items-center gap-0.5 ${
-                sort === key
-                  ? 'bg-[var(--accent)] text-white'
-                  : 'bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)]'
-              }`}
-            >
+        {/* 이중 구분선 */}
+        <span className="hidden sm:flex items-center gap-0.5 shrink-0">
+          <span className="w-px h-5 bg-[var(--border)]" />
+          <span className="w-px h-5 bg-[var(--border)]" />
+        </span>
+
+        {/* 가중치 필터 (스타일 셀렉터) */}
+        <StyleSelector currentStyleId={styleId} onStyleChange={handleStyleChange} />
+
+        {/* 투자성격 필터 */}
+        <select
+          value={charFilter}
+          onChange={(e) => { setCharFilter(e.target.value); resetScroll(); }}
+          className={`text-xs px-2 py-1.5 rounded-lg border shrink-0 bg-[var(--card)] cursor-pointer focus:outline-none transition-colors ${
+            charFilter !== 'all'
+              ? 'border-[var(--accent)] text-[var(--accent)]'
+              : 'border-[var(--border)] text-[var(--muted)]'
+          }`}
+        >
+          {CHAR_OPTIONS.map(({ key, label }) => (
+            <option key={key} value={key}>{label}</option>
+          ))}
+        </select>
+
+        {/* 날짜 모드 */}
+        <div className="flex rounded-lg border border-[var(--border)] overflow-hidden text-xs shrink-0">
+          {([
+            { key: 'today', label: '오늘' },
+            { key: 'signal_all', label: '신호전체' },
+            { key: 'all', label: '전체종목' },
+          ] as const).map(({ key, label }) => (
+            <button key={key} onClick={() => handleDateMode(key)}
+              className={`px-2.5 py-1.5 transition-colors ${dateMode === key ? 'bg-[var(--accent)] text-white' : 'bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)]'}`}>
               {label}
-              {sort === key && (
-                <span className="text-[10px]">{sortDir === 'desc' ? '↓' : '↑'}</span>
-              )}
             </button>
           ))}
         </div>
 
-        {/* 새로고침 */}
+        {/* 마켓 필터 */}
+        <div className="flex rounded-lg border border-[var(--border)] overflow-hidden text-xs shrink-0">
+          {MARKET_BUTTONS.map(({ key, label }) => (
+            <button key={key} onClick={() => handleMarket(key)}
+              className={`px-2.5 py-1.5 transition-colors ${market === key ? 'bg-[var(--accent)] text-white' : 'bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)]'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* 구분선 */}
+        <span className="hidden sm:block w-px h-5 bg-[var(--border)] shrink-0" />
+
+        {/* 정렬 */}
+        <div className="hidden sm:flex rounded-lg border border-[var(--border)] overflow-hidden text-xs shrink-0">
+          {SORT_BUTTONS.map(({ key, label }) => (
+            <button key={key} onClick={() => handleSortChange(key)}
+              className={`px-2.5 py-1.5 transition-colors flex items-center gap-0.5 ${sort === key ? 'bg-[var(--accent)] text-white' : 'bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)]'}`}>
+              {label}
+              {sort === key && <span className="text-[10px]">{sortDir === 'desc' ? '↓' : '↑'}</span>}
+            </button>
+          ))}
+        </div>
+
+        {/* 노이즈제외 토글 버튼 */}
         <button
-          onClick={() => doFetch(styleId, getDateParam(dateMode), market)}
-          disabled={loading}
-          className="px-2.5 py-1.5 text-xs rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] disabled:opacity-50 transition-colors"
-          title="새로고침"
+          type="button"
+          onClick={() => setNoiseFilter((v) => !v)}
+          className={`hidden sm:inline-flex items-center px-2.5 py-1.5 text-xs rounded-lg border transition-colors shrink-0 ${
+            noiseFilter
+              ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+              : 'bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]'
+          }`}
         >
-          {loading ? '...' : '↺'}
+          노이즈제외
         </button>
+
+        {/* 우측 액션 버튼들 */}
+        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+          <button type="button" onClick={handleSaveSnapshot} disabled={savingSnapshot} title="스냅샷 저장" className={iconBtnCls}>
+            {savingSnapshot ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+          </button>
+          <button type="button" onClick={() => setTrackerOpen(true)} title="순위 트래킹" className={iconBtnCls}>
+            <BarChart3 size={15} />
+          </button>
+          {/* 새로고침 + 업데이트 시각 */}
+          <div className="flex items-center gap-1">
+            {snapshotLabel && (
+              <span className="hidden sm:inline text-[10px] text-[var(--muted)] whitespace-nowrap">{snapshotLabel}</span>
+            )}
+            <button
+              onClick={() => doFetch(styleId, getDateParam(dateMode), market, styleWeights, styleDisabledConds)}
+              disabled={loading} title="새로고침" className={iconBtnCls}
+            >
+              {loading ? <Loader2 size={15} className="animate-spin" /> : <span className="text-sm leading-none">↺</span>}
+            </button>
+          </div>
+        </div>
       </div>
+
+      {/* SnapshotTracker 모달 */}
+      {trackerOpen && (
+        <SnapshotTracker onClose={() => setTrackerOpen(false)} scoreMode="standard" />
+      )}
 
       {/* ── 종목수 표시 ── */}
       <div className="text-xs text-[var(--muted)]">

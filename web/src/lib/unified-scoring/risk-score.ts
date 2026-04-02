@@ -102,8 +102,8 @@ export function calcRiskScore(input: ScoringInput): CategoryScore {
     reasons.push({ label: '감사의견 비적정', points: -30, detail: `의견: ${input.auditOpinion}`, met: false });
   }
 
-  // 대주주 지분율 낮음: -5
-  if (input.majorShareholderPct !== null && input.majorShareholderPct < 20) {
+  // 대주주 지분율 낮음: -5 (0%는 데이터 없음으로 간주하여 패널티 제외)
+  if (input.majorShareholderPct !== null && input.majorShareholderPct > 0 && input.majorShareholderPct < 20) {
     raw += 5;
     reasons.push({ label: '대주주 지분율 낮음', points: -5, detail: `${input.majorShareholderPct.toFixed(1)}%`, met: false });
   }

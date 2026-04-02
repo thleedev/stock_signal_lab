@@ -9,10 +9,11 @@ import {
   validateWeights,
 } from '@/lib/unified-scoring/presets';
 import type { StyleWeights, CustomPreset } from '@/lib/unified-scoring/types';
+import { ALL_CONDITIONS } from '@/lib/checklist-recommendation/types';
 
 interface Props {
   currentStyleId: string;
-  onStyleChange: (styleId: string, weights?: StyleWeights) => void;
+  onStyleChange: (styleId: string, weights?: StyleWeights, disabledConditionIds?: string[]) => void;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -31,19 +32,27 @@ const CATEGORY_COLORS: Record<string, string> = {
   risk: 'bg-gray-500',
 };
 
+const CHECKLIST_CATEGORY_LABELS: Record<string, string> = {
+  trend: '기술적',
+  supply: '수급',
+  valuation: '가치',
+  risk: '리스크',
+};
+
 export function StyleSelector({ currentStyleId, onStyleChange }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editWeights, setEditWeights] = useState<StyleWeights>({ signalTech: 22, supply: 22, valueGrowth: 22, momentum: 19, risk: 15 });
   const [editName, setEditName] = useState('');
+  const [editDisabledConds, setEditDisabledConds] = useState<Set<string>>(new Set());
   const [customPresets, setCustomPresets] = useState<CustomPreset[]>(() => loadCustomPresets());
 
   const currentPreset = STYLE_PRESETS.find(p => p.id === currentStyleId);
   const currentCustom = customPresets.find(p => p.id === currentStyleId);
   const displayName = currentPreset?.name ?? currentCustom?.name ?? '커스텀';
 
-  const handleSelect = useCallback((id: string, weights?: StyleWeights) => {
-    onStyleChange(id, weights);
+  const handleSelect = useCallback((id: string, weights?: StyleWeights, disabledConds?: string[]) => {
+    onStyleChange(id, weights, disabledConds);
     setIsOpen(false);
     setEditing(false);
   }, [onStyleChange]);
@@ -87,21 +96,52 @@ export function StyleSelector({ currentStyleId, onStyleChange }: Props) {
     });
   }, []);
 
+  const toggleCondition = useCallback((id: string) => {
+    setEditDisabledConds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleOpenNew = useCallback(() => {
+    setEditWeights({ signalTech: 22, supply: 22, valueGrowth: 22, momentum: 19, risk: 15 });
+    setEditName('');
+    setEditDisabledConds(new Set());
+    setEditing(true);
+    setIsOpen(false);
+  }, []);
+
   const handleSave = useCallback(() => {
     if (!editName.trim() || !validateWeights(editWeights)) return;
     const id = `custom_${Date.now()}`;
-    const preset: CustomPreset = { id, name: editName.trim(), weights: editWeights };
+    const disabledConditionsArr = Array.from(editDisabledConds);
+    const preset: CustomPreset = {
+      id,
+      name: editName.trim(),
+      weights: editWeights,
+      disabledConditions: disabledConditionsArr.length > 0 ? disabledConditionsArr : undefined,
+    };
     const updated = saveCustomPreset(preset);
     setCustomPresets(updated);
-    handleSelect(id, editWeights);
+    handleSelect(id, editWeights, disabledConditionsArr.length > 0 ? disabledConditionsArr : undefined);
     setEditing(false);
-  }, [editName, editWeights, handleSelect]);
+  }, [editName, editWeights, editDisabledConds, handleSelect]);
 
   const handleDelete = useCallback((id: string) => {
     const updated = deleteCustomPreset(id);
     setCustomPresets(updated);
     if (currentStyleId === id) handleSelect('balanced');
   }, [currentStyleId, handleSelect]);
+
+  // 체크리스트 조건을 카테고리별로 그룹
+  const conditionsByCategory = ALL_CONDITIONS.reduce((acc, cond) => {
+    const cat = cond.category;
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(cond);
+    return acc;
+  }, {} as Record<string, typeof ALL_CONDITIONS>);
 
   return (
     <div className="relative">
@@ -133,10 +173,13 @@ export function StyleSelector({ currentStyleId, onStyleChange }: Props) {
           {customPresets.map(preset => (
             <div key={preset.id} className="flex items-center justify-between px-3 py-2 hover:bg-[var(--card-hover)]">
               <button
-                onClick={() => handleSelect(preset.id, preset.weights)}
+                onClick={() => handleSelect(preset.id, preset.weights, preset.disabledConditions)}
                 className={`text-left text-sm flex-1 ${currentStyleId === preset.id ? 'text-[var(--accent)]' : ''}`}
               >
                 {preset.name}
+                {preset.disabledConditions?.length ? (
+                  <span className="ml-1 text-xs text-[var(--muted)]">({12 - preset.disabledConditions.length}/12)</span>
+                ) : null}
               </button>
               <button onClick={() => handleDelete(preset.id)} className="text-xs text-[var(--muted)] hover:text-red-500 ml-2">삭제</button>
             </div>
@@ -144,7 +187,7 @@ export function StyleSelector({ currentStyleId, onStyleChange }: Props) {
 
           <div className="border-t border-[var(--border)] mt-1">
             <button
-              onClick={() => { setEditing(true); setIsOpen(false); }}
+              onClick={handleOpenNew}
               className="w-full text-left px-3 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--card-hover)]"
             >
               + 새 스타일 만들기
@@ -154,7 +197,7 @@ export function StyleSelector({ currentStyleId, onStyleChange }: Props) {
       )}
 
       {editing && (
-        <div className="mt-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] space-y-3">
+        <div className="mt-3 p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] space-y-3 w-72">
           <input
             type="text"
             value={editName}
@@ -162,21 +205,63 @@ export function StyleSelector({ currentStyleId, onStyleChange }: Props) {
             placeholder="스타일 이름"
             className="w-full px-2 py-1 text-sm rounded border border-[var(--border)] bg-transparent"
           />
-          {(Object.keys(CATEGORY_LABELS) as (keyof StyleWeights)[]).map(key => (
-            <div key={key} className="flex items-center gap-2">
-              <span className="text-xs w-16 text-[var(--muted)]">{CATEGORY_LABELS[key]}</span>
-              <div className={`w-2 h-2 rounded-full ${CATEGORY_COLORS[key]}`} />
-              <input
-                type="range"
-                min={key === 'risk' ? 10 : 0}
-                max={key === 'risk' ? 20 : 60}
-                value={editWeights[key]}
-                onChange={e => handleSliderChange(key, Number(e.target.value))}
-                className="flex-1"
-              />
-              <span className="text-xs w-8 text-right font-mono">{editWeights[key]}</span>
-            </div>
-          ))}
+
+          {/* 가중치 슬라이더 */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-[var(--muted)]">카테고리 가중치</p>
+            {(Object.keys(CATEGORY_LABELS) as (keyof StyleWeights)[]).map(key => (
+              <div key={key} className="flex items-center gap-2">
+                <span className="text-xs w-16 text-[var(--muted)]">{CATEGORY_LABELS[key]}</span>
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${CATEGORY_COLORS[key]}`} />
+                <input
+                  type="range"
+                  min={key === 'risk' ? 10 : 0}
+                  max={key === 'risk' ? 20 : 60}
+                  value={editWeights[key]}
+                  onChange={e => handleSliderChange(key, Number(e.target.value))}
+                  className="flex-1"
+                />
+                <span className="text-xs w-8 text-right font-mono">{editWeights[key]}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* 체크리스트 조건 토글 */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-[var(--muted)]">체크리스트 항목 <span className="text-[var(--muted)]/60">(비활성화하면 N/A 처리)</span></p>
+            {Object.entries(conditionsByCategory).map(([cat, conds]) => (
+              <div key={cat}>
+                <p className="text-xs text-[var(--muted)]/70 mb-1">{CHECKLIST_CATEGORY_LABELS[cat] ?? cat}</p>
+                <div className="flex flex-col gap-1">
+                  {conds.map(cond => {
+                    const disabled = editDisabledConds.has(cond.id);
+                    return (
+                      <button
+                        key={cond.id}
+                        type="button"
+                        onClick={() => toggleCondition(cond.id)}
+                        className={`flex items-center gap-2 px-2 py-1 rounded text-xs text-left transition-colors ${
+                          disabled
+                            ? 'bg-[var(--muted)]/10 text-[var(--muted)]/50 line-through'
+                            : 'bg-[var(--accent)]/8 text-[var(--foreground)] hover:bg-[var(--accent)]/15'
+                        }`}
+                      >
+                        <span className={`w-3 h-3 rounded-sm border flex items-center justify-center flex-shrink-0 ${disabled ? 'border-[var(--muted)]/30' : 'border-[var(--accent)] bg-[var(--accent)]'}`}>
+                          {!disabled && (
+                            <svg className="w-2 h-2 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </span>
+                        {cond.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div className="flex gap-2 justify-end">
             <button onClick={() => setEditing(false)} className="px-3 py-1 text-xs rounded border border-[var(--border)]">취소</button>
             <button onClick={handleSave} className="px-3 py-1 text-xs rounded bg-[var(--accent)] text-white">저장</button>
