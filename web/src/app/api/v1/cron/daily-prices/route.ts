@@ -43,11 +43,14 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // 주말(토·일)이면 repair 모드로 분기
+  // 모드 감지: ?mode=sync (평일 장마감) / ?mode=backfill (매일 백필)
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
   const dayOfWeek = kst.getUTCDay(); // KST 기준 요일
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
+  const { searchParams } = new URL(request.url);
+  const mode = searchParams.get('mode') ?? (dayOfWeek === 0 || dayOfWeek === 6 ? 'backfill' : 'sync');
+
+  if (mode === 'backfill') {
     return runRepairMode(request);
   }
 
