@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { getDailyPrices, delay } from '@/lib/kis-api';
 import { fetchKrxShortSell } from '@/lib/krx-shortsell-api';
 import { fetchNaverBulkIntegration, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import { createAiProvider } from '@/lib/ai';
@@ -166,21 +165,22 @@ export async function GET(request: Request) {
     }
     lap(`stock_cache 업데이트: ${updated}종목 (전종목 upsert)`);
 
-    // ═══ Step 4: KIS API 일봉 수집 ═══
-    // 평일에는 당일 캔들만 upsert한다. 장기 히스토리 복구/백필은 주말 repair 크론에서 처리한다.
+    // ═══ Step 4: 네이버 fchart 전종목 일봉 수집 ═══
+    // KIS API 대신 네이버 fchart로 전종목 당일 캔들을 수집한다.
+    const FULL_DP_CONCURRENCY = 50;
+    const FULL_DP_UPSERT_BATCH = 1000;
+
     let savedCount = 0;
-    const dpArr = [...dpSymbols];
-    for (let i = 0; i < dpArr.length; i += 5) {
-      const chunk = dpArr.slice(i, i + 5);
+    const dpArr = [...integrationMap.keys()];
+
+    for (let i = 0; i < dpArr.length; i += FULL_DP_CONCURRENCY) {
+      const chunk = dpArr.slice(i, i + FULL_DP_CONCURRENCY);
       const results = await Promise.allSettled(
         chunk.map(async (symbol) => {
-          const prices = await getDailyPrices(symbol, todayCompact, todayCompact);
-          if (prices.length === 0) return 0;
-
+          const prices = await fetchNaverDailyPrices(symbol, 3);
           const todayPrice = prices.find((p) => p.date === today);
-          if (!todayPrice) return 0;
-
-          const rows = [{
+          if (!todayPrice) return null;
+          return {
             symbol,
             date: todayPrice.date,
             open: todayPrice.open,
@@ -188,17 +188,27 @@ export async function GET(request: Request) {
             low: todayPrice.low,
             close: todayPrice.close,
             volume: todayPrice.volume,
-          }];
-          const { error } = await supabase
-            .from('daily_prices')
-            .upsert(rows, { onConflict: 'symbol,date' });
-          return error ? 0 : rows.length;
+          };
         })
       );
-      for (const r of results) if (r.status === 'fulfilled') savedCount += r.value;
-      if (i + 5 < dpArr.length) await delay(1000);
+
+      const rows = results
+        .filter((r): r is PromiseFulfilledResult<NonNullable<{
+          symbol: string; date: string; open: number; high: number;
+          low: number; close: number; volume: number;
+        }>> => r.status === 'fulfilled' && r.value !== null)
+        .map((r) => r.value);
+
+      for (let k = 0; k < rows.length; k += FULL_DP_UPSERT_BATCH) {
+        const batch = rows.slice(k, k + FULL_DP_UPSERT_BATCH);
+        const { error } = await supabase
+          .from('daily_prices')
+          .upsert(batch, { onConflict: 'symbol,date' });
+        if (!error) savedCount += batch.length;
+        else console.error('[daily-sync] 일봉 upsert 오류:', error.message);
+      }
     }
-    lap(`일봉 저장: ${savedCount}건`);
+    lap(`전종목 일봉 저장: ${savedCount}/${dpArr.length}건`);
 
     // ═══ Step 5: 신호 집계 (30일) ═══
     const { data: signalCounts } = await supabase
@@ -329,7 +339,7 @@ export async function GET(request: Request) {
       success: true,
       date: today,
       stock_cache: { updated, integration: integrationMap.size },
-      daily_prices: { symbols: dpSymbols.size, saved: savedCount },
+      daily_prices: { symbols: dpArr.length, saved: savedCount },
       short_sell: { success: shortSellSuccess, updated: shortSellMap.size },
       splits: splitResult,
       report: reportResult,
