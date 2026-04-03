@@ -16,6 +16,28 @@ import type { ScoringInput } from '@/lib/unified-scoring/types';
 
 export const dynamic = 'force-dynamic';
 
+/** newest-first dailyPrices에서 모멘텀 파생값 계산 */
+function calcMomentumDerived(prices: ScoringInput['dailyPrices']): {
+  volumeRatio: number | null;
+  cumReturn3d: number | null;
+  closePosition: number | null;
+} {
+  if (prices.length === 0) return { volumeRatio: null, cumReturn3d: null, closePosition: null };
+  const today = prices[0];
+  const closePosition = today.high !== today.low
+    ? (today.close - today.low) / (today.high - today.low)
+    : null;
+  const cumReturn3d = prices.length >= 4
+    ? ((today.close / prices[3].close) - 1) * 100
+    : null;
+  let volumeRatio: number | null = null;
+  if (prices.length >= 20) {
+    const avg20 = prices.slice(1, 21).reduce((s, p) => s + p.volume, 0) / 20;
+    volumeRatio = avg20 > 0 ? today.volume / avg20 : null;
+  }
+  return { volumeRatio, cumReturn3d, closePosition };
+}
+
 export interface StockRankItem {
   symbol: string;
   name: string;
@@ -761,7 +783,8 @@ export async function GET(request: NextRequest) {
         revenueGrowthYoy: (row.revenue_growth_yoy as number | null) ?? null,
         operatingProfitGrowthYoy: (row.operating_profit_growth_yoy as number | null) ?? null,
         dailyPrices: singleDailyPrices as ScoringInput['dailyPrices'],
-        volumeRatio: null, closePosition: null, gapPct: null, cumReturn3d: null, tradingValue: null,
+        ...calcMomentumDerived(singleDailyPrices as ScoringInput['dailyPrices']),
+        gapPct: null, tradingValue: null,
         sectorAvgChangePct: null, sectorRank: null, sectorTotal: null,
       };
       const singleUnified = calcUnifiedScore(singleUnifiedInput, style);
@@ -1096,7 +1119,8 @@ export async function GET(request: NextRequest) {
               revenueGrowthYoy: (item as unknown as Record<string, unknown>).revenue_growth_yoy as number | null ?? null,
               operatingProfitGrowthYoy: (item as unknown as Record<string, unknown>).operating_profit_growth_yoy as number | null ?? null,
               dailyPrices: dp as ScoringInput['dailyPrices'],
-              volumeRatio: null, closePosition: null, gapPct: null, cumReturn3d: null, tradingValue: null,
+              ...calcMomentumDerived(dp as ScoringInput['dailyPrices']),
+              gapPct: null, tradingValue: null,
               sectorAvgChangePct: null, sectorRank: null, sectorTotal: null,
             };
             const snapUnified = calcUnifiedScore(snapUnifiedInput, style);
@@ -1633,7 +1657,8 @@ export async function GET(request: NextRequest) {
             revenueGrowthYoy: (r.revenue_growth_yoy as number | null) ?? null,
             operatingProfitGrowthYoy: (r.operating_profit_growth_yoy as number | null) ?? null,
             dailyPrices: batchPrices as unknown as ScoringInput['dailyPrices'],
-            volumeRatio: null, closePosition: null, gapPct: null, cumReturn3d: null, tradingValue: null,
+            ...calcMomentumDerived(batchPrices as unknown as ScoringInput['dailyPrices']),
+            gapPct: null, tradingValue: null,
             sectorAvgChangePct: null, sectorRank: null, sectorTotal: null,
           };
           const batchUnified = calcUnifiedScore(batchUnifiedInput, style);

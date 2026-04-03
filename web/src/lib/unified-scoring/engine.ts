@@ -89,6 +89,9 @@ function extractChecklist(
     no_overbought:   { category: 'risk',       labelPattern: '과매수 없음' },
     no_surge:        { category: 'risk',       labelPattern: '급등 없음' },
     no_smart_exit:   { category: 'risk',       labelPattern: '스마트머니 이탈 없음' },
+    price_up:        { category: 'momentum',   labelPattern: '일간 상승' },
+    bullish_candle:  { category: 'momentum',   labelPattern: '양봉' },
+    box_breakout:    { category: 'momentum',   labelPattern: '박스 돌파' },
   };
 
   return ALL_CONDITIONS.map(cond => {

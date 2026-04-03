@@ -14,17 +14,18 @@ export function calcMomentumScore(input: ScoringInput): CategoryScore {
 
   // 일간 등락률 (0~15)
   if (input.priceChangePct !== null) {
-    if (input.priceChangePct >= 3) {
+    const pct = input.priceChangePct;
+    if (pct >= 3) {
       raw += 15;
-      reasons.push({ label: '강한 상승', points: 15, detail: `${input.priceChangePct.toFixed(1)}%`, met: true });
-    } else if (input.priceChangePct >= 1) {
+      reasons.push({ label: '일간 상승', points: 15, detail: `${pct.toFixed(1)}%`, met: true });
+    } else if (pct >= 1) {
       raw += 10;
-      reasons.push({ label: '상승', points: 10, detail: `${input.priceChangePct.toFixed(1)}%`, met: true });
-    } else if (input.priceChangePct >= 0) {
+      reasons.push({ label: '일간 상승', points: 10, detail: `${pct.toFixed(1)}%`, met: true });
+    } else if (pct >= 0) {
       raw += 5;
-      reasons.push({ label: '보합/소폭 상승', points: 5, detail: `${input.priceChangePct.toFixed(1)}%`, met: true });
+      reasons.push({ label: '일간 상승', points: 5, detail: `${pct.toFixed(1)}%`, met: false });
     } else {
-      reasons.push({ label: '하락', points: 0, detail: `${input.priceChangePct.toFixed(1)}%`, met: false });
+      reasons.push({ label: '일간 상승', points: 0, detail: `${pct.toFixed(1)}%`, met: false });
     }
   }
 
@@ -68,10 +69,9 @@ export function calcMomentumScore(input: ScoringInput): CategoryScore {
   const prices = input.dailyPrices;
   if (prices.length >= 1) {
     const today = prices[0];
-    if (today.close > today.open) {
-      raw += 5;
-      reasons.push({ label: '양봉', points: 5, detail: `시${today.open} → 종${today.close}`, met: true });
-    }
+    const isBullish = today.close > today.open;
+    if (isBullish) raw += 5;
+    reasons.push({ label: '양봉', points: isBullish ? 5 : 0, detail: `시${today.open} → 종${today.close}`, met: isBullish });
   }
   if (input.gapPct !== null && input.gapPct > 1) {
     raw += 5;
@@ -81,10 +81,9 @@ export function calcMomentumScore(input: ScoringInput): CategoryScore {
   // 박스 돌파 (0~10)
   if (prices.length >= 20) {
     const recent20High = Math.max(...prices.slice(1, 21).map(p => p.high));
-    if (prices[0].close > recent20High) {
-      raw += 10;
-      reasons.push({ label: '박스 돌파', points: 10, detail: `종가 ${prices[0].close} > 20일고가 ${recent20High}`, met: true });
-    }
+    const isBreakout = prices[0].close > recent20High;
+    if (isBreakout) raw += 10;
+    reasons.push({ label: '박스 돌파', points: isBreakout ? 10 : 0, detail: `종가 ${prices[0].close} / 20일고가 ${recent20High}`, met: isBreakout });
   }
 
   // 섹터 상대 강도 (0~10)

@@ -1,4 +1,4 @@
-export type ConditionCategory = 'trend' | 'supply' | 'valuation' | 'risk';
+export type ConditionCategory = 'trend' | 'supply' | 'valuation' | 'risk' | 'momentum';
 
 export interface ConditionDef {
   id: string;
@@ -42,4 +42,7 @@ export const ALL_CONDITIONS: ConditionDef[] = [
   { id: 'no_overbought',    label: '과매수 없음',        category: 'risk' },
   { id: 'no_surge',         label: '급등 없음',          category: 'risk' },
   { id: 'no_smart_exit',    label: '스마트머니 이탈 없음', category: 'risk' },
+  { id: 'price_up',         label: '일간 상승',          category: 'momentum' },
+  { id: 'bullish_candle',   label: '양봉',               category: 'momentum' },
+  { id: 'box_breakout',     label: '박스 돌파',          category: 'momentum' },
 ];

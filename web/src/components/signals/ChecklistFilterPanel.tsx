@@ -4,7 +4,7 @@ import { ALL_CONDITIONS, type ConditionCategory } from '@/lib/checklist-recommen
 
 const STORAGE_KEY = 'checklist-conditions';
 const CATEGORY_LABELS: Record<ConditionCategory, string> = {
-  trend: '추세', supply: '수급', valuation: '밸류', risk: '리스크',
+  trend: '추세', supply: '수급', valuation: '밸류', risk: '리스크', momentum: '모멘텀',
 };
 
 interface Props { onChange: (activeIds: string[]) => void; }
