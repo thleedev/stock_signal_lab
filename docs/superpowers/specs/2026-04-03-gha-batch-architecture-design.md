@@ -34,8 +34,7 @@ status: approved
 │      Step 4: 축별 점수 계산 → stock_scores 저장 │
 │      Step 5: AI 리포트 생성                      │
 │      Step 6: 시황 지표 수집 (Yahoo/FRED)        │
-│      Step 7: 공휴일/FOMC/만기일 갱신            │
-│              (월요일인 경우에만 실행)            │
+│      Step 7: 공휴일/FOMC/만기일 갱신 (매일)     │
 └───────────────────┬─────────────────────────────┘
                     │ supabase-js (직접 연결)
 ┌───────────────────▼─────────────────────────────┐
@@ -117,7 +116,7 @@ Supabase Realtime으로 프론트엔드가 상태 구독.
     │   ├── step4-scoring.ts      # 축별 점수 → stock_scores
     │   ├── step5-ai-report.ts    # AI 리포트 생성
     │   ├── step6-market-data.ts  # 시황 (Yahoo/FRED) → market_indicators
-    │   └── step7-events.ts       # 공휴일/금리결정일/만기일 (월요일만)
+    │   └── step7-events.ts       # 공휴일/금리결정일/만기일 (매일 upsert)
     └── shared/
         ├── supabase.ts           # DB 클라이언트 (SUPABASE_SERVICE_KEY)
         └── logger.ts             # batch_runs 상태 업데이트 헬퍼
