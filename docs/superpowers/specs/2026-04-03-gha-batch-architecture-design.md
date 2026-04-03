@@ -23,19 +23,19 @@ status: approved
 ┌─────────────────────────────────────────────────┐
 │           GitHub Actions (Public Repo)           │
 │                                                  │
-│  [A] daily-batch.yml  (평일 16:10 KST)          │
+│  [단일] daily-batch.yml                          │
+│      trigger: 평일 16:10 KST (schedule)          │
+│               수동 버튼 / 오류 재실행            │
+│               (workflow_dispatch, date 파라미터) │
+│                                                  │
 │      Step 1: 전종목 일봉 수집 (네이버)           │
 │      Step 2: 수급/지표 수집 (네이버/KRX)        │
 │      Step 3: 공매도 수집 (KRX)                   │
 │      Step 4: 축별 점수 계산 → stock_scores 저장 │
 │      Step 5: AI 리포트 생성                      │
 │      Step 6: 시황 지표 수집 (Yahoo/FRED)        │
-│                                                  │
-│  [B] weekly-events.yml  (월요일 09:00 KST)      │
-│      공휴일 / FOMC / 선물옵션만기 갱신           │
-│                                                  │
-│  [C] backfill.yml  (수동 workflow_dispatch)      │
-│      과거 일봉 / 점수 재계산                     │
+│      Step 7: 공휴일/FOMC/만기일 갱신            │
+│              (월요일인 경우에만 실행)            │
 └───────────────────┬─────────────────────────────┘
                     │ supabase-js (직접 연결)
 ┌───────────────────▼─────────────────────────────┐
@@ -91,7 +91,7 @@ score_value * w_value
 | 컬럼 | 타입 | 설명 |
 |------|------|------|
 | id | uuid | PK |
-| workflow | text | 'daily-batch', 'backfill', 'weekly-events' |
+| workflow | text | 'daily-batch' (단일 workflow) |
 | status | text | 'pending' \| 'running' \| 'done' \| 'failed' |
 | triggered_by | text | 'schedule' \| 'manual' |
 | started_at | timestamptz | |
@@ -107,9 +107,7 @@ Supabase Realtime으로 프론트엔드가 상태 구독.
 ```
 .github/
 ├── workflows/
-│   ├── daily-batch.yml
-│   ├── weekly-events.yml
-│   └── backfill.yml
+│   └── daily-batch.yml         # 단일 workflow
 └── scripts/
     ├── batch/
     │   ├── index.ts              # 진입점 (batch_runs 상태 관리)
@@ -118,9 +116,8 @@ Supabase Realtime으로 프론트엔드가 상태 구독.
     │   ├── step3-shortsell.ts    # 공매도 (KRX) → stock_cache
     │   ├── step4-scoring.ts      # 축별 점수 → stock_scores
     │   ├── step5-ai-report.ts    # AI 리포트 생성
-    │   └── step6-market-data.ts  # 시황 (Yahoo/FRED) → market_indicators
-    ├── events/
-    │   └── index.ts              # 공휴일/FOMC/만기일 → market_events
+    │   ├── step6-market-data.ts  # 시황 (Yahoo/FRED) → market_indicators
+    │   └── step7-events.ts       # 공휴일/금리결정일/만기일 (월요일만)
     └── shared/
         ├── supabase.ts           # DB 클라이언트 (SUPABASE_SERVICE_KEY)
         └── logger.ts             # batch_runs 상태 업데이트 헬퍼
@@ -132,7 +129,11 @@ Supabase Realtime으로 프론트엔드가 상태 구독.
 on:
   schedule:
     - cron: '10 7 * * 1-5'   # 평일 16:10 KST (UTC 07:10)
-  workflow_dispatch:           # 프론트엔드 수동 트리거
+  workflow_dispatch:           # 프론트엔드 수동 트리거 / 오류 재실행
+    inputs:
+      date:
+        description: '재수집 기준일 (YYYY-MM-DD, 빈칸이면 오늘)'
+        required: false
 
 jobs:
   batch:
@@ -150,6 +151,7 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          TARGET_DATE: ${{ inputs.date }}
 ```
 
 ---
@@ -193,9 +195,9 @@ jobs:
 | 파일 | 이유 |
 |------|------|
 | `web/src/app/api/v1/cron/daily-prices/route.ts` | GHA step1~5로 이관 |
-| `web/src/app/api/v1/cron/daily-prices-repair/route.ts` | GHA backfill.yml로 이관 |
+| `web/src/app/api/v1/cron/daily-prices-repair/route.ts` | GHA workflow_dispatch(date 파라미터)로 대체 |
 | `web/src/app/api/v1/cron/market-indicators/route.ts` | GHA step6 + 실시간 API로 이관 |
-| `web/src/app/api/v1/cron/market-events/route.ts` | GHA weekly-events.yml로 이관 |
+| `web/src/app/api/v1/cron/market-events/route.ts` | GHA step7(월요일 조건)로 이관 |
 | `web/src/app/api/v1/cron/intraday-prices/route.ts` | vercel.json에 없음, 미사용 |
 | `web/vercel.json` crons 섹션 | GHA로 전환 후 제거 |
 
@@ -204,12 +206,12 @@ jobs:
 ## 6. 구현 순서
 
 1. **DB 마이그레이션**: `stock_scores`, `batch_runs` 테이블 생성
-2. **GHA 스크립트**: `.github/scripts/` 디렉토리 + 각 step 스크립트
-3. **GHA workflows**: `daily-batch.yml`, `weekly-events.yml`, `backfill.yml`
+2. **GHA 스크립트**: `.github/scripts/` 디렉토리 + step1~7 스크립트
+3. **GHA workflow**: `daily-batch.yml` 단일 파일 (schedule + workflow_dispatch)
 4. **API 단순화**: `stock-ranking`, `prices`, `market-indicators`
-5. **trigger-batch API**: 프론트 수동 트리거 엔드포인트
-6. **Vercel Cron 제거**: 검증 후 `vercel.json` crons 섹션 및 cron 라우트 삭제
-7. **GitHub Secrets 등록**: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `FRED_API_KEY`
+5. **trigger-batch API**: 프론트 수동 트리거 엔드포인트 (PAT 기반)
+6. **Vercel Cron 제거**: GHA 검증 후 `vercel.json` crons 섹션 및 cron 라우트 삭제
+7. **GitHub Secrets 등록**: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `OPENAI_API_KEY`, `FRED_API_KEY`, `GH_PAT`
 
 ---
 
