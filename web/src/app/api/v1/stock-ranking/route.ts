@@ -11,6 +11,8 @@ import type { ScoreReason } from '@/types/score-reason';
 import { calcCompositeScore, type StyleId } from '@/lib/scoring/composite-score';
 import type { ConditionResult } from '@/lib/checklist-recommendation/types';
 import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
+import { calcUnifiedScore } from '@/lib/unified-scoring/engine';
+import type { ScoringInput } from '@/lib/unified-scoring/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -733,6 +735,36 @@ export async function GET(request: NextRequest) {
         score_momentum: singleResult.score_technical,
         score_risk: singleResult.score_risk,
       };
+      const singleUnifiedInput: ScoringInput = {
+        symbol: row.symbol as string, name: row.name as string, market: row.market as string,
+        currentPrice: row.current_price as number | null, priceChangePct: row.price_change_pct as number | null,
+        high52w: row.high_52w as number | null, low52w: row.low_52w as number | null,
+        marketCap: row.market_cap as number | null,
+        per: row.per as number | null, forwardPer: row.forward_per as number | null,
+        forwardEps: null, eps: null, pbr: row.pbr as number | null, bps: null,
+        roe: row.roe as number | null, roeEstimated: null,
+        dividendYield: row.dividend_yield as number | null,
+        targetPrice: row.target_price as number | null, investOpinion: row.invest_opinion as number | null,
+        foreignNetQty: row.foreign_net_qty as number | null, institutionNetQty: row.institution_net_qty as number | null,
+        foreignNet5d: row.foreign_net_5d as number | null, institutionNet5d: row.institution_net_5d as number | null,
+        foreignStreak: row.foreign_streak as number | null, institutionStreak: row.institution_streak as number | null,
+        shortSellRatio: row.short_sell_ratio as number | null,
+        volume: row.volume as number | null, floatShares: row.float_shares as number | null,
+        signalCount30d: row.signal_count_30d as number | null,
+        latestSignalPrice: row.latest_signal_price as number | null, latestSignalDate: null,
+        signalSources: singleSignalSources, latestSignalDaysAgo: singleLatestSigDaysAgo,
+        isManaged: (row.is_managed as boolean) ?? false, hasRecentCbw: (row.has_recent_cbw as boolean) ?? false,
+        auditOpinion: (row.audit_opinion as string | null) ?? null,
+        majorShareholderPct: (row.major_shareholder_pct as number | null) ?? null,
+        majorShareholderDelta: (row.major_shareholder_delta as number | null) ?? null,
+        hasTreasuryBuyback: (row.has_treasury_buyback as boolean) ?? false,
+        revenueGrowthYoy: (row.revenue_growth_yoy as number | null) ?? null,
+        operatingProfitGrowthYoy: (row.operating_profit_growth_yoy as number | null) ?? null,
+        dailyPrices: singleDailyPrices as ScoringInput['dailyPrices'],
+        volumeRatio: null, closePosition: null, gapPct: null, cumReturn3d: null, tradingValue: null,
+        sectorAvgChangePct: null, sectorRank: null, sectorTotal: null,
+      };
+      const singleUnified = calcUnifiedScore(singleUnifiedInput, style);
       const item: StockRankItem = {
         ...row,
         ...scores,
@@ -749,9 +781,9 @@ export async function GET(request: NextRequest) {
           momentum: { normalized: singleResult.score_technical, reasons: [] },
           risk: { normalized: Math.abs(singleResult.score_risk), reasons: [] },
         },
-        checklist: undefined,
-        checklistMet: undefined,
-        checklistTotal: undefined,
+        checklist: singleUnified.checklist,
+        checklistMet: singleUnified.checklistMet,
+        checklistTotal: singleUnified.checklistTotal,
         appliedStyle: style,
       } as unknown as StockRankItem;
 
@@ -1037,9 +1069,41 @@ export async function GET(request: NextRequest) {
           item.score_risk = snapResult.score_risk;
           item.score_total = snapResult.score_total;
           item.grade = snapResult.score_total >= 90 ? 'A+' : snapResult.score_total >= 80 ? 'A' : snapResult.score_total >= 65 ? 'B+' : snapResult.score_total >= 50 ? 'B' : snapResult.score_total >= 35 ? 'C' : 'D';
-          item.checklist = undefined;
-          item.checklistMet = undefined;
-          item.checklistTotal = undefined;
+          {
+            const snapSources = snapSnapSources ? Array.from(snapSnapSources) as string[] : [];
+            const snapUnifiedInput: ScoringInput = {
+              symbol: item.symbol, name: item.name, market: item.market,
+              currentPrice: item.current_price, priceChangePct: item.price_change_pct,
+              high52w: item.high_52w, low52w: item.low_52w, marketCap: item.market_cap,
+              per: item.per, forwardPer: item.forward_per,
+              forwardEps: null, eps: null, pbr: item.pbr, bps: null,
+              roe: item.roe, roeEstimated: null,
+              dividendYield: item.dividend_yield, targetPrice: item.target_price,
+              investOpinion: item.invest_opinion,
+              foreignNetQty: item.foreign_net_qty, institutionNetQty: item.institution_net_qty,
+              foreignNet5d: item.foreign_net_5d, institutionNet5d: item.institution_net_5d,
+              foreignStreak: item.foreign_streak, institutionStreak: item.institution_streak,
+              shortSellRatio: item.short_sell_ratio,
+              volume: null, floatShares: null,
+              signalCount30d: item.signal_count_30d as number | null,
+              latestSignalPrice: item.latest_signal_price, latestSignalDate: null,
+              signalSources: snapSources, latestSignalDaysAgo: snapLatestDaysAgo,
+              isManaged: item.is_managed ?? false, hasRecentCbw: item.has_recent_cbw ?? false,
+              auditOpinion: item.audit_opinion ?? null,
+              majorShareholderPct: item.major_shareholder_pct ?? null,
+              majorShareholderDelta: item.major_shareholder_delta ?? null,
+              hasTreasuryBuyback: item.has_treasury_buyback ?? false,
+              revenueGrowthYoy: (item as unknown as Record<string, unknown>).revenue_growth_yoy as number | null ?? null,
+              operatingProfitGrowthYoy: (item as unknown as Record<string, unknown>).operating_profit_growth_yoy as number | null ?? null,
+              dailyPrices: dp as ScoringInput['dailyPrices'],
+              volumeRatio: null, closePosition: null, gapPct: null, cumReturn3d: null, tradingValue: null,
+              sectorAvgChangePct: null, sectorRank: null, sectorTotal: null,
+            };
+            const snapUnified = calcUnifiedScore(snapUnifiedInput, style);
+            item.checklist = snapUnified.checklist;
+            item.checklistMet = snapUnified.checklistMet;
+            item.checklistTotal = snapUnified.checklistTotal;
+          }
           item.appliedStyle = style;
           (item as unknown as Record<string, unknown>).categories = {
             signalTech: { normalized: snapResult.score_signal,    reasons: [] },
@@ -1539,6 +1603,44 @@ export async function GET(request: NextRequest) {
           checklistTotal: undefined,
           appliedStyle: style,
         };
+        {
+          const batchPricesRaw = batchDailyPricesMap.get(base.symbol) ?? []; // already oldest-first
+          const batchPrices = [...batchPricesRaw].reverse(); // calcUnifiedScore expects newest-first
+          const batchSources = sigEntry?.sources ?? [];
+          const batchUnifiedInput: ScoringInput = {
+            symbol: base.symbol, name: base.name, market: base.market,
+            currentPrice: base.current_price, priceChangePct: base.price_change_pct,
+            high52w: base.high_52w, low52w: base.low_52w, marketCap: base.market_cap,
+            per: base.per, forwardPer: base.forward_per,
+            forwardEps: null, eps: null, pbr: base.pbr, bps: null,
+            roe: base.roe, roeEstimated: null,
+            dividendYield: base.dividend_yield, targetPrice: base.target_price,
+            investOpinion: base.invest_opinion,
+            foreignNetQty: base.foreign_net_qty, institutionNetQty: base.institution_net_qty,
+            foreignNet5d: base.foreign_net_5d, institutionNet5d: base.institution_net_5d,
+            foreignStreak: base.foreign_streak, institutionStreak: base.institution_streak,
+            shortSellRatio: base.short_sell_ratio,
+            volume: null, floatShares: null,
+            signalCount30d: base.signal_count_30d as number | null,
+            latestSignalPrice: base.latest_signal_price, latestSignalDate: null,
+            signalSources: Array.isArray(batchSources) ? batchSources as string[] : [],
+            latestSignalDaysAgo: sigEntry?.latestDaysAgo ?? null,
+            isManaged: (r.is_managed as boolean) ?? false, hasRecentCbw: (r.has_recent_cbw as boolean) ?? false,
+            auditOpinion: (r.audit_opinion as string | null) ?? null,
+            majorShareholderPct: (r.major_shareholder_pct as number | null) ?? null,
+            majorShareholderDelta: (r.major_shareholder_delta as number | null) ?? null,
+            hasTreasuryBuyback: (r.has_treasury_buyback as boolean) ?? false,
+            revenueGrowthYoy: (r.revenue_growth_yoy as number | null) ?? null,
+            operatingProfitGrowthYoy: (r.operating_profit_growth_yoy as number | null) ?? null,
+            dailyPrices: batchPrices as unknown as ScoringInput['dailyPrices'],
+            volumeRatio: null, closePosition: null, gapPct: null, cumReturn3d: null, tradingValue: null,
+            sectorAvgChangePct: null, sectorRank: null, sectorTotal: null,
+          };
+          const batchUnified = calcUnifiedScore(batchUnifiedInput, style);
+          item.checklist = batchUnified.checklist;
+          item.checklistMet = batchUnified.checklistMet;
+          item.checklistTotal = batchUnified.checklistTotal;
+        }
         if (aiRec) {
           // AI 추천 데이터는 패턴 정보만 보존 (점수는 calcScore 결과 사용)
           const rsiVal = aiRec.rsi as number | null;
