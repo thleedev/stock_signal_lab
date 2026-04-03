@@ -37,15 +37,19 @@ export async function fetchKrxShortSell(): Promise<Map<string, number>> {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'User-Agent': 'Mozilla/5.0',
-          Referer: 'https://data.krx.co.kr/',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'ko-KR,ko;q=0.9',
+          'Origin': 'https://data.krx.co.kr',
+          'Referer': 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201020301',
         },
         body: body.toString(),
       }
     );
 
     if (!res.ok) {
-      console.error(`[KRX short-sell] HTTP ${res.status}`);
+      const errorBody = await res.text().catch(() => '');
+      console.error(`[KRX short-sell] HTTP ${res.status}: ${errorBody.slice(0, 300)}`);
       return result;
     }
 

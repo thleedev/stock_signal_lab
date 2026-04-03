@@ -47,20 +47,34 @@ async function fetchFredLatest(seriesId: string): Promise<number | null> {
  * 실패 시 null 반환
  */
 async function fetchCnnFearGreed(): Promise<number | null> {
-  try {
-    const res = await fetch(
-      'https://production.dataviz.cnn.io/index/fearandgreed/graphdata/',
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const json: any = await res.json();
-    const score = json?.fear_and_greed?.score;
-    if (typeof score !== 'number' || score < 0 || score > 100) return null;
-    return Math.round(score * 100) / 100;
-  } catch {
-    return null;
+  const urls = [
+    'https://production.dataviz.cnn.io/index/fearandgreed/graphdata',
+    'https://production.dataviz.cnn.io/index/fearandgreed/graphdata/',
+  ];
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json',
+          'Referer': 'https://edition.cnn.com/',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) {
+        console.warn(`[market-indicators] CNN Fear & Greed ${url} returned ${res.status}`);
+        continue;
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json: any = await res.json();
+      const score = json?.fear_and_greed?.score ?? json?.score;
+      if (typeof score !== 'number' || score < 0 || score > 100) continue;
+      return Math.round(score * 100) / 100;
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 export async function POST(request: NextRequest) {
