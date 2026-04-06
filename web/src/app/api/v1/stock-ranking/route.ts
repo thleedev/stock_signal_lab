@@ -125,9 +125,17 @@ export async function GET(request: NextRequest) {
   }
 
   // date 파라미터로 신호 필터링
-  // 'today'(YYYY-MM-DD) = 전체 종목(필터 없음), 'signal_all' = 30일 내 신호 보유, 'all' = 전체
+  // 'all' = 전체 종목, 'signal_all' = 30일 내 신호 보유, 'YYYY-MM-DD' = 해당 날짜에 신호가 있는 종목
   if (dateParam === 'signal_all') {
     query = query.gt('stock_cache.signal_count_30d', 0);
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+    // 오늘 탭: latest_signal_date가 해당 날짜인 종목만 (timestamp 범위 필터)
+    const nextDay = new Date(dateParam);
+    nextDay.setDate(nextDay.getDate() + 1);
+    const nextDayStr = nextDay.toISOString().slice(0, 10);
+    query = query
+      .gte('stock_cache.latest_signal_date', `${dateParam}T00:00:00+09:00`)
+      .lt('stock_cache.latest_signal_date', `${nextDayStr}T00:00:00+09:00`);
   }
 
   const { data: rawData, count, error } = await query
