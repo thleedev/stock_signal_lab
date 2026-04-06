@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export type StockRankItem = {
   symbol: string;
   scored_at: string | null;
-  score_total: number;
+  score_total: number; // balanced weighted 종합 점수 (API에서 재계산)
   score_value: number;
   score_growth: number;
   score_supply: number;
@@ -95,6 +95,7 @@ export async function GET(request: NextRequest) {
   const market = searchParams.get('market') ?? 'all';
   const styleParam = searchParams.get('style') ?? 'balanced';
   const style: StyleId = VALID_STYLES.includes(styleParam as StyleId) ? (styleParam as StyleId) : 'balanced';
+  const dateParam = searchParams.get('date') ?? 'all'; // 'all' | 'signal_all' | 'YYYY-MM-DD'
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
   const limit = Math.min(200, Math.max(10, parseInt(searchParams.get('limit') ?? '50')));
   const offset = (page - 1) * limit;
@@ -107,7 +108,7 @@ export async function GET(request: NextRequest) {
     .from('stock_scores')
     .select(`
       symbol, scored_at, prev_close,
-      score_value, score_growth, score_supply, score_momentum, score_risk, score_signal,
+      score_value, score_growth, score_supply, score_momentum, score_risk, score_signal, score_total,
       stock_cache!inner(
         symbol, name, market, current_price, price_change_pct,
         per, pbr, roe, market_cap, dividend_yield,
@@ -123,8 +124,18 @@ export async function GET(request: NextRequest) {
     query = query.eq('stock_cache.market', market);
   }
 
+  // date 파라미터로 신호 필터링
+  if (dateParam === 'signal_all') {
+    // 신호가 있는 종목만 (30일 내 신호)
+    query = query.gt('stock_cache.signal_count_30d', 0);
+  } else if (dateParam !== 'all' && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+    // 특정 날짜 이후 신호가 있는 종목
+    query = query.gte('stock_cache.latest_signal_date', dateParam);
+  }
+
   const { data: rawData, count, error } = await query
     .not('stock_cache.current_price', 'is', null)
+    .order('score_total', { ascending: false })
     .range(offset, offset + limit - 1);
 
   if (error) {

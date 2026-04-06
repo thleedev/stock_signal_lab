@@ -180,6 +180,20 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
         // 통합 점수 엔진 실행
         const result = calcUnifiedScore(input, 'balanced');
 
+        const sv = Math.round(result.categories.valueGrowth?.normalized ?? 0);
+        const sg = Math.round(result.categories.valueGrowth?.normalized ?? 0);
+        const ss = Math.round(result.categories.supply?.normalized ?? 0);
+        const sm = Math.round(result.categories.momentum?.normalized ?? 0);
+        const sr = Math.round(result.categories.risk?.normalized ?? 0);
+        const ssig = Math.round(result.categories.signalTech?.normalized ?? 0);
+
+        // balanced 기준 종합 점수 (DB 레벨 정렬용)
+        // weights: value=20, growth=15, supply=20, momentum=20, signal=10, risk=15
+        const wTotal = 20 + 15 + 20 + 20 + 10;
+        const scoreTotal = Math.max(0, Math.min(100,
+          Math.round((sv * 20 + sg * 15 + ss * 20 + sm * 20 + ssig * 10) / wTotal - sr * 0.15)
+        ));
+
         // 전일 종가: 일봉 배열 2번째 항목(내림차순), 없으면 current_price 사용
         const prevClose = prices.length >= 2 ? prices[1].close : ((cache.current_price as number) ?? 0);
 
@@ -187,12 +201,13 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           symbol,
           scored_at: date,
           prev_close: prevClose,
-          score_value: Math.round(result.categories.valueGrowth?.normalized ?? 0),
-          score_growth: Math.round(result.categories.valueGrowth?.normalized ?? 0),
-          score_supply: Math.round(result.categories.supply?.normalized ?? 0),
-          score_momentum: Math.round(result.categories.momentum?.normalized ?? 0),
-          score_risk: Math.round(result.categories.risk?.normalized ?? 0),
-          score_signal: Math.round(result.categories.signalTech?.normalized ?? 0),
+          score_value: sv,
+          score_growth: sg,
+          score_supply: ss,
+          score_momentum: sm,
+          score_risk: sr,
+          score_signal: ssig,
+          score_total: scoreTotal,
           updated_at: new Date().toISOString(),
         });
       }
