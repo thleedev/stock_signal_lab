@@ -26,14 +26,17 @@ export async function runStep5AiReport(opts: { date: string }): Promise<void> {
     return;
   }
 
-  const res = await fetch(`https://${vercelUrl}/api/v1/ai-recommendations/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${process.env.CRON_SECRET ?? ''}`,
-    },
-    body: JSON.stringify({ date: opts.date, symbols: topStocks.map(s => s.symbol) }),
-  });
-
-  log('step5', `AI 리포트 응답: ${res.status}`);
+  try {
+    const res = await fetch(`https://${vercelUrl}/api/v1/ai-recommendations/generate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.CRON_SECRET ?? ''}`,
+      },
+      body: JSON.stringify({ date: opts.date, symbols: topStocks.map(s => s.symbol) }),
+    });
+    log('step5', `AI 리포트 응답: ${res.status}`);
+  } catch (err) {
+    log('step5', `AI 리포트 fetch 오류: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

@@ -26,31 +26,33 @@ export async function runStep7Events(): Promise<void> {
   const fomcDates = await fetchFomcDates(year);
   for (const date of fomcDates) {
     const month = new Date(date).getMonth() + 1;
-    await supabase.from('market_events').upsert({
+    const { error } = await supabase.from('market_events').upsert({
       event_date: date,
       event_type: 'fomc',
       title: `FOMC 금리결정 (${month}월)`,
       source: 'fred_api',
       country: 'US',
     }, { onConflict: 'event_date,event_type,title' });
+    if (error) log('step7', `FOMC upsert 오류 [${date}]: ${error.message}`);
   }
 
-  // 선물옵션 만기일 (매달 2번째 목요일)
+  // 선물옵션 만기일 (매달 2번째 금요일)
   for (let month = 1; month <= 12; month++) {
     const d = new Date(year, month - 1, 1);
-    let thursdays = 0;
-    while (thursdays < 2) {
-      if (d.getDay() === 4) thursdays++;
-      if (thursdays < 2) d.setDate(d.getDate() + 1);
+    let fridays = 0;
+    while (fridays < 2) {
+      if (d.getDay() === 5) fridays++;
+      if (fridays < 2) d.setDate(d.getDate() + 1);
     }
     const expiryDate = d.toISOString().slice(0, 10);
-    await supabase.from('market_events').upsert({
+    const { error } = await supabase.from('market_events').upsert({
       event_date: expiryDate,
       event_type: 'expiry',
       title: `선물옵션 만기일 (${month}월)`,
       source: 'rule_based',
       country: 'KR',
     }, { onConflict: 'event_date,event_type,title' });
+    if (error) log('step7', `만기일 upsert 오류 [${expiryDate}]: ${error.message}`);
   }
 
   log('step7', `완료: FOMC ${fomcDates.length}건 + 선물만기 12건`);
