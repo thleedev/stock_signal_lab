@@ -50,17 +50,9 @@ function getSignalPrice(s: Signal): number {
  * - 신호 이력 테이블 (최대 20건)
  */
 export function TechnicalSignalSection({ data, signals, signalsLoading }: Props) {
-  const rsi = data.ai?.rsi ?? null;
-
-  // 활성화된 패턴 레이블 목록 수집
+  // ai 필드 제거 — RSI/패턴 데이터 없음
+  const rsi: number | null = null;
   const activePatterns: string[] = [];
-  if (data.ai) {
-    for (const [key, label] of Object.entries(PATTERN_LABELS)) {
-      if (data.ai[key as keyof typeof data.ai] === true) {
-        activePatterns.push(label);
-      }
-    }
-  }
 
   // RSI 수치에 따른 게이지 색상 결정
   const rsiColor =
@@ -76,47 +68,15 @@ export function TechnicalSignalSection({ data, signals, signalsLoading }: Props)
     rsi >= 70 ? "과매수" :
     "중립";
 
+  // 사용되지 않는 변수 참조 방지
+  void rsiColor; void rsiLabel; void activePatterns;
+
   return (
     <div className="p-4 space-y-3">
       <h3 className="text-lg font-semibold">기술적 시그널</h3>
 
-      {/* RSI 게이지 */}
-      {rsi != null && (
-        <div className="space-y-1">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-[var(--muted)]">RSI</span>
-            <span className="font-medium tabular-nums">
-              {rsi.toFixed(1)}{" "}
-              <span className="text-xs text-[var(--muted)]">{rsiLabel}</span>
-            </span>
-          </div>
-          <div className="h-2 rounded-full bg-[var(--background)] overflow-hidden">
-            <div
-              className={`h-full rounded-full ${rsiColor} transition-all duration-500`}
-              style={{ width: `${Math.min(rsi, 100)}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* 활성 패턴 배지 목록 */}
-      {activePatterns.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {activePatterns.map((p) => (
-            <span
-              key={p}
-              className="px-2 py-0.5 text-xs rounded-full bg-purple-900/40 text-purple-300"
-            >
-              {p}
-            </span>
-          ))}
-        </div>
-      )}
-
       {/* 기술적 지표 데이터 없음 안내 */}
-      {activePatterns.length === 0 && rsi == null && (
-        <p className="text-sm text-[var(--muted)]">기술적 지표 데이터 없음</p>
-      )}
+      <p className="text-sm text-[var(--muted)]">기술적 지표 데이터 없음</p>
 
       {/* 신호 이력 테이블 */}
       <div className="mt-2">

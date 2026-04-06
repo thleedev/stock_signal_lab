@@ -157,21 +157,13 @@ function CategoryAccordion({
 export function UnifiedScoreCard({ data, history = [] }: Props) {
   const { badge, label: gradeLabel } = getGradeStyle(data.score_total);
 
-  // 레이더 데이터
-  const radarData = useMemo(() => {
-    if (!data.categories) return [];
-    return [
-      { category: '신호·기술',  value: Math.round(data.categories.signalTech.normalized) },
-      { category: '수급',       value: Math.round(data.categories.supply.normalized) },
-      { category: '가치·성장',  value: Math.round(data.categories.valueGrowth.normalized) },
-      { category: '모멘텀',     value: Math.round(data.categories.momentum.normalized) },
-    ];
-  }, [data.categories]);
-
-  // 체크리스트
-  const checklist = data.checklist ?? [];
-  const checklistMet = data.checklistMet ?? 0;
-  const checklistTotal = data.checklistTotal ?? 0;
+  // 레이더 데이터 — score_* 필드로 구성
+  const radarData = useMemo(() => [
+    { category: '신호·기술',  value: Math.round(data.score_signal ?? 0) },
+    { category: '수급',       value: Math.round(data.score_supply ?? 0) },
+    { category: '가치·성장',  value: Math.round(data.score_value ?? 0) },
+    { category: '모멘텀',     value: Math.round(data.score_momentum ?? 0) },
+  ], [data.score_signal, data.score_supply, data.score_value, data.score_momentum]);
 
   return (
     <div className="p-4 space-y-4">
@@ -187,18 +179,6 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
           <div className="flex items-center gap-2">
             <span className={`px-2.5 py-0.5 rounded-full text-sm font-bold ${badge}`}>
               {gradeLabel}
-            </span>
-            {data.appliedStyle && (
-              <span className="text-xs px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
-                {data.appliedStyle}
-              </span>
-            )}
-          </div>
-          {/* 체크리스트 요약 */}
-          <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-            <span>체크리스트</span>
-            <span className={`font-medium ${checklistMet >= checklistTotal * 0.6 ? 'text-green-400' : 'text-yellow-400'}`}>
-              {checklistMet}/{checklistTotal} 충족
             </span>
           </div>
         </div>
@@ -239,83 +219,30 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
         </div>
       )}
 
-      {/* ── 카테고리별 아코디언 ── */}
-      {data.categories ? (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wide">
-            카테고리별 점수 분석
-          </h4>
-          {CATEGORY_META.map((meta) => {
-            const cat = data.categories![meta.key];
-            if (!cat) return null;
-            return (
-              <CategoryAccordion
-                key={meta.key}
-                label={meta.label}
-                normalized={cat.normalized}
-                color={meta.color}
-                textColor={meta.text}
-                reasons={cat.reasons ?? []}
-                isRisk={meta.key === 'risk'}
-              />
-            );
-          })}
-        </div>
-      ) : (
-        // categories 없을 때 레거시 점수 표시
-        <div className="space-y-2">
-          {[
-            { label: '신호', value: data.score_signal, color: 'bg-amber-500', text: 'text-amber-500' },
-            { label: '수급', value: data.score_supply, color: 'bg-sky-500',   text: 'text-sky-500'   },
-            { label: '가치', value: data.score_valuation, color: 'bg-violet-500', text: 'text-violet-500' },
-            { label: '모멘텀', value: data.score_momentum, color: 'bg-emerald-500', text: 'text-emerald-500' },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center gap-3 px-1">
-              <span className="text-sm w-14 shrink-0">{item.label}</span>
-              <div className="flex-1 h-2 rounded-full bg-[var(--border)] overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${item.color}`}
-                  style={{ width: `${Math.min(100, Math.max(0, item.value))}%` }}
-                />
-              </div>
-              <span className={`tabular-nums text-sm font-bold w-8 text-right ${item.text}`}>
-                {Math.round(item.value)}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── 체크리스트 ── */}
-      {checklist.length > 0 && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold text-[var(--muted)] uppercase tracking-wide">
-            투자 체크리스트
-          </h4>
-          <div className="grid grid-cols-2 gap-1">
-            {checklist.map((c) => (
+      {/* ── 축별 점수 바 (score_* 기반) ── */}
+      <div className="space-y-2">
+        {[
+          { label: '신호',    value: data.score_signal   ?? 0, color: 'bg-amber-500',   text: 'text-amber-500'   },
+          { label: '수급',    value: data.score_supply   ?? 0, color: 'bg-sky-500',     text: 'text-sky-500'     },
+          { label: '가치',    value: data.score_value    ?? 0, color: 'bg-violet-500',  text: 'text-violet-500'  },
+          { label: '모멘텀',  value: data.score_momentum ?? 0, color: 'bg-emerald-500', text: 'text-emerald-500' },
+          { label: '성장',    value: data.score_growth   ?? 0, color: 'bg-orange-500',  text: 'text-orange-500'  },
+          { label: '리스크',  value: data.score_risk     ?? 0, color: 'bg-red-500',     text: 'text-red-500'     },
+        ].map((item) => (
+          <div key={item.label} className="flex items-center gap-3 px-1">
+            <span className="text-sm w-14 shrink-0">{item.label}</span>
+            <div className="flex-1 h-2 rounded-full bg-[var(--border)] overflow-hidden">
               <div
-                key={c.id}
-                className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded ${
-                  c.na
-                    ? 'text-[var(--muted)] opacity-50'
-                    : c.met
-                    ? 'text-green-400'
-                    : 'text-red-400'
-                }`}
-              >
-                <span className="shrink-0 font-bold">
-                  {c.na ? '·' : c.met ? '✓' : '✗'}
-                </span>
-                <span className="truncate">{c.label}</span>
-              </div>
-            ))}
+                className={`h-full rounded-full ${item.color}`}
+                style={{ width: `${Math.min(100, Math.max(0, item.value))}%` }}
+              />
+            </div>
+            <span className={`tabular-nums text-sm font-bold w-8 text-right ${item.text}`}>
+              {Math.round(item.value)}
+            </span>
           </div>
-          <p className="text-xs text-[var(--muted)] text-right">
-            {checklistMet}/{checklistTotal} 충족
-          </p>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }

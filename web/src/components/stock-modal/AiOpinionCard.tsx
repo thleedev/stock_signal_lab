@@ -127,11 +127,12 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
     score_total: rawTotal,
     score_signal,
     score_momentum,
-    score_valuation,
+    score_value: score_valuation,
     score_supply,
     score_risk = 0,
-    characters,
   } = data;
+  // characters 필드는 제거됨 — 빈 배열로 대체
+  const characters: string[] = [];
   const score_total = Math.min(100, Math.max(0, rawTotal));
   const { grade, label: recommendation } = deriveGrade(score_total);
 
@@ -143,26 +144,12 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
         ? "text-[var(--warning)]"
         : "text-[var(--muted)]";
 
-  // ai 서브객체에서 활성 기술적 패턴 추출
+  // 기술적 패턴 — ai 필드 제거 후 표시하지 않음
   const activePatterns: string[] = [];
-  if (data.ai) {
-    for (const [key, label] of Object.entries(PATTERN_LABELS)) {
-      if (data.ai[key as keyof typeof data.ai] === true) {
-        activePatterns.push(label);
-      }
-    }
-  }
 
   // 리스크 항목 목록
   const riskItems: string[] = [];
   if (data.is_managed) riskItems.push("관리종목");
-  if (data.has_recent_cbw) riskItems.push("CB/BW 최근 발행");
-  if (data.major_shareholder_pct != null && data.major_shareholder_pct > 0 && data.major_shareholder_pct < 20) {
-    riskItems.push(`대주주 지분 ${data.major_shareholder_pct.toFixed(1)}%`);
-  }
-  if (data.audit_opinion && data.audit_opinion !== "적정") {
-    riskItems.push(`감사의견: ${data.audit_opinion}`);
-  }
 
   return (
     <div className="p-4 space-y-4">
@@ -250,31 +237,10 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
               ({data.latest_signal_date ?? "—"})
             </p>
           )}
-          {data.gap_pct != null && (
-            <p>
-              신호가 대비 현재가{" "}
-              <span
-                className={
-                  data.gap_pct >= 0
-                    ? "text-[var(--buy)]"
-                    : "text-[var(--sell)]"
-                }
-              >
-                {data.gap_pct >= 0 ? "+" : ""}
-                {data.gap_pct.toFixed(1)}%
-              </span>
-            </p>
-          )}
         </ScoreBar>
 
         {/* 2. 기술적 모멘텀 */}
         <ScoreBar label="기술적 모멘텀" score={score_momentum}>
-          {data.close_position != null && (
-            <p>
-              52주 범위 내 위치{" "}
-              {(data.close_position * 100).toFixed(0)}%
-            </p>
-          )}
           {data.price_change_pct != null && (
             <p>
               당일 등락률{" "}
@@ -316,18 +282,6 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
           )}
           {data.dividend_yield != null && data.dividend_yield > 0 && (
             <p>배당수익률 {data.dividend_yield.toFixed(2)}%</p>
-          )}
-          {(data.revenue_growth_yoy != null ||
-            data.operating_profit_growth_yoy != null) && (
-            <p>
-              {data.revenue_growth_yoy != null &&
-                `매출 YoY ${data.revenue_growth_yoy >= 0 ? "+" : ""}${data.revenue_growth_yoy.toFixed(1)}%`}
-              {data.revenue_growth_yoy != null &&
-                data.operating_profit_growth_yoy != null &&
-                " / "}
-              {data.operating_profit_growth_yoy != null &&
-                `영업이익 YoY ${data.operating_profit_growth_yoy >= 0 ? "+" : ""}${data.operating_profit_growth_yoy.toFixed(1)}%`}
-            </p>
           )}
         </ScoreBar>
 
@@ -454,63 +408,43 @@ function StandardReport({ data }: { data: StockRankItem }) {
     mcap >= 100000 ? 'large' : mcap >= 10000 ? 'mid' : 'small';
   const w = WEIGHTS_BY_TIER[tier];
 
-  // ai 서브객체에서 원점수 추출 (없으면 정규화 점수에서 역산)
-  const ai = data.ai;
-  const rawSignal = ai?.signal_score ?? data.score_signal * 30 / 100;
-  const rawTrend = ai?.trend_score ?? data.score_momentum * 65 / 100;
-  const rawValuation = ai?.valuation_score ?? data.score_valuation * 25 / 100;
-  const rawSupply = ai?.supply_score ?? (data.score_supply * 55 / 100 - 10);
-  const rawRisk = (data.score_risk ?? 0) < 0 ? Math.abs(data.score_risk ?? 0) : 0;
-
-  // 정규화 (0~100)
-  const normSignal = (rawSignal / 30) * 100;
-  const normTrend = (rawTrend / 65) * 100;
-  const normValuation = (rawValuation / 25) * 100;
-  const normSupply = ((rawSupply + 10) / 55) * 100;
-  const normRisk = rawRisk;  // 이미 0~100
+  // score_* 필드는 이미 0~100 정규화 점수
+  const normSignal = data.score_signal ?? 0;
+  const normTrend = data.score_momentum ?? 0;
+  const normValuation = data.score_value ?? 0;
+  const normSupply = data.score_supply ?? 0;
+  const normRisk = data.score_risk ?? 0;
+  // 원점수 역산 (WeightBar 표시용)
+  const rawSignal = normSignal * 30 / 100;
+  const rawTrend = normTrend * 65 / 100;
+  const rawValuation = normValuation * 25 / 100;
+  const rawSupply = normSupply * 55 / 100 - 10;
+  const rawRisk = normRisk;
 
   // 기여도 계산
   const contSignal = (normSignal / 100) * w.signal;
   const contTrend = (normTrend / 100) * w.trend;
   const contVal = (normValuation / 100) * w.valuation;
   const contSupply = (normSupply / 100) * w.supply;
-  const contEarn = 0; // earnings momentum은 별도
+  const contEarn = 0;
   const contRisk = (normRisk / 100) * w.risk;
   const base = contSignal + contTrend + contVal + contSupply + contEarn;
 
-  // 활성 기술 패턴
+  // 기술 패턴 — ai 필드 제거 후 표시하지 않음
   const patterns: string[] = [];
-  if (ai) {
-    const patternMap: Record<string, string> = {
-      golden_cross: "골든크로스 (+5)",
-      bollinger_bottom: "볼린저하단복귀 (+6)",
-      macd_cross: "MACD크로스 (+4)",
-      phoenix_pattern: "피닉스패턴 (+3)",
-      volume_surge: "거래량급등 (+4)",
-      disparity_rebound: "이격도반등 (+5~7)",
-      volume_breakout: "거래량돌파 (+3)",
-      consecutive_drop_rebound: "연속하락반등 (+6~8)",
-      week52_low_near: "52주저점근접 (+3~7)",
-      double_top: "쌍봉패턴 (리스크)",
-    };
-    for (const [key, label] of Object.entries(patternMap)) {
-      if (ai[key as keyof typeof ai] === true) patterns.push(label);
-    }
-  }
 
   // 수급 상세
   const supplyDetails: string[] = [];
-  if (ai?.foreign_buying) supplyDetails.push("외국인 순매수");
-  if (ai?.institution_buying) supplyDetails.push("기관 순매수");
-  if (ai?.foreign_buying && ai?.institution_buying) supplyDetails.push("동반매수 시너지 (+3)");
-  if (ai?.volume_vs_sector) supplyDetails.push("섹터 거래대금 2배+ (+4)");
-  if (ai?.low_short_sell) supplyDetails.push("공매도 <1% (+2)");
+  if (data.foreign_net_qty != null && data.foreign_net_qty > 0) supplyDetails.push("외국인 순매수");
+  if (data.institution_net_qty != null && data.institution_net_qty > 0) supplyDetails.push("기관 순매수");
+  if (data.foreign_net_qty != null && data.foreign_net_qty > 0 &&
+      data.institution_net_qty != null && data.institution_net_qty > 0) supplyDetails.push("동반매수");
   if (data.foreign_streak != null) {
-    if (data.foreign_streak === 1) supplyDetails.push("외국인 매수 전환 첫날 (+6)");
+    if (data.foreign_streak === 1) supplyDetails.push("외국인 매수 전환 첫날");
     else if (data.foreign_streak >= 2) supplyDetails.push(`외국인 ${data.foreign_streak}일 연속 매수`);
   }
   if (data.institution_streak != null) {
-    if (data.institution_streak === 1) supplyDetails.push("기관 매수 전환 첫날 (+6)");
+    if (data.institution_streak === 1) supplyDetails.push("기관 매수 전환 첫날");
     else if (data.institution_streak >= 2) supplyDetails.push(`기관 ${data.institution_streak}일 연속 매수`);
   }
 
@@ -601,12 +535,6 @@ function ShortTermReport({ data, scores }: { data: StockRankItem; scores: ShortT
   const filterInfo: string[] = [];
   if (data.price_change_pct != null) {
     filterInfo.push(`등락률 ${data.price_change_pct >= 0 ? '+' : ''}${data.price_change_pct.toFixed(2)}%`);
-  }
-  if (data.daily_trading_value != null) {
-    filterInfo.push(`거래대금 ${(data.daily_trading_value / 1_0000_0000).toFixed(0)}억`);
-  }
-  if (data.close_position != null) {
-    filterInfo.push(`종가위치 ${(data.close_position * 100).toFixed(0)}%`);
   }
 
   return (

@@ -247,8 +247,8 @@ export function StockDetailPanel() {
           currentPrice={currentPrice}
           changeAmount={changeAmount}
           changePct={changePct}
-          grade={data?.grade}
-          recommendation={data?.recommendation}
+          grade={data?.score_total != null ? (data.score_total >= 90 ? 'A+' : data.score_total >= 80 ? 'A' : data.score_total >= 65 ? 'B+' : data.score_total >= 50 ? 'B' : data.score_total >= 35 ? 'C' : 'D') : undefined}
+          recommendation={data?.score_total != null ? (data.score_total >= 90 ? '적극매수' : data.score_total >= 80 ? '매수' : data.score_total >= 65 ? '관심' : data.score_total >= 50 ? '보통' : data.score_total >= 35 ? '관망' : '주의') : undefined}
           onClose={handleClose}
         />
 

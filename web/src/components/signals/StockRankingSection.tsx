@@ -53,23 +53,15 @@ const BADGE_CLS: Record<BadgeVariant, string> = {
 
 interface Badge { label: string; hint: string; variant: BadgeVariant; }
 
-function getAiBadges(ai: NonNullable<StockRankItem['ai']>): Badge[] {
+/** score_* 기반 기본 배지 생성 (AI 필드 제거 후 대체) */
+function getScoreBadges(item: StockRankItem): Badge[] {
   const b: Badge[] = [];
-  if (ai.golden_cross)    b.push({ label: '골든크로스',      hint: 'MA5>MA20 상향돌파',    variant: 'green' });
-  if (ai.bollinger_bottom) b.push({ label: '볼린저하단반등',  hint: '과매도→평균회귀',      variant: 'green' });
-  if (ai.phoenix_pattern) b.push({ label: '불새패턴',         hint: '급락후 V자반등',        variant: 'green' });
-  if (ai.macd_cross)      b.push({ label: 'MACD크로스',       hint: '시그널선 상향돌파',     variant: 'green' });
-  if (ai.volume_surge)    b.push({ label: '거래량급증',        hint: '20일평균 2배↑',         variant: 'green' });
-  if (ai.week52_low_near) b.push({ label: '52주저점근처',      hint: '±10%이내 지지구간',     variant: 'green' });
-  if (ai.rsi !== null && ai.rsi < 30)
-    b.push({ label: `RSI ${ai.rsi.toFixed(0)} 과매도`, hint: '강한과매도·반등여력',  variant: 'blue' });
-  else if (ai.rsi !== null && ai.rsi <= 50)
-    b.push({ label: `RSI ${ai.rsi.toFixed(0)}`,        hint: '과매도회복구간(30~50)',  variant: 'green' });
-  if (ai.foreign_buying)     b.push({ label: '외국인순매수',  hint: '지속매수·중장기호재',   variant: 'blue' });
-  if (ai.institution_buying) b.push({ label: '기관순매수',    hint: '펀더멘털기반매수',      variant: 'blue' });
-  if (ai.volume_vs_sector)   b.push({ label: '섹터거래상위',  hint: '업종내주목도↑',         variant: 'blue' });
-  if (ai.low_short_sell)     b.push({ label: '공매도낮음',    hint: '1%미만·하락압력↓',      variant: 'blue' });
-  if (ai.double_top)         b.push({ label: '⚠ 쌍봉패턴',  hint: '고점2회→조정가능·주의', variant: 'orange' });
+  if ((item.score_signal ?? 0) >= 80) b.push({ label: '강한신호', hint: '신호점수 80↑', variant: 'green' });
+  else if ((item.score_signal ?? 0) >= 60) b.push({ label: '신호양호', hint: '신호점수 60↑', variant: 'green' });
+  if ((item.score_supply ?? 0) >= 80) b.push({ label: '수급강세', hint: '수급점수 80↑', variant: 'blue' });
+  if ((item.score_value ?? 0) >= 80) b.push({ label: '가치우수', hint: '밸류점수 80↑', variant: 'green' });
+  if ((item.score_momentum ?? 0) >= 80) b.push({ label: '모멘텀강', hint: '모멘텀점수 80↑', variant: 'green' });
+  if ((item.score_risk ?? 0) >= 70) b.push({ label: '⚠ 리스크↑', hint: '리스크점수 70↑·주의', variant: 'orange' });
   return b;
 }
 
@@ -105,23 +97,14 @@ function getBasicBadges(item: StockRankItem, todayMs: number): Badge[] {
   return b;
 }
 
-// 모든 점수를 100점 만점으로 정규화 (signal:30, trend:0~58, val:25, supply:45)
+// score_* 필드는 이미 0~100 정규화 점수
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
-  if (item.ai) {
-    return {
-      sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp(item.ai.trend_score / 58 * 100),
-      val: clamp(item.ai.valuation_score / 25 * 100),
-      sup: clamp((item.ai.supply_score + 10) / 55 * 100),
-    };
-  }
-  // 서버 calcScore는 이미 0~100 정규화 점수를 반환
   return {
-    sig: clamp(item.score_signal),
-    tech: clamp(item.score_momentum),
-    val: clamp(item.score_valuation),
-    sup: clamp(item.score_supply),
+    sig: clamp(item.score_signal ?? 0),
+    tech: clamp(item.score_momentum ?? 0),
+    val: clamp(item.score_value ?? 0),
+    sup: clamp(item.score_supply ?? 0),
   };
 }
 
@@ -152,13 +135,12 @@ const RankCard = React.memo(function RankCard({
   favs: Set<string>;
   onClick: (e: React.MouseEvent) => void;
 }) {
-  const hasAi = !!item.ai;
-  const isWarning = hasAi && item.ai!.double_top;
+  const isWarning = (item.score_risk ?? 0) >= 70;
   const pct = item.price_change_pct;
   // useMemo로 배지 계산 메모이제이션 (item 변경 시에만 재계산)
   const badges = useMemo(
-    () => hasAi ? getAiBadges(item.ai!) : getBasicBadges(item, Date.now()),
-    [hasAi, item]
+    () => getScoreBadges(item),
+    [item]
   );
   const { sig, tech, val, sup } = useMemo(() => normScores(item), [item]);
 
@@ -171,13 +153,12 @@ const RankCard = React.memo(function RankCard({
     >
       {/* ── 줄 1: 순위 · 종목명 · 메타 · 점수 · 등락 ── */}
       <div className="flex items-center gap-1.5 min-w-0">
-        <span className={`text-xs font-bold tabular-nums w-6 shrink-0 text-right ${hasAi ? 'text-blue-500' : 'text-[var(--muted)]'}`}>
+        <span className="text-xs font-bold tabular-nums w-6 shrink-0 text-right text-[var(--muted)]">
           {rank}
         </span>
 
         <div className="flex items-center gap-1 min-w-0 shrink-0 max-w-[9rem] sm:max-w-[14rem]">
           <span className="font-semibold text-sm truncate">{item.name}</span>
-          {hasAi && <span className="shrink-0 px-0.5 rounded text-[8px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 leading-tight">AI</span>}
           {isWarning && <AlertTriangle size={9} className="shrink-0 text-orange-500" />}
           {favs.has(item.symbol) && <span className="shrink-0 text-yellow-400 text-[9px]">★</span>}
         </div>
@@ -343,7 +324,7 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
     setMenu({
       isOpen: true,
       symbol: item.symbol,
-      name: item.name,
+      name: item.name ?? '',
       currentPrice: item.current_price,
       isFavorite: favs.has(item.symbol),
       position: { x: e.clientX, y: e.clientY },
@@ -376,16 +357,12 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
       if (da !== db) return db.localeCompare(da);
     }
     // score (default + fallback for updated)
-    const aHasAi = a.ai ? 1 : 0;
-    const bHasAi = b.ai ? 1 : 0;
-    if (aHasAi !== bHasAi) return bHasAi - aHasAi;
     return computeWeighted(b, weights) - computeWeighted(a, weights);
   });
 
   const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / LIMIT);
   const offset = (page - 1) * LIMIT;
-  const aiCount = rawItems.filter((i) => i.ai).length;
 
   const btnCls = (active: boolean) =>
     `px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
@@ -451,11 +428,6 @@ export function StockRankingSection({ favoriteSymbols }: StockRankingProps) {
 
         <div className="text-xs text-[var(--muted)] ml-auto shrink-0">
           {total.toLocaleString()}종목
-          {aiCount > 0 && (
-            <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-              AI분석 {aiCount}
-            </span>
-          )}
         </div>
       </div>
 

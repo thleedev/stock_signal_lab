@@ -64,10 +64,12 @@ export function SupplyDemandSection({ data }: Props) {
             {data.short_sell_ratio != null ? `${data.short_sell_ratio.toFixed(2)}%` : "—"}
           </span>
         </div>
-        <div>
-          <span className="text-[var(--muted)]">거래대금 </span>
-          <span className="font-medium tabular-nums">{formatBillion(data.trading_value)}</span>
-        </div>
+        {data.volume != null && (
+          <div>
+            <span className="text-[var(--muted)]">거래량 </span>
+            <span className="font-medium tabular-nums">{data.volume.toLocaleString()}주</span>
+          </div>
+        )}
       </div>
     </div>
   );

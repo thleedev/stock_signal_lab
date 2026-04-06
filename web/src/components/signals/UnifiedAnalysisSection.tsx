@@ -107,23 +107,14 @@ const CHARACTER_FILTER_OPTIONS = [
 
 
 // ── 점수 정규화 ───────────────────────────────────────────────────────────────
+// score_* 필드는 이미 0~100 정규화 점수
 function normScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
-  if (item.ai) {
-    // AI 점수는 원점수로 저장됨 → 0~100 변환 (signal:30, trend:0~58, val:25, supply:-10~45)
-    return {
-      sig: clamp(item.ai.signal_score / 30 * 100),
-      tech: clamp(item.ai.trend_score / 58 * 100),
-      val: clamp(item.ai.valuation_score / 25 * 100),
-      sup: clamp((item.ai.supply_score + 10) / 55 * 100),
-    };
-  }
-  // 서버 calcScore가 이제 0~100 정규화 점수를 반환
   return {
-    sig: clamp(item.score_signal),
-    tech: clamp(item.score_momentum),
-    val: clamp(item.score_valuation),
-    sup: clamp(item.score_supply),
+    sig: clamp(item.score_signal ?? 0),
+    tech: clamp(item.score_momentum ?? 0),
+    val: clamp(item.score_value ?? 0),
+    sup: clamp(item.score_supply ?? 0),
   };
 }
 
@@ -131,8 +122,7 @@ function normScores(item: StockRankItem) {
 function computeWeighted(item: StockRankItem, w: Weights): number {
   const total = w.signal + w.trend + w.valuation + w.supply + w.risk || 1;
   const scores = normScores(item);
-  // risk 점수: score_risk가 없으면 50(중립값) 사용
-  const riskScore = Math.min(100, Math.max(0, ((item as unknown as Record<string, unknown>).score_risk as number) ?? 50));
+  const riskScore = Math.min(100, Math.max(0, item.score_risk ?? 50));
   return (scores.sig * w.signal + scores.tech * w.trend + scores.val * w.valuation + scores.sup * w.supply + riskScore * w.risk) / total;
 }
 
@@ -142,40 +132,25 @@ function getInvestmentCharacters(item: StockRankItem, weights: Weights): Investm
   const weighted = computeWeighted(item, weights);
   const pct = item.price_change_pct ?? 0;
 
-  // 과열주의: 복합 조건 (단순 등락률이 아닌 기술적 과열 신호)
-  // - RSI 70 이상 (과매수) + 등락률 10% 이상
-  // - 또는 쌍봉 패턴 감지
-  // - 또는 등락률 25% 이상 (극단적 급등)
-  const rsi = item.ai?.rsi ?? null;
-  const isOverboughtRsi = rsi !== null && rsi >= 70;
-  const hasDoubleTop = item.ai?.double_top ?? false;
-  if ((isOverboughtRsi && pct >= 10) || hasDoubleTop || pct >= 25) {
+  // 과열주의: 리스크 점수 70↑ + 등락률 10% 이상, 또는 등락률 25% 이상
+  if (((item.score_risk ?? 0) >= 70 && pct >= 10) || pct >= 25) {
     chars.push('overheated');
   }
 
-  // 상승초입: 기술 신호 감지 + 아직 가격 덜 오른 종목 (진입 적기)
-  // 조건: 골든크로스/MACD/거래량급증/이격도반등/거래량바닥탈출/하락후반등 + 등락률 5% 미만
-  if (item.ai) {
-    const hasEarlySignal = item.ai.golden_cross || item.ai.macd_cross || item.ai.volume_surge
-      || item.ai.disparity_rebound || item.ai.volume_breakout || item.ai.consecutive_drop_rebound;
-    if (hasEarlySignal && pct < 5) {
-      chars.push('early_rise');
-    }
-  } else if (tech >= 50 && pct >= 0 && pct < 5) {
+  // 상승초입: 모멘텀 점수 50↑ + 등락률 5% 미만
+  if (tech >= 50 && pct >= 0 && pct < 5) {
     chars.push('early_rise');
   }
 
-  // 가치주: 밸류점수 70 이상 (PER·PBR·ROE 중 2개 이상 양호)
+  // 가치주: 밸류점수 70 이상
   if (val >= 70) chars.push('value');
 
-  // 수급강세: 수급점수 60 이상 (외국인+기관 매수세)
+  // 수급강세: 수급점수 60 이상
   if (sup >= 60) chars.push('supply_strong');
 
-  // 기술반등: 바닥 패턴 감지 (저점 매수 기회)
-  if (item.ai) {
-    if (item.ai.phoenix_pattern || (item.ai.bollinger_bottom && item.ai.rsi !== null && item.ai.rsi < 40)) {
-      chars.push('tech_rebound');
-    }
+  // 기술반등: 모멘텀 80↑ + 등락률 낮음 (바닥권 반등)
+  if (tech >= 80 && pct >= 0 && pct < 10) {
+    chars.push('tech_rebound');
   }
 
   // 다중신호: 30일내 3회 이상 또는 신호점수 80 이상
@@ -191,29 +166,16 @@ function getInvestmentCharacters(item: StockRankItem, weights: Weights): Investm
 function getRecommendReason(item: StockRankItem): string {
   const reasons: string[] = [];
   const pct = item.price_change_pct ?? 0;
+  const { sig, tech, val, sup } = normScores(item);
 
-  // ── 차트 패턴 (타이밍 정보 포함) ──
-  if (item.ai) {
-    if (item.ai.golden_cross) {
-      reasons.push(pct < 5 ? '골든크로스 초기' : `골든크로스(+${pct.toFixed(1)}%)`);
-    }
-    if (item.ai.macd_cross) {
-      reasons.push(pct < 5 ? 'MACD돌파 초기' : `MACD돌파(+${pct.toFixed(1)}%)`);
-    }
-    if (item.ai.phoenix_pattern) reasons.push('V자반등');
-    if (item.ai.bollinger_bottom) reasons.push('볼린저하단 반등');
-    if (item.ai.volume_surge) reasons.push('거래량급증');
-    if (item.ai.disparity_rebound) reasons.push('이격도반등');
-    if (item.ai.volume_breakout) reasons.push('거래량바닥탈출');
-    if (item.ai.consecutive_drop_rebound) reasons.push('하락후반등');
-    if (item.ai.week52_low_near) reasons.push('52주저점 근접');
-    if (item.ai.rsi !== null && item.ai.rsi < 30) reasons.push(`RSI${item.ai.rsi.toFixed(0)} 과매도`);
-    if (item.ai.double_top) reasons.push('⚠️ 쌍봉 주의');
-  }
+  // ── 점수 기반 신호 요약 ──
+  if (sig >= 80) reasons.push('강한매수신호');
+  else if (sig >= 60) reasons.push('매수신호');
+  if (tech >= 80) reasons.push('모멘텀강세');
 
   // ── 수급 동향 (5일 누적 + 연속성 기반) ──
-  const foreignBuy = item.ai?.foreign_buying ?? (item.foreign_net_qty != null && item.foreign_net_qty > 0);
-  const instBuy = item.ai?.institution_buying ?? (item.institution_net_qty != null && item.institution_net_qty > 0);
+  const foreignBuy = item.foreign_net_qty != null && item.foreign_net_qty > 0;
+  const instBuy = item.institution_net_qty != null && item.institution_net_qty > 0;
   const fStreak = item.foreign_streak ?? 0;
   const iStreak = item.institution_streak ?? 0;
   const f5d = item.foreign_net_5d ?? 0;
@@ -233,8 +195,6 @@ function getRecommendReason(item: StockRankItem): string {
       reasons.push(iStreak >= 3 ? `기관 ${iStreak}일 연속매수` : iStreak >= 2 ? `기관 ${iStreak}일연속 순매수` : '기관 순매수');
     }
   }
-  if (item.ai?.volume_vs_sector) reasons.push('섹터대비 거래량↑');
-  if (item.ai?.low_short_sell) reasons.push('공매도↓');
 
   // ── 밸류에이션 ──
   const valReasons: string[] = [];
@@ -255,18 +215,14 @@ function getRecommendReason(item: StockRankItem): string {
   } else if (valReasons.length === 1) {
     reasons.push(valReasons[0]);
   }
-  // 섹터 정보
-  if (item.sector) reasons.push(item.sector);
-
   // ── 신호 빈도 ──
   const cnt = item.signal_count_30d ?? 0;
   if (cnt >= 5) reasons.push(`30일 ${cnt}회 반복추천`);
   else if (cnt >= 3) reasons.push(`30일 ${cnt}회 추천`);
 
   // ── 과열/모멘텀 상태 ──
-  const itemRsi = item.ai?.rsi ?? null;
-  if (itemRsi !== null && itemRsi >= 70 && pct >= 10) {
-    reasons.push(`⚠️ RSI${itemRsi.toFixed(0)} 과매수 + ${pct.toFixed(1)}% 상승`);
+  if ((item.score_risk ?? 0) >= 70 && pct >= 10) {
+    reasons.push(`⚠️ 리스크높음 + ${pct.toFixed(1)}% 상승`);
   } else if (pct >= 25) {
     reasons.push(`⚠️ +${pct.toFixed(1)}% 급등, 추격매수 주의`);
   } else if (pct >= 5) {
@@ -274,12 +230,11 @@ function getRecommendReason(item: StockRankItem): string {
   }
 
   // ── 부정적 근거 (점수가 낮은 이유 투명화) ──
-  const { sig, tech, val, sup } = normScores(item);
-  if (sup <= 5 && !item.ai?.foreign_buying && !item.ai?.institution_buying) {
+  if (sup <= 5) {
     reasons.push('📉 수급 부재');
   }
-  if (item.ai && tech <= 5) {
-    reasons.push('📊 기술데이터 부족');
+  if (tech <= 5) {
+    reasons.push('📊 모멘텀 부족');
   }
   if (val <= 5) {
     reasons.push('💤 밸류 정보 없음');
@@ -297,7 +252,7 @@ function getRecommendReason(item: StockRankItem): string {
     if (signalDate) reasons.push(`최근신호 ${signalDate.slice(5)}`);
     if (item.signal_count_30d) reasons.push(`${item.signal_count_30d}회 추천`);
   }
-  return reasons.join(' · ') || 'AI 분석 대기중';
+  return reasons.join(' · ') || '점수 집계중';
 }
 
 function fmtNum(v: number | null, d = 1) { return v == null ? '-' : v.toFixed(d); }
@@ -365,8 +320,7 @@ function RankCard({
   isEtf?: boolean;
   useWeighted?: boolean;
 }) {
-  const hasAi = !!item.ai;
-  const isWarning = hasAi && item.ai!.double_top;
+  const isWarning = (item.score_risk ?? 0) >= 70;
   const pct = item.price_change_pct;
   const { sig, tech, val, sup } = normScores(item);
   const reason = getRecommendReason(item);
@@ -385,7 +339,7 @@ function RankCard({
       {/* ── 줄 1: 순위 · 종목명 · 등급 · [데스크탑: 가격정보 전부] ── */}
       <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
         {/* 순위 */}
-        <span className={`text-sm font-bold tabular-nums w-6 shrink-0 text-right ${hasAi ? 'text-blue-500' : 'text-[var(--muted)]'}`}>
+        <span className="text-sm font-bold tabular-nums w-6 shrink-0 text-right text-[var(--muted)]">
           {rank}
         </span>
 
@@ -468,10 +422,8 @@ function RankCard({
         {isEtf ? (
           <p className="text-[11px] sm:text-xs text-[var(--muted)] leading-relaxed flex-1 min-w-0 truncate">
             {[
-              item.trading_value ? `거래대금 ${(item.trading_value / 100_000_000).toFixed(0)}억` : null,
               item.foreign_net_qty != null && item.foreign_net_qty > 0 ? '외국인 순매수' : item.foreign_net_qty != null && item.foreign_net_qty < 0 ? '외국인 순매도' : null,
               item.institution_net_qty != null && item.institution_net_qty > 0 ? '기관 순매수' : item.institution_net_qty != null && item.institution_net_qty < 0 ? '기관 순매도' : null,
-              item.sector ?? null,
             ].filter(Boolean).join(' · ') || '-'}
           </p>
         ) : (
@@ -825,7 +777,6 @@ export function UnifiedAnalysisSection({ initialDateMode = 'today', signalMap, f
   const displayTotal = filteredByNoise.length;
   const displayItems = filteredByNoise.slice(0, visibleCount);
   const hasMore = visibleCount < displayTotal;
-  const aiCount = rawItems.filter((i) => i.ai).length;
 
   // ── 무한스크롤: IntersectionObserver ──
   useEffect(() => {
@@ -887,11 +838,6 @@ export function UnifiedAnalysisSection({ initialDateMode = 'today', signalMap, f
       {/* ── 종목수 표시 ── */}
       <div className="text-xs text-[var(--muted)] flex flex-wrap items-center gap-2">
         <span>{displayTotal.toLocaleString()}종목{charFilter !== 'all' && total !== displayTotal ? ` / ${total.toLocaleString()}전체` : ''}</span>
-        {aiCount > 0 && (
-          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-            AI분석 {aiCount}
-          </span>
-        )}
         {charFilter !== 'all' && (
           <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             {CHARACTER_DEFS.find(d => d.key === charFilter)?.icon} {CHARACTER_DEFS.find(d => d.key === charFilter)?.label} 필터
@@ -923,7 +869,7 @@ export function UnifiedAnalysisSection({ initialDateMode = 'today', signalMap, f
                 const displayTotal = isCustomWeights
                   ? Math.round(weightedMap.get(item.symbol) ?? item.score_total)
                   : item.score_total;
-                openMenu(e, item.symbol, item.name, item.current_price, { ...item, score_total: displayTotal } as unknown as StockRankItem);
+                openMenu(e, item.symbol, item.name ?? '', item.current_price, { ...item, score_total: displayTotal } as unknown as StockRankItem);
               }}
               characters={isEtfMode ? [] : getInvestmentCharacters(item, weights)}
               isEtf={isEtfMode}

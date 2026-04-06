@@ -31,16 +31,13 @@ const CHAR_LABEL: Record<string, string> = {
   overheated: '⚠️과열',
 };
 
-/** item.categories 기반 투자 성격 계산 (스냅샷 characters 우선 사용) */
+/** score_* 축 기반 투자 성격 계산 */
 function getCharacters(item: StockRankItem): string[] {
-  if (item.characters && item.characters.length > 0) return item.characters;
-  const cats = item.categories;
-  if (!cats) return [];
   const pct = item.price_change_pct ?? 0;
-  const val = cats.valueGrowth.normalized;
-  const sup = cats.supply.normalized;
-  const sig = cats.signalTech.normalized;
-  const risk = cats.risk?.normalized ?? 0;
+  const val = item.score_value ?? 0;
+  const sup = item.score_supply ?? 0;
+  const sig = item.score_signal ?? 0;
+  const risk = item.score_risk ?? 0;
   const total = item.score_total;
   const chars: string[] = [];
   if ((risk >= 60 && pct >= 10) || pct >= 25) chars.push('overheated');
@@ -94,20 +91,11 @@ function getGrade(score: number): { grade: string; label: string; cls: string } 
 // ── 카테고리 미니바 정규화 ──────────────────────────────────────────────────
 function getCategoryScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
-  if (item.categories) {
-    return {
-      signalTech: clamp(item.categories.signalTech.normalized),
-      supply:     clamp(item.categories.supply.normalized),
-      valueGrowth: clamp(item.categories.valueGrowth.normalized),
-      momentum:   clamp(item.categories.momentum.normalized),
-    };
-  }
-  // 구형 필드 fallback
   return {
-    signalTech:  clamp(item.score_signal),
-    supply:      clamp(item.score_supply),
-    valueGrowth: clamp(item.score_valuation),
-    momentum:    clamp(item.score_momentum),
+    signalTech:  clamp(item.score_signal ?? 0),
+    supply:      clamp(item.score_supply ?? 0),
+    valueGrowth: clamp(item.score_value ?? 0),
+    momentum:    clamp(item.score_momentum ?? 0),
   };
 }
 
@@ -214,18 +202,6 @@ function StockRow({
           ) : null;
         })()}
 
-        {/* 체크리스트 배지 — 데스크탑만 */}
-        {item.checklistTotal != null && item.checklistTotal > 0 && (
-          <span className={`hidden sm:inline px-1.5 py-0.5 rounded text-[10px] font-medium tabular-nums shrink-0 ${
-            (item.checklistMet ?? 0) >= (item.checklistTotal ?? 1) * 0.75
-              ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
-              : (item.checklistMet ?? 0) >= (item.checklistTotal ?? 1) * 0.5
-              ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
-              : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
-          }`}>
-            {item.checklistMet}/{item.checklistTotal}
-          </span>
-        )}
 
         {/* 카테고리 게이지 — 데스크탑만 */}
         <div className="hidden sm:flex items-center gap-2 shrink-0">
@@ -415,7 +391,7 @@ export function StockAnalysisSection({
 
   // ── 클릭 ─────────────────────────────────────────────────────────────────────
   const handleItemClick = useCallback((item: StockRankItem) => {
-    openStockModal(item.symbol, item.name, item);
+    openStockModal(item.symbol, item.name ?? undefined, item);
   }, [openStockModal]);
 
   // ── 컨텍스트 메뉴 ────────────────────────────────────────────────────────────
@@ -424,7 +400,7 @@ export function StockAnalysisSection({
     setMenu({
       isOpen: true,
       symbol: item.symbol,
-      name: item.name,
+      name: item.name ?? '',
       currentPrice: item.current_price,
       isFavorite: favs.has(item.symbol),
       position: { x: e.clientX, y: e.clientY },
