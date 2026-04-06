@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
     source: s.source,
     // signal_price를 top-level 컬럼에 저장 (트리거가 NEW.signal_price로 참조)
     signal_price: s.signal_price ?? null,
+    signal_time: s.signal_time ?? null,
     batch_id: body.batch_id || null,
     is_fallback: s.is_fallback ?? false,
     raw_data: {
@@ -81,17 +82,86 @@ export async function POST(request: NextRequest) {
     (r) => !(r.signal_type === 'BUY' && r.source === 'quant' && upgradedSymbols.has(r.symbol ?? ''))
   );
 
-  // upsert with ignoreDuplicates: UNIQUE constraint(idx_signals_dedup)에
-  // 걸리는 중복 행은 무시하고 나머지만 INSERT
-  const { data, error } = finalRows.length > 0
-    ? await supabase
-        .from('signals')
-        .upsert(finalRows, { onConflict: 'symbol,source,signal_type,signal_time', ignoreDuplicates: true })
-        .select('id')
-    : { data: [], error: null };
+  // KST 오늘 날짜 범위 계산
+  const nowUtc = new Date();
+  const kstNow = new Date(nowUtc.getTime() + 9 * 60 * 60 * 1000);
+  const kstDateStr = kstNow.toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const todayKstStart = `${kstDateStr}T00:00:00+09:00`;
+  const nextKstDay = new Date(kstNow);
+  nextKstDay.setUTCDate(nextKstDay.getUTCDate() + 1);
+  const tomorrowKstStart = `${nextKstDay.toISOString().slice(0, 10)}T00:00:00+09:00`;
 
-  if (error) {
-    console.error('signals insert error:', error);
+  // signal_time 유무에 따라 분리
+  const rowsWithTime = finalRows.filter((r) => r.signal_time != null);
+  const rowsWithoutTime = finalRows.filter((r) => r.signal_time == null);
+
+  const data: { id: string }[] = [];
+  let insertError: unknown = null;
+
+  // 1) signal_time이 있는 행:
+  //    오늘 KST 범위 내 동일 (symbol, source, signal_type, signal_time=null) 행을 UPDATE
+  //    매칭 없으면 upsert INSERT (UNIQUE constraint로 완전 중복 방지)
+  for (const row of rowsWithTime) {
+    if (row.symbol) {
+      const { data: updated } = await supabase
+        .from('signals')
+        .update({
+          signal_time: row.signal_time,
+          signal_price: row.signal_price,
+          raw_data: row.raw_data,
+        })
+        .eq('symbol', row.symbol)
+        .eq('source', row.source)
+        .eq('signal_type', row.signal_type)
+        .is('signal_time', null)
+        .gte('timestamp', todayKstStart)
+        .lt('timestamp', tomorrowKstStart)
+        .select('id')
+        .limit(1);
+
+      if (updated && updated.length > 0) {
+        data.push(...updated);
+        continue; // UPDATE 성공 → INSERT 건너뜀
+      }
+    }
+
+    // UPDATE 대상 없음 → INSERT (UNIQUE constraint로 완전 중복 방지)
+    const { data: inserted, error: insertErr } = await supabase
+      .from('signals')
+      .upsert(row, { onConflict: 'symbol,source,signal_type,signal_time', ignoreDuplicates: true })
+      .select('id');
+    if (insertErr) insertError = insertErr;
+    if (inserted) data.push(...inserted);
+  }
+
+  // 2) signal_time이 null인 행:
+  //    오늘 KST 범위 내 동일 (symbol, source, signal_type, signal_time=null) 이미 존재하면 중복 → 건너뜀
+  for (const row of rowsWithoutTime) {
+    if (row.symbol) {
+      const { data: existing } = await supabase
+        .from('signals')
+        .select('id')
+        .eq('symbol', row.symbol)
+        .eq('source', row.source)
+        .eq('signal_type', row.signal_type)
+        .is('signal_time', null)
+        .gte('timestamp', todayKstStart)
+        .lt('timestamp', tomorrowKstStart)
+        .limit(1);
+
+      if (existing && existing.length > 0) continue; // 중복 → 건너뜀
+    }
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from('signals')
+      .insert(row)
+      .select('id');
+    if (insertErr) insertError = insertErr;
+    if (inserted) data.push(...inserted);
+  }
+
+  if (insertError) {
+    console.error('signals insert error:', insertError);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 
@@ -201,6 +271,7 @@ async function sendSignalNotifications(
       name: input.name,
       signal_type: input.signal_type,
       source: input.source,
+      signal_time: input.signal_time ?? null,
       batch_id: null,
       is_fallback: input.is_fallback ?? false,
       raw_data: input.raw_data || null,

@@ -12,6 +12,7 @@ export interface Signal {
   name: string;
   signal_type: SignalType;
   source: SignalSource;
+  signal_time: string | null;
   batch_id: string | null;
   is_fallback: boolean;
   raw_data: Record<string, unknown> | null;
@@ -36,6 +37,7 @@ export interface SignalInput {
   name: string;
   signal_type: SignalType;
   signal_price?: number | null;
+  signal_time?: string | null;
   source: SignalSource;
   time_group?: string;
   is_fallback?: boolean;

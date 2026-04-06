@@ -1052,30 +1052,18 @@ class KiwoomAccessibilityService : AccessibilityService() {
             return
         }
 
-        // 일반 모드: INSERT
-        // 이미 같은 상태로 전송한 종목은 제외
-        val filtered = SentSignalCache.filterNew(applicationContext, all)
-        Log.i(TAG, "After dedup filter: ${filtered.size}/${all.size} (skipped ${all.size - filtered.size})")
-
-        if (filtered.isEmpty()) {
-            Log.i(TAG, "All signals already sent with same status, nothing to send")
-            onScrapingResult?.invoke(buySignals.size, sellSignals.size, true, "No new status changes")
-            resetState()
-            return
-        }
-
+        // 앱에서는 항상 전송, DB upsert ignoreDuplicates로 중복 처리
         scope.launch {
             try {
-                SignalApiClient.sendSignals(applicationContext, filtered)
-                SentSignalCache.markSent(applicationContext, filtered)
-                Log.i(TAG, "Signals sent successfully: ${filtered.size} (filtered from ${all.size})")
+                SignalApiClient.sendSignals(applicationContext, all)
+                Log.i(TAG, "Signals sent successfully: ${all.size}")
                 withContext(Dispatchers.Main) {
                     onScrapingResult?.invoke(bc, sc, true, null)
                     resetState()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Send failed, queuing", e)
-                SignalQueueManager.enqueue(applicationContext, filtered)
+                SignalQueueManager.enqueue(applicationContext, all)
                 withContext(Dispatchers.Main) {
                     onScrapingResult?.invoke(bc, sc, false, e.message)
                     resetState()

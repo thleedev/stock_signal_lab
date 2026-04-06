@@ -11,7 +11,7 @@ import { useStockModal } from '@/contexts/stock-modal-context';
 import { StyleSelector } from './StyleSelector';
 import { AnalysisHoverCard } from './AnalysisHoverCard';
 import { SnapshotTracker } from './SnapshotTracker';
-import { formatTimeAgo } from '@/lib/date-utils';
+import { formatTimeAgo, getLastNWeekdays } from '@/lib/date-utils';
 import type { WatchlistGroup } from '@/types/stock';
 import type { StyleWeights } from '@/lib/unified-scoring/types';
 
@@ -280,10 +280,9 @@ export function StockAnalysisSection({
   groups: initialGroups = [],
   symbolGroups: initialSymbolGroups = {},
 }: StockAnalysisSectionProps) {
-  const todayStr = useMemo(
-    () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10),
-    [],
-  );
+  // AI 신호탭의 "오늘" 기준과 동일하게 마지막 평일을 사용
+  // (주말/공휴일에 실제 오늘 날짜로 계산하면 신호가 없어 빈 결과 표시됨)
+  const todayStr = useMemo(() => getLastNWeekdays(1)[0], []);
 
   // 스타일
   const [styleId, setStyleId] = useState('balanced');

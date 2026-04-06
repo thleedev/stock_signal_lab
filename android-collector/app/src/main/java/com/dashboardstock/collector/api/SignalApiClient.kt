@@ -65,30 +65,8 @@ object SignalApiClient {
         val batchId = UUID.randomUUID().toString()
         Log.d(TAG, "Sending ${signals.size} signals, batch=$batchId")
 
-        // signal_time이 있는 신호 → 기존 null 행 PATCH 시도
-        // PATCH 실패 시에도 INSERT하지 않음 (이미 NULL 행이 존재하므로 중복 방지)
-        val toInsert = mutableListOf<SignalInput>()
-        for (s in signals) {
-            if (s.signalTime != null && s.symbol != null) {
-                val patched = patchNullSignalTime(s)
-                if (patched) {
-                    Log.d(TAG, "PATCH success: ${s.name}(${s.symbol}) signal_time=${s.signalTime}")
-                } else {
-                    Log.d(TAG, "PATCH failed, skip INSERT: ${s.name}(${s.symbol}) signal_time=${s.signalTime}")
-                }
-                continue // PATCH 성공/실패 모두 INSERT 안 함
-            }
-            toInsert.add(s)
-        }
-
-        if (toInsert.isEmpty()) {
-            Log.i(TAG, "All ${signals.size} signals patched or skipped, no INSERT needed")
-            sendHeartbeat()
-            return
-        }
-
-        // 나머지 신호 INSERT (append)
-        val rows = toInsert.map { s ->
+        // 모든 신호 INSERT — DB upsert ignoreDuplicates로 중복 처리
+        val rows = signals.map { s ->
             SignalRow(
                 timestamp = s.timestamp,
                 symbol = s.symbol,

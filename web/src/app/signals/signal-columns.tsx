@@ -354,7 +354,7 @@ export default function SignalColumns({
       const now = new Date();
       const kstHour = (now.getUTCHours() + 9) % 24;
       const day = now.getDay();
-      if (day >= 1 && day <= 5 && kstHour >= 9 && kstHour < 16) {
+      if (day >= 1 && day <= 5 && kstHour >= 9 && kstHour < 20) {
         router.refresh();
       }
     }, 60_000);
