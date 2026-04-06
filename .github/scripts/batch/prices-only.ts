@@ -1,7 +1,7 @@
 import { supabase } from '../shared/supabase.js';
 import { log } from '../shared/logger.js';
 
-const NAVER_API = 'https://api.stock.naver.com/api/stock';
+const NAVER_API = 'https://m.stock.naver.com/api';
 const PAGE_SIZE = 100;
 
 interface NaverStockItem {
