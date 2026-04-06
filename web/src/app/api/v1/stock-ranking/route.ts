@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
   const style: StyleId = VALID_STYLES.includes(styleParam as StyleId) ? (styleParam as StyleId) : 'balanced';
   const dateParam = searchParams.get('date') ?? 'all'; // 'all' | 'signal_all' | 'YYYY-MM-DD'
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
-  const limit = Math.min(500, Math.max(10, parseInt(searchParams.get('limit') ?? '50')));
+  const limit = Math.min(9999, Math.max(10, parseInt(searchParams.get('limit') ?? '50')));
   const offset = (page - 1) * limit;
 
   const supabase = createServiceClient();
@@ -129,13 +129,9 @@ export async function GET(request: NextRequest) {
   if (dateParam === 'signal_all') {
     query = query.gt('stock_cache.signal_count_30d', 0);
   } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-    // 오늘 탭: latest_signal_date가 해당 날짜인 종목만 (timestamp 범위 필터)
-    const nextDay = new Date(dateParam);
-    nextDay.setDate(nextDay.getDate() + 1);
-    const nextDayStr = nextDay.toISOString().slice(0, 10);
-    query = query
-      .gte('stock_cache.latest_signal_date', `${dateParam}T00:00:00+09:00`)
-      .lt('stock_cache.latest_signal_date', `${nextDayStr}T00:00:00+09:00`);
+    // 오늘 탭: 해당 날짜 UTC 자정(= KST 09:00) 이후 신호가 있는 종목
+    // 한국 장 시간(09:00~15:30 KST = 00:00~06:30 UTC)에 신호가 들어오므로 GTE 단일 조건으로 충분
+    query = query.gte('stock_cache.latest_signal_date', `${dateParam}T00:00:00Z`);
   }
 
   const { data: rawData, count, error } = await query

@@ -151,10 +151,10 @@ function StockRow({
   const signalAge = getSignalAge(sigDateRaw);
 
   const miniBars = [
-    { label: '기술', value: scores.signalTech, color: 'bg-amber-500' },
+    { label: '신호', value: scores.signalTech, color: 'bg-amber-500' },
     { label: '수급', value: scores.supply,     color: 'bg-sky-500' },
-    { label: '신호', value: scores.valueGrowth, color: 'bg-violet-500' },
-    { label: '밸류', value: scores.momentum,   color: 'bg-emerald-500' },
+    { label: '가치', value: scores.valueGrowth, color: 'bg-violet-500' },
+    { label: '모멘텀', value: scores.momentum,   color: 'bg-emerald-500' },
   ];
 
   return (
