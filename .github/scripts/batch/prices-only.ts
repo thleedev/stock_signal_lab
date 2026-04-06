@@ -12,6 +12,7 @@ interface NaverStockItem {
   fluctuationsRatio: string;
   accumulatedTradingVolume: string;
   marketValue: string;
+  stockExchangeType: { nameEng: string }; // "KOSPI" | "KOSDAQ"
 }
 
 interface NaverListResponse {
@@ -72,6 +73,7 @@ export async function runPricesOnly(): Promise<{ collected: number }> {
       .map(item => ({
         symbol: item.itemCode,
         name: item.stockName,
+        market: item.stockExchangeType?.nameEng ?? 'KOSPI',
         current_price: parseNum(item.closePrice),
         price_change: parseNum(item.compareToPreviousClosePrice),
         price_change_pct: parseFloat(item.fluctuationsRatio) || 0,
