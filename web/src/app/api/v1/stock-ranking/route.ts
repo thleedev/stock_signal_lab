@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
   const style: StyleId = VALID_STYLES.includes(styleParam as StyleId) ? (styleParam as StyleId) : 'balanced';
   const dateParam = searchParams.get('date') ?? 'all'; // 'all' | 'signal_all' | 'YYYY-MM-DD'
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
-  const limit = Math.min(200, Math.max(10, parseInt(searchParams.get('limit') ?? '50')));
+  const limit = Math.min(500, Math.max(10, parseInt(searchParams.get('limit') ?? '50')));
   const offset = (page - 1) * limit;
 
   const supabase = createServiceClient();
@@ -125,12 +125,9 @@ export async function GET(request: NextRequest) {
   }
 
   // date 파라미터로 신호 필터링
+  // 'today'(YYYY-MM-DD) = 전체 종목(필터 없음), 'signal_all' = 30일 내 신호 보유, 'all' = 전체
   if (dateParam === 'signal_all') {
-    // 신호가 있는 종목만 (30일 내 신호)
     query = query.gt('stock_cache.signal_count_30d', 0);
-  } else if (dateParam !== 'all' && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-    // 특정 날짜 이후 신호가 있는 종목
-    query = query.gte('stock_cache.latest_signal_date', dateParam);
   }
 
   const { data: rawData, count, error } = await query

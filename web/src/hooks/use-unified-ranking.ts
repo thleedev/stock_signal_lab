@@ -35,7 +35,7 @@ export function useUnifiedRanking() {
       let promise = inflight.get(key);
       if (!promise) {
         promise = (async () => {
-          const params = new URLSearchParams({ style, date });
+          const params = new URLSearchParams({ style, date, limit: '500' });
           if (market !== 'all') params.set('market', market);
           if (weights) {
             params.set('w_st', String(weights.signalTech));

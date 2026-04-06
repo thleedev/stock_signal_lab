@@ -78,13 +78,13 @@ interface HoverState {
   y: number;
 }
 
-// ── 점수 → 등급 변환 (분포 기준: max≈40, p90≈18, p75≈12, p50≈7) ─────────────
+// ── 점수 → 등급 변환 ──────────────────────────────────────────────────────────
 function getGrade(score: number): { grade: string; label: string; cls: string } {
-  if (score >= 32) return { grade: 'A+', label: '적극매수', cls: 'bg-red-600 text-white' };
-  if (score >= 25) return { grade: 'A',  label: '매수',    cls: 'bg-red-500 text-white' };
-  if (score >= 18) return { grade: 'B+', label: '관심',    cls: 'bg-orange-400 text-white' };
-  if (score >= 12) return { grade: 'B',  label: '보통',    cls: 'bg-yellow-400 text-gray-900' };
-  if (score >= 6)  return { grade: 'C',  label: '관망',    cls: 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
+  if (score >= 90) return { grade: 'A+', label: '적극매수', cls: 'bg-red-600 text-white' };
+  if (score >= 80) return { grade: 'A',  label: '매수',    cls: 'bg-red-500 text-white' };
+  if (score >= 65) return { grade: 'B+', label: '관심',    cls: 'bg-orange-400 text-white' };
+  if (score >= 50) return { grade: 'B',  label: '보통',    cls: 'bg-yellow-400 text-gray-900' };
+  if (score >= 35) return { grade: 'C',  label: '관망',    cls: 'bg-gray-300 text-gray-700 dark:bg-gray-600 dark:text-gray-200' };
   return             { grade: 'D',  label: '주의',    cls: 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400' };
 }
 
@@ -139,8 +139,10 @@ function StockRow({
     ? 'text-blue-500'
     : 'text-[var(--muted)]';
 
-  // 매수신호 대비 Gap
-  const signalGap = item.latest_signal_price && item.latest_signal_price > 0 && item.current_price && item.current_price > 0
+  // 매수신호 대비 Gap (30일 내 신호가 있는 종목에만 표시)
+  const signalGap = item.signal_count_30d && item.signal_count_30d > 0
+    && item.latest_signal_price && item.latest_signal_price > 0
+    && item.current_price && item.current_price > 0
     ? ((item.current_price - item.latest_signal_price) / item.latest_signal_price) * 100
     : null;
 
