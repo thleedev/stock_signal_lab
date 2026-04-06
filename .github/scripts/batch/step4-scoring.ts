@@ -17,7 +17,7 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
 
   try {
     // 기본 캐시 데이터 전체 조회 - Supabase max_rows(1000) 우회를 위해 페이지네이션
-    const COLS = 'symbol, current_price, per, pbr, roe, roe_estimated, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, market_cap, forward_per, target_price, invest_opinion, dividend_yield, high_52w, low_52w, is_managed, volume, float_shares';
+    const COLS = 'symbol, name, market, current_price, price_change_pct, per, pbr, roe, roe_estimated, eps, bps, forward_per, forward_eps, target_price, invest_opinion, dividend_yield, high_52w, low_52w, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, market_cap, is_managed, volume, float_shares, signal_count_30d, latest_signal_price, latest_signal_date';
     const cacheRows: Record<string, unknown>[] = [];
     let from = 0;
     const PAGE = 1000;
@@ -96,15 +96,49 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
         const dart = dartMap.get(symbol) ?? {};
         const signalSources = signalMap.get(symbol) ?? [];
 
+        // 일봉에서 파생 지표 계산
+        const today = prices[0];
+        const yesterday = prices[1];
+        const vol20Avg = prices.length >= 20
+          ? prices.slice(0, 20).reduce((s, p) => s + p.volume, 0) / 20
+          : null;
+        const volumeRatio = today && vol20Avg && vol20Avg > 0
+          ? today.volume / vol20Avg
+          : null;
+        const closePosition = today && (today.high - today.low) > 0
+          ? (today.close - today.low) / (today.high - today.low)
+          : null;
+        const gapPct = today && yesterday && yesterday.close > 0
+          ? (today.open - yesterday.close) / yesterday.close * 100
+          : null;
+        const close3dAgo = prices[3];
+        const cumReturn3d = today && close3dAgo && close3dAgo.close > 0
+          ? (today.close - close3dAgo.close) / close3dAgo.close * 100
+          : null;
+        const tradingValue = today ? today.close * today.volume : null;
+
+        // latestSignalDaysAgo 계산
+        const latestSignalDateStr = (cache.latest_signal_date as string) ?? null;
+        const latestSignalDaysAgo = latestSignalDateStr
+          ? Math.floor((Date.now() - new Date(latestSignalDateStr).getTime()) / 86400000)
+          : null;
+
         // 통합 점수 엔진 입력 객체 구성
         const input = {
           symbol,
-          marketCap: (cache.market_cap as number) ?? 0,
+          name: (cache.name as string) ?? '',
+          market: (cache.market as string) ?? '',
+          currentPrice: (cache.current_price as number) ?? null,
+          priceChangePct: (cache.price_change_pct as number) ?? null,
+          marketCap: (cache.market_cap as number) ?? null,
           per: (cache.per as number) ?? null,
           pbr: (cache.pbr as number) ?? null,
           roe: (cache.roe as number) ?? null,
           roeEstimated: (cache.roe_estimated as number) ?? null,
+          eps: (cache.eps as number) ?? null,
+          bps: (cache.bps as number) ?? null,
           forwardPer: (cache.forward_per as number) ?? null,
+          forwardEps: (cache.forward_eps as number) ?? null,
           targetPrice: (cache.target_price as number) ?? null,
           investOpinion: (cache.invest_opinion as number) ?? null,
           dividendYield: (cache.dividend_yield as number) ?? null,
@@ -117,6 +151,12 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           foreignStreak: (cache.foreign_streak as number) ?? null,
           institutionStreak: (cache.institution_streak as number) ?? null,
           shortSellRatio: (cache.short_sell_ratio as number) ?? null,
+          volume: (cache.volume as number) ?? null,
+          floatShares: (cache.float_shares as number) ?? null,
+          signalCount30d: (cache.signal_count_30d as number) ?? null,
+          latestSignalPrice: (cache.latest_signal_price as number) ?? null,
+          latestSignalDate: latestSignalDateStr,
+          latestSignalDaysAgo,
           isManaged: (cache.is_managed as boolean) ?? false,
           hasRecentCbw: (dart.has_recent_cbw as boolean) ?? false,
           majorShareholderPct: (dart.major_shareholder_pct as number) ?? null,
@@ -127,9 +167,14 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           operatingProfitGrowthYoy: (dart.operating_profit_growth_yoy as number) ?? null,
           signalSources,
           dailyPrices: prices,
-          currentPrice: (cache.current_price as number) ?? 0,
-          volume: (cache.volume as number) ?? 0,
-          floatShares: (cache.float_shares as number) ?? null,
+          volumeRatio,
+          closePosition,
+          gapPct,
+          cumReturn3d,
+          tradingValue,
+          sectorAvgChangePct: null,
+          sectorRank: null,
+          sectorTotal: null,
         };
 
         // 통합 점수 엔진 실행
