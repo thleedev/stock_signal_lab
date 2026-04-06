@@ -71,6 +71,7 @@ export async function runPricesOnly(): Promise<{ collected: number }> {
       .filter(item => item.itemCode && item.itemCode.length === 6)
       .map(item => ({
         symbol: item.itemCode,
+        name: item.stockName,
         current_price: parseNum(item.closePrice),
         price_change: parseNum(item.compareToPreviousClosePrice),
         price_change_pct: parseFloat(item.fluctuationsRatio) || 0,
