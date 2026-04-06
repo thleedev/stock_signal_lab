@@ -1,5 +1,6 @@
 import { supabase } from '../shared/supabase.js';
 import { log } from '../shared/logger.js';
+import { calcUnifiedScore } from '../../../web/src/lib/unified-scoring/engine.js';
 
 const CHUNK_SIZE = 200;
 
@@ -131,33 +132,8 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           floatShares: (cache.float_shares as number) ?? null,
         };
 
-        // 통합 점수 엔진 동적 로드 및 실행
-        // 엔진 로드 실패 시 모든 카테고리 점수를 0 으로 처리하여 배치가 중단되지 않도록 한다
-        let result: {
-          categories: {
-            signalTech?: { normalized: number };
-            supply?: { normalized: number };
-            valueGrowth?: { normalized: number };
-            momentum?: { normalized: number };
-            risk?: { normalized: number };
-          };
-        };
-
-        try {
-          const enginePath = new URL('../../../web/src/lib/unified-scoring/engine.ts', import.meta.url).pathname;
-          const { calcUnifiedScore } = await import(enginePath);
-          result = calcUnifiedScore(input, 'balanced');
-        } catch {
-          result = {
-            categories: {
-              signalTech: { normalized: 0 },
-              supply: { normalized: 0 },
-              valueGrowth: { normalized: 0 },
-              momentum: { normalized: 0 },
-              risk: { normalized: 0 },
-            },
-          };
-        }
+        // 통합 점수 엔진 실행
+        const result = calcUnifiedScore(input, 'balanced');
 
         // 전일 종가: 일봉 배열 2번째 항목(내림차순), 없으면 current_price 사용
         const prevClose = prices.length >= 2 ? prices[1].close : ((cache.current_price as number) ?? 0);

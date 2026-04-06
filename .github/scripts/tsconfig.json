@@ -5,7 +5,11 @@
     "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["../../web/src/*"]
+    }
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules"]
