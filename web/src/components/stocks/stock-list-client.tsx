@@ -604,9 +604,8 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     setFavStocks((prev) => applyLivePrices(prev, allPrices));
   }, []);
 
-  const { refreshing, isStale, priceUpdateLabel, refreshPrices } =
+  const { refreshing, isStale, updateTime: priceUpdateTime, refresh: refreshPrices } =
     useGlobalPriceRefresh({
-      initialUpdateTime: lastPriceUpdate,
       onPricesRefreshed: handlePricesRefreshed,
     });
 
@@ -643,7 +642,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         subtitle="관심종목 그룹 관리 및 전체 종목 조회"
         action={
           <PriceUpdateBadge
-            priceUpdateLabel={priceUpdateLabel}
+            priceUpdateLabel={priceUpdateTime}
             isStale={isStale}
             refreshing={refreshing}
             onRefresh={refreshPrices}

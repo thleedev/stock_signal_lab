@@ -9,8 +9,8 @@ interface Props {
 }
 
 export function PortfolioHeader({ lastPriceUpdate }: Props) {
-  const { refreshing, isStale, priceUpdateLabel, refreshPrices } =
-    useGlobalPriceRefresh({ initialUpdateTime: lastPriceUpdate });
+  const { refreshing, isStale, updateTime, refresh } =
+    useGlobalPriceRefresh({});
 
   return (
     <PageHeader
@@ -18,10 +18,10 @@ export function PortfolioHeader({ lastPriceUpdate }: Props) {
       subtitle="3개 AI 합산 성과"
       action={
         <PriceUpdateBadge
-          priceUpdateLabel={priceUpdateLabel}
+          priceUpdateLabel={updateTime}
           isStale={isStale}
           refreshing={refreshing}
-          onRefresh={refreshPrices}
+          onRefresh={refresh}
         />
       }
     />
