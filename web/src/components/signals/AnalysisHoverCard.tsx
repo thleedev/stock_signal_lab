@@ -1,10 +1,12 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import {
   LineChart, Line, YAxis, ResponsiveContainer,
 } from 'recharts';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import type { ScoreHistoryPoint } from '@/hooks/use-score-history';
+import type { StockAnalysisResponse, AnalysisCategory } from '@/app/api/v1/stock-analysis/route';
 
 interface Props {
   item: StockRankItem;
@@ -19,9 +21,41 @@ const SCORE_BARS: { label: string; field: 'score_signal' | 'score_supply' | 'sco
   { label: '기술', field: 'score_momentum', color: 'bg-emerald-500' },
 ];
 
+const CATEGORY_COLOR: Record<AnalysisCategory['id'], string> = {
+  signal:    'text-amber-400',
+  supply:    'text-sky-400',
+  valuation: 'text-violet-400',
+  technical: 'text-emerald-400',
+  risk:      'text-red-400',
+};
+
 export function AnalysisHoverCard({ item, history }: Props) {
   const riskScore = item.score_risk ?? 0;
   const totalScore = item.score_total ?? 0;
+
+  const [analysisData, setAnalysisData] = useState<StockAnalysisResponse | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(true);
+
+  useEffect(() => {
+    if (!item.symbol) return;
+    const controller = new AbortController();
+    fetch(`/api/v1/stock-analysis?symbol=${encodeURIComponent(item.symbol)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<StockAnalysisResponse>;
+      })
+      .then((json) => {
+        setAnalysisData(json);
+        setAnalysisLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        setAnalysisLoading(false);
+      });
+    return () => controller.abort();
+  }, [item.symbol]);
 
   return (
     <div className="w-[340px] p-3 rounded-lg border border-[var(--border)] bg-[var(--card)] shadow-xl space-y-2.5">
@@ -53,10 +87,25 @@ export function AnalysisHoverCard({ item, history }: Props) {
         </div>
       </div>
 
+      {/* ── 세부 조건 체크리스트 ── */}
+      <div className="border-t border-[var(--border)] pt-2">
+        {analysisLoading ? (
+          <div className="space-y-1.5">
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} className="h-4 rounded bg-[var(--border)] animate-pulse" />
+            ))}
+          </div>
+        ) : analysisData ? (
+          <ChecklistSection categories={analysisData.categories} />
+        ) : (
+          <p className="text-[10px] text-[var(--muted)]">조건 데이터를 불러오지 못했습니다.</p>
+        )}
+      </div>
+
       {/* ── 7일 추이 ── */}
       {history.length > 1 && (
         <div className="border-t border-[var(--border)] pt-2">
-          <div className="h-[60px]">
+          <div className="h-[50px]">
             <ResponsiveContainer>
               <LineChart data={history}>
                 <YAxis domain={[0, 100]} hide />
@@ -65,6 +114,77 @@ export function AnalysisHoverCard({ item, history }: Props) {
             </ResponsiveContainer>
           </div>
           <div className="text-[10px] text-[var(--muted)] text-center">7일 점수 추이</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 카테고리별 충족/미충족 조건 목록 (컴팩트) */
+function ChecklistSection({ categories }: { categories: AnalysisCategory[] }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  // risk 카테고리는 별도 표기
+  const mainCats = categories.filter(c => c.id !== 'risk');
+  const riskCat = categories.find(c => c.id === 'risk');
+
+  return (
+    <div className="space-y-1">
+      {mainCats.map(cat => {
+        const passed = cat.reasons.filter(r => r.passed);
+        const failed = cat.reasons.filter(r => !r.passed);
+        const isOpen = openId === cat.id;
+
+        return (
+          <div key={cat.id}>
+            {/* 카테고리 행 — 클릭으로 세부 조건 토글 */}
+            <button
+              type="button"
+              onClick={() => setOpenId(isOpen ? null : cat.id)}
+              className="w-full flex items-center gap-1.5 text-[10px] hover:bg-[var(--card-hover)] rounded px-1 py-0.5 transition-colors"
+            >
+              <span className={`font-medium w-8 shrink-0 ${CATEGORY_COLOR[cat.id]}`}>{cat.label}</span>
+              {/* 충족 조건 뱃지 */}
+              <span className="flex gap-0.5 flex-wrap flex-1">
+                {passed.map((r, i) => (
+                  <span key={i} className="text-green-400">✓{r.label}</span>
+                ))}
+                {passed.length === 0 && (
+                  <span className="text-[var(--muted)]">충족 조건 없음</span>
+                )}
+              </span>
+              <span className="text-[var(--muted)] shrink-0">{passed.length}/{cat.reasons.length}</span>
+              <span className="text-[var(--muted)] shrink-0">{isOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {/* 세부 조건 드롭다운 */}
+            {isOpen && (
+              <div className="ml-2 mt-0.5 space-y-0.5 pb-1">
+                {passed.map((r, i) => (
+                  <div key={i} className="flex items-start gap-1 text-[10px]">
+                    <span className="text-green-400 shrink-0 mt-px">✓</span>
+                    <span className="text-[var(--text)]">{r.label}</span>
+                    {r.value && <span className="text-[var(--muted)] truncate">{r.value}</span>}
+                  </div>
+                ))}
+                {failed.map((r, i) => (
+                  <div key={i} className="flex items-start gap-1 text-[10px] opacity-50">
+                    <span className="text-[var(--muted)] shrink-0 mt-px">✗</span>
+                    <span className="text-[var(--muted)]">{r.label}</span>
+                    {r.value && <span className="text-[var(--muted)] truncate">{r.value}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* 리스크 조건 요약 */}
+      {riskCat && riskCat.reasons.some(r => !r.passed) && (
+        <div className="flex items-center gap-1 text-[10px] text-red-400 pt-0.5">
+          <span>⚠</span>
+          <span>{riskCat.reasons.filter(r => !r.passed).map(r => r.label).join(', ')}</span>
         </div>
       )}
     </div>

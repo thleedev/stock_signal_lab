@@ -115,8 +115,7 @@ export function calcTechnicalReversal(
   }
   goldenCross = goldenCross || lastMa5 > lastMa20;
 
-  // ── RSI 점수: 과매도 회복 구간 가점, 과매수 구간은 별도 점수 없음 ──
-  // 주의: 기술적 반전 모듈은 반전 초기 신호 탐지가 목적이므로 과매수 감점은 적용하지 않음
+  // ── RSI 점수: 과매도 회복 구간 가점, 과매수 구간 감점 ──
   const rsi = calcRSI(closes);
   let rsiScore = 0;
   let rsiDetail = rsi !== null ? `RSI ${rsi.toFixed(1)}` : 'RSI 계산 불가';
@@ -134,9 +133,9 @@ export function calcTechnicalReversal(
       rsiScore = 0;
       rsiDetail = `RSI ${rsi.toFixed(1)} (상승 모멘텀)`;
     } else if (rsi >= 70) {
-      // 과매수 구간 — 기술적 반전 관점에서는 가점 없음 (다른 신호로 판단)
-      rsiScore = 0;
-      rsiDetail = `RSI ${rsi.toFixed(1)} (과매수 구간, 추가 확인 필요)`;
+      // 과매수 구간 — 스펙 기준 -15점 감점
+      rsiScore = -15;
+      rsiDetail = `RSI ${rsi.toFixed(1)} (과매수 구간, 단기 과열)`;
     }
   }
   rawScore += rsiScore;
@@ -273,16 +272,16 @@ export function calcTechnicalReversal(
     reasons.push({ label: '52주 고점 구간', points: 0, detail: '52주 데이터 없음', met: false });
   }
 
-  // ── 연속 하락 후 첫 양봉 (직전 2일+ 하락, 당일 양봉) ──
+  // ── 연속 하락 후 첫 양봉 (직전 3일+ 하락, 당일 양봉) — 스펙 기준 3일+ ──
   let consecutiveDropRebound = false;
-  if (prices.length >= 5) {
-    const recentCloses = closes.slice(-4);
+  {
+    const recentCloses = closes.slice(-5); // [4일전, 3일전, 2일전, 어제, 오늘]
     let drops = 0;
-    for (let i = 1; i < recentCloses.length - 1; i++) {
+    for (let i = 1; i < recentCloses.length - 1; i++) { // i=1,2,3 → 3구간 체크
       if (recentCloses[i] < recentCloses[i - 1]) drops++;
     }
     const todayBullish = lastClose > prices[prices.length - 1].open;
-    if (drops >= 2 && todayBullish) {
+    if (drops >= 3 && todayBullish) {
       consecutiveDropRebound = true;
       rawScore += 10;
       reasons.push({
@@ -295,12 +294,10 @@ export function calcTechnicalReversal(
       reasons.push({
         label: '연속하락 반등',
         points: 0,
-        detail: '연속하락 반등 패턴 없음',
+        detail: '연속하락 반등 패턴 없음 (3일+ 연속 하락 후 양봉 조건 미충족)',
         met: false,
       });
     }
-  } else {
-    reasons.push({ label: '연속하락 반등', points: 0, detail: '데이터 부족', met: false });
   }
 
   // ── MA 역배열 감점 ──

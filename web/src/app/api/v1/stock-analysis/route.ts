@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
       // signals: 최근 30일 BUY 신호
       supabase
         .from('signals')
-        .select('source, timestamp, price')
+        .select('source, timestamp, signal_price')
         .eq('symbol', symbol)
         .in('signal_type', ['BUY', 'BUY_FORECAST'])
         .gte('timestamp', thirtyDaysAgo)
@@ -157,8 +157,8 @@ export async function GET(request: NextRequest) {
       daysSinceLastSignal = Math.floor(
         (Date.now() - lastTs.getTime()) / (1000 * 60 * 60 * 24)
       );
-      // signals 테이블에 price 컬럼이 있으면 활용, 없으면 cache 값 유지
-      const signalPrice = (lastSignal as Record<string, unknown>).price;
+      // signals 테이블의 signal_price 컬럼 활용
+      const signalPrice = (lastSignal as Record<string, unknown>).signal_price;
       if (signalPrice != null && lastSignalPrice === null) {
         lastSignalPrice = signalPrice as number;
       }
@@ -203,6 +203,12 @@ export async function GET(request: NextRequest) {
       lastSignalPrice,
     });
 
+    // 5일 누적 등락률 계산 (RSI 75+ & 급등 과열 리스크 체크용)
+    const fiveDayChangePct = prices.length >= 6
+      ? ((prices[prices.length - 1].close - prices[prices.length - 6].close)
+         / prices[prices.length - 6].close) * 100
+      : null;
+
     const riskScore = calcRiskScore(
       {
         is_managed: (cache.is_managed as boolean | null) ?? undefined,
@@ -212,6 +218,8 @@ export async function GET(request: NextRequest) {
         major_shareholder_delta: (dart?.major_shareholder_delta as number | null) ?? undefined,
         has_treasury_buyback: (dart?.has_treasury_buyback as boolean | null) ?? undefined,
         market_cap: cache.market_cap as number | null,
+        rsi: techResult.rsi,
+        five_day_change_pct: fiveDayChangePct,
       },
       'standard'
     );
@@ -225,6 +233,8 @@ export async function GET(request: NextRequest) {
       major_shareholder_delta: (dart?.major_shareholder_delta as number | null) ?? undefined,
       has_treasury_buyback: (dart?.has_treasury_buyback as boolean | null) ?? undefined,
       market_cap: cache.market_cap as number | null,
+      rsi: techResult.rsi,
+      five_day_change_pct: fiveDayChangePct,
     });
 
     // 5. 응답 구성
@@ -294,6 +304,8 @@ function buildRiskReasons(input: {
   major_shareholder_delta?: number | null;
   has_treasury_buyback?: boolean;
   market_cap?: number | null;
+  rsi?: number | null;
+  five_day_change_pct?: number | null;
 }): ChecklistReason[] {
   const reasons: ChecklistReason[] = [];
 
@@ -350,6 +362,18 @@ function buildRiskReasons(input: {
       label: '자사주 매입',
       passed: !!input.has_treasury_buyback,
       value: input.has_treasury_buyback ? '자사주 매입 중' : '없음',
+    });
+  }
+
+  // RSI 75+ & 5일 +20%+ 동시 과열 (통과 = 조건 미해당)
+  if (input.rsi != null && input.five_day_change_pct != null) {
+    const overheated = input.rsi >= 75 && input.five_day_change_pct >= 20;
+    reasons.push({
+      label: 'RSI 과열+급등',
+      passed: !overheated,
+      value: overheated
+        ? `RSI ${input.rsi.toFixed(1)}, 5일 +${input.five_day_change_pct.toFixed(1)}% (과열)`
+        : `RSI ${input.rsi.toFixed(1)}, 5일 ${input.five_day_change_pct >= 0 ? '+' : ''}${input.five_day_change_pct.toFixed(1)}%`,
     });
   }
 

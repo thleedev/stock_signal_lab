@@ -4,6 +4,16 @@
  * 관리종목 여부, 감사의견, CB/BW 발행, 대주주 지분, 거래대금, 회전율 등
  * 다양한 리스크 요인에 따라 감점을 누적하여 리스크 점수를 산출한다.
  *
+ * 페널티 → composite-score 변환:
+ *   riskPenalty = Math.min(0.20, Math.abs(riskScore) / 100 * 0.20)
+ *   → riskScore -100 = 20%, -75 = 15%, -50 = 10%
+ *
+ * 스펙 페널티 매핑:
+ *   관리종목 20%          → -100 (early return)
+ *   감사의견 비적정 15%   → -75 (early return)
+ *   CB/BW 최근 발행 10%  → -50
+ *   RSI 75+ & 5일+20% 10% → -50
+ *
  * 모델 종류:
  *   - standard: 중장기 투자 기준 (기본값)
  *   - short_term: 단기 투자 기준 (일부 감점 완화)
@@ -31,6 +41,10 @@ interface RiskInput {
   turnover_rate?: number | null
   /** 시가총액 (억원) */
   market_cap?: number | null
+  /** RSI 값 (기술전환 모듈에서 계산, 과매수 과열 체크용) */
+  rsi?: number | null
+  /** 5일 누적 등락률 (%) — 급등 과열 체크용 */
+  five_day_change_pct?: number | null
 }
 
 /** 점수 계산 모델 타입 */
@@ -44,17 +58,25 @@ type Model = 'standard' | 'short_term'
  * @returns 리스크 감점 합계 (0 이하의 정수)
  */
 export function calcRiskScore(input: RiskInput, model: Model = 'standard'): number {
-  // 관리종목: 즉시 최대 감점 반환
+  // 관리종목: 즉시 최대 감점 반환 (20% 페널티)
   if (input.is_managed) return -100
 
-  // 감사의견 비적정: 즉시 -80 반환
-  if (input.audit_opinion && input.audit_opinion !== '적정') return -80
+  // 감사의견 비적정: 즉시 -75 반환 (15% 페널티)
+  if (input.audit_opinion && input.audit_opinion !== '적정') return -75
 
   let score = 0
 
-  // CB/BW 최근 발행: standard -30, short_term -20
+  // CB/BW 최근 발행: 10% 페널티 → -50
   if (input.has_recent_cbw) {
-    score += model === 'standard' ? -30 : -20
+    score += model === 'standard' ? -50 : -30
+  }
+
+  // RSI 75+ + 5일 +20%+ 동시: 10% 페널티 → -50 (스펙 기준)
+  if (
+    input.rsi != null && input.rsi >= 75 &&
+    input.five_day_change_pct != null && input.five_day_change_pct >= 20
+  ) {
+    score += -50
   }
 
   // 최대주주 지분율 — 시총에 따라 차등 적용

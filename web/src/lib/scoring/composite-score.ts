@@ -166,6 +166,12 @@ export function calcCompositeScore(input: CompositeScoreInput, style: StyleId = 
     lastSignalPrice: input.lastSignalPrice,
   });
 
+  // 5일 누적 등락률 계산 (RSI 75+ & 급등 과열 리스크 체크용)
+  const fiveDayChangePct = input.prices.length >= 6
+    ? ((input.prices[input.prices.length - 1].close - input.prices[input.prices.length - 6].close)
+       / input.prices[input.prices.length - 6].close) * 100
+    : null;
+
   // 리스크 점수 계산 (0 이하 반환)
   const riskScore = calcRiskScore({
     is_managed: input.isManaged,
@@ -178,6 +184,8 @@ export function calcCompositeScore(input: CompositeScoreInput, style: StyleId = 
     avg_trading_value_20d: input.avgTradingValue20d,
     turnover_rate: input.turnoverRate,
     market_cap: input.marketCap,
+    rsi: techResult.rsi,
+    five_day_change_pct: fiveDayChangePct,
   }, 'standard');
 
   // 기술전환 점수 보정:
