@@ -306,30 +306,6 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
         </div>
       )}
 
-      {/* ── 축별 점수 바 — 스펙 4축 + 리스크 감점 ── */}
-      <div className="space-y-2">
-        {[
-          { label: '신호',    value: data.score_signal   ?? 0, color: 'bg-amber-500',   text: 'text-amber-500'   },
-          { label: '수급',    value: data.score_supply   ?? 0, color: 'bg-sky-500',     text: 'text-sky-500'     },
-          { label: '가치',    value: data.score_value    ?? 0, color: 'bg-violet-500',  text: 'text-violet-500'  },
-          { label: '기술전환', value: data.score_momentum ?? 0, color: 'bg-emerald-500', text: 'text-emerald-500' },
-          { label: '리스크',  value: data.score_risk     ?? 0, color: 'bg-red-500',     text: 'text-red-500'     },
-        ].map((item) => (
-          <div key={item.label} className="flex items-center gap-3 px-1">
-            <span className="text-sm w-14 shrink-0">{item.label}</span>
-            <div className="flex-1 h-2 rounded-full bg-[var(--border)] overflow-hidden">
-              <div
-                className={`h-full rounded-full ${item.color}`}
-                style={{ width: `${Math.min(100, Math.max(0, item.value))}%` }}
-              />
-            </div>
-            <span className={`tabular-nums text-sm font-bold w-8 text-right ${item.text}`}>
-              {Math.round(item.value)}
-            </span>
-          </div>
-        ))}
-      </div>
-
       {/* ── 카테고리별 체크리스트 (stock-analysis API) ── */}
       <div className="border-t border-[var(--border)] pt-3 space-y-1.5">
         <p className="text-xs font-semibold text-[var(--muted)] mb-2">세부 조건 체크리스트</p>

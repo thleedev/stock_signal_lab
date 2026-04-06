@@ -120,71 +120,59 @@ export function AnalysisHoverCard({ item, history }: Props) {
   );
 }
 
-/** 카테고리별 충족/미충족 조건 목록 (컴팩트) */
+/** 카테고리별 충족/미충족/해당없음 조건 전체 나열 (토글 없음) */
 function ChecklistSection({ categories }: { categories: AnalysisCategory[] }) {
-  const [openId, setOpenId] = useState<string | null>(null);
-
   // risk 카테고리는 별도 표기
   const mainCats = categories.filter(c => c.id !== 'risk');
   const riskCat = categories.find(c => c.id === 'risk');
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       {mainCats.map(cat => {
         const passed = cat.reasons.filter(r => r.passed);
-        const failed = cat.reasons.filter(r => !r.passed);
-        const isOpen = openId === cat.id;
-
         return (
           <div key={cat.id}>
-            {/* 카테고리 행 — 클릭으로 세부 조건 토글 */}
-            <button
-              type="button"
-              onClick={() => setOpenId(isOpen ? null : cat.id)}
-              className="w-full flex items-center gap-1.5 text-[10px] hover:bg-[var(--card-hover)] rounded px-1 py-0.5 transition-colors"
-            >
-              <span className={`font-medium w-8 shrink-0 ${CATEGORY_COLOR[cat.id]}`}>{cat.label}</span>
-              {/* 충족 조건 뱃지 */}
-              <span className="flex gap-0.5 flex-wrap flex-1">
-                {passed.map((r, i) => (
-                  <span key={i} className="text-green-400">✓{r.label}</span>
-                ))}
-                {passed.length === 0 && (
-                  <span className="text-[var(--muted)]">충족 조건 없음</span>
-                )}
-              </span>
-              <span className="text-[var(--muted)] shrink-0">{passed.length}/{cat.reasons.length}</span>
-              <span className="text-[var(--muted)] shrink-0">{isOpen ? '▲' : '▼'}</span>
-            </button>
-
-            {/* 세부 조건 드롭다운 */}
-            {isOpen && (
-              <div className="ml-2 mt-0.5 space-y-0.5 pb-1">
-                {passed.map((r, i) => (
-                  <div key={i} className="flex items-start gap-1 text-[10px]">
-                    <span className="text-green-400 shrink-0 mt-px">✓</span>
-                    <span className="text-[var(--text)]">{r.label}</span>
-                    {r.value && <span className="text-[var(--muted)] truncate">{r.value}</span>}
-                  </div>
-                ))}
-                {failed.map((r, i) => (
-                  <div key={i} className="flex items-start gap-1 text-[10px] opacity-50">
-                    <span className="text-[var(--muted)] shrink-0 mt-px">✗</span>
-                    <span className="text-[var(--muted)]">{r.label}</span>
-                    {r.value && <span className="text-[var(--muted)] truncate">{r.value}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* 카테고리 헤더 */}
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`text-[10px] font-semibold w-8 shrink-0 ${CATEGORY_COLOR[cat.id]}`}>{cat.label}</span>
+              <span className="text-[10px] text-[var(--muted)]">{passed.length}/{cat.reasons.length}</span>
+            </div>
+            {/* 모든 조건 나열 */}
+            <div className="space-y-0.5 ml-1">
+              {cat.reasons.map((r, i) => (
+                <div key={i} className={`flex items-start gap-1 text-[10px] ${r.passed ? '' : 'opacity-50'}`}>
+                  <span className={`shrink-0 mt-px ${r.passed ? 'text-green-400' : 'text-[var(--muted)]'}`}>
+                    {r.passed ? '✓' : '✗'}
+                  </span>
+                  <span className={r.passed ? 'text-[var(--text)]' : 'text-[var(--muted)]'}>{r.label}</span>
+                  {r.value && <span className="text-[var(--muted)] truncate ml-auto pl-1">{r.value}</span>}
+                </div>
+              ))}
+            </div>
           </div>
         );
       })}
 
-      {/* 리스크 조건 요약 */}
-      {riskCat && riskCat.reasons.some(r => !r.passed) && (
-        <div className="flex items-center gap-1 text-[10px] text-red-400 pt-0.5">
-          <span>⚠</span>
-          <span>{riskCat.reasons.filter(r => !r.passed).map(r => r.label).join(', ')}</span>
+      {/* 리스크 조건 */}
+      {riskCat && (
+        <div>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[10px] font-semibold w-8 shrink-0 text-red-400">{riskCat.label}</span>
+            <span className="text-[10px] text-[var(--muted)]">
+              {riskCat.reasons.filter(r => r.passed).length}/{riskCat.reasons.length}
+            </span>
+          </div>
+          <div className="space-y-0.5 ml-1">
+            {riskCat.reasons.map((r, i) => (
+              <div key={i} className={`flex items-start gap-1 text-[10px] ${r.passed ? '' : 'opacity-50'}`}>
+                <span className={`shrink-0 mt-px ${r.passed ? 'text-green-400' : 'text-red-400'}`}>
+                  {r.passed ? '✓' : '⚠'}
+                </span>
+                <span className={r.passed ? 'text-[var(--text)]' : 'text-red-400'}>{r.label}</span>
+                {r.value && <span className="text-[var(--muted)] truncate ml-auto pl-1">{r.value}</span>}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
