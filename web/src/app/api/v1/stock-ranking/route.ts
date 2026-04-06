@@ -53,6 +53,15 @@ export type StockRankItem = {
   is_managed: boolean | null;
   volume: number | null;
   prices_updated_at: string | null;
+  // 카테고리별 체크리스트 충족/전체 조건 수 (step4-scoring 크론이 저장)
+  checklist_tech_pass: number | null;
+  checklist_tech_total: number | null;
+  checklist_sup_pass: number | null;
+  checklist_sup_total: number | null;
+  checklist_val_pass: number | null;
+  checklist_val_total: number | null;
+  checklist_sig_pass: number | null;
+  checklist_sig_total: number | null;
 };
 
 export async function GET(request: NextRequest) {
@@ -71,6 +80,10 @@ export async function GET(request: NextRequest) {
     .select(`
       symbol, scored_at,
       score_value, score_growth, score_supply, score_momentum, score_risk, score_signal, score_total,
+      checklist_tech_pass, checklist_tech_total,
+      checklist_sup_pass, checklist_sup_total,
+      checklist_val_pass, checklist_val_total,
+      checklist_sig_pass, checklist_sig_total,
       stock_cache!inner(
         symbol, name, market, current_price, price_change_pct,
         per, pbr, roe, market_cap, dividend_yield,
@@ -147,6 +160,14 @@ export async function GET(request: NextRequest) {
       is_managed: cache.is_managed,
       volume: cache.volume,
       prices_updated_at: cache.updated_at,
+      checklist_tech_pass:  row.checklist_tech_pass  as number | null,
+      checklist_tech_total: row.checklist_tech_total as number | null,
+      checklist_sup_pass:   row.checklist_sup_pass   as number | null,
+      checklist_sup_total:  row.checklist_sup_total  as number | null,
+      checklist_val_pass:   row.checklist_val_pass   as number | null,
+      checklist_val_total:  row.checklist_val_total  as number | null,
+      checklist_sig_pass:   row.checklist_sig_pass   as number | null,
+      checklist_sig_total:  row.checklist_sig_total  as number | null,
     };
   });
 

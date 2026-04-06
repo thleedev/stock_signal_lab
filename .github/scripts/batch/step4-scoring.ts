@@ -185,6 +185,14 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           score_risk: scoreRisk,
           score_signal: result.score_signal,
           score_total: result.score_total,
+          checklist_tech_pass:  result.checklist_tech_pass,
+          checklist_tech_total: result.checklist_tech_total,
+          checklist_sup_pass:   result.checklist_sup_pass,
+          checklist_sup_total:  result.checklist_sup_total,
+          checklist_val_pass:   result.checklist_val_pass,
+          checklist_val_total:  result.checklist_val_total,
+          checklist_sig_pass:   result.checklist_sig_pass,
+          checklist_sig_total:  result.checklist_sig_total,
           updated_at: new Date().toISOString(),
         });
       }

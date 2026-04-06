@@ -152,10 +152,22 @@ function StockRow({
   const signalAge = getSignalAge(sigDateRaw);
 
   const miniBars = [
-    { label: '신호', value: scores.signal,    color: 'bg-amber-500' },
-    { label: '수급', value: scores.supply,    color: 'bg-sky-500' },
-    { label: '가치', value: scores.valuation, color: 'bg-violet-500' },
-    { label: '기술', value: scores.technical, color: 'bg-emerald-500' },
+    {
+      label: '신호', value: scores.signal,    color: 'bg-amber-500',
+      pass: item.checklist_sig_pass, total: item.checklist_sig_total,
+    },
+    {
+      label: '수급', value: scores.supply,    color: 'bg-sky-500',
+      pass: item.checklist_sup_pass, total: item.checklist_sup_total,
+    },
+    {
+      label: '가치', value: scores.valuation, color: 'bg-violet-500',
+      pass: item.checklist_val_pass, total: item.checklist_val_total,
+    },
+    {
+      label: '기술', value: scores.technical, color: 'bg-emerald-500',
+      pass: item.checklist_tech_pass, total: item.checklist_tech_total,
+    },
   ];
 
   return (
@@ -206,7 +218,7 @@ function StockRow({
         })()}
 
 
-        {/* 카테고리 게이지 — 데스크탑만 */}
+        {/* 카테고리 게이지 + N/M 체크리스트 수 — 데스크탑만 */}
         <div className="hidden sm:flex items-center gap-2 shrink-0">
           {miniBars.map((b) => (
             <div key={b.label} className="flex items-center gap-0.5">
@@ -214,6 +226,11 @@ function StockRow({
               <div className="w-10 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
                 <div className={`h-full rounded-full ${b.color}`} style={{ width: `${Math.max(0, Math.min(100, b.value))}%` }} />
               </div>
+              {b.total != null && b.total > 0 && (
+                <span className="text-[9px] tabular-nums text-[var(--muted)] leading-none">
+                  {b.pass}/{b.total}
+                </span>
+              )}
             </div>
           ))}
         </div>

@@ -98,6 +98,22 @@ export interface CompositeScoreResult {
   score_signal: number;
   /** 리스크 감점 (0 이하) */
   score_risk: number;
+  /** 기술전환 충족 조건 수 */
+  checklist_tech_pass: number;
+  /** 기술전환 전체 조건 수 */
+  checklist_tech_total: number;
+  /** 수급강도 충족 조건 수 */
+  checklist_sup_pass: number;
+  /** 수급강도 전체 조건 수 */
+  checklist_sup_total: number;
+  /** 가치매력 충족 조건 수 */
+  checklist_val_pass: number;
+  /** 가치매력 전체 조건 수 */
+  checklist_val_total: number;
+  /** 신호보너스 충족 조건 수 */
+  checklist_sig_pass: number;
+  /** 신호보너스 전체 조건 수 */
+  checklist_sig_total: number;
 }
 
 /** 투자 스타일 ID */
@@ -217,5 +233,13 @@ export function calcCompositeScore(input: CompositeScoreInput, style: StyleId = 
     score_valuation: Math.round(valResult.normalizedScore),
     score_signal: Math.round(signalResult.normalizedScore),
     score_risk: riskScore,
+    checklist_tech_pass:  techResult.reasons.filter(r => r.met).length,
+    checklist_tech_total: techResult.reasons.length,
+    checklist_sup_pass:   supplyResult.reasons.filter(r => r.met).length,
+    checklist_sup_total:  supplyResult.reasons.length,
+    checklist_val_pass:   valResult.reasons.filter(r => r.met).length,
+    checklist_val_total:  valResult.reasons.length,
+    checklist_sig_pass:   signalResult.reasons.filter(r => r.met).length,
+    checklist_sig_total:  signalResult.reasons.length,
   };
 }
