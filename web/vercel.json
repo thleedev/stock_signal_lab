@@ -1,12 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/v1/cron/daily-prices?mode=sync",
-      "schedule": "30 7 * * 1-5"
-    },
-    {
-      "path": "/api/v1/cron/daily-prices?mode=backfill",
-      "schedule": "30 22 * * *"
-    }
-  ]
-}
+{}
