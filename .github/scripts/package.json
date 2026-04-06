@@ -1,0 +1,17 @@
+{
+  "name": "dashboardstock-batch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "batch": "tsx batch/index.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "@types/node": "^22.14.0"
+  }
+}
