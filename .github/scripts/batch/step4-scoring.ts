@@ -187,12 +187,12 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           symbol,
           scored_at: date,
           prev_close: prevClose,
-          score_value: Math.round((result.categories.valueGrowth?.normalized ?? 0) * 100),
-          score_growth: Math.round((result.categories.valueGrowth?.normalized ?? 0) * 100),
-          score_supply: Math.round((result.categories.supply?.normalized ?? 0) * 100),
-          score_momentum: Math.round((result.categories.momentum?.normalized ?? 0) * 100),
-          score_risk: Math.round((result.categories.risk?.normalized ?? 0) * 100),
-          score_signal: Math.round((result.categories.signalTech?.normalized ?? 0) * 100),
+          score_value: Math.round(result.categories.valueGrowth?.normalized ?? 0),
+          score_growth: Math.round(result.categories.valueGrowth?.normalized ?? 0),
+          score_supply: Math.round(result.categories.supply?.normalized ?? 0),
+          score_momentum: Math.round(result.categories.momentum?.normalized ?? 0),
+          score_risk: Math.round(result.categories.risk?.normalized ?? 0),
+          score_signal: Math.round(result.categories.signalTech?.normalized ?? 0),
           updated_at: new Date().toISOString(),
         });
       }
