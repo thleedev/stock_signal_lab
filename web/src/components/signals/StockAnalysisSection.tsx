@@ -89,13 +89,14 @@ function getGrade(score: number): { grade: string; label: string; cls: string } 
 }
 
 // ── 카테고리 미니바 정규화 ──────────────────────────────────────────────────
+// score_momentum은 DB 컬럼명이지만 실제로는 기술전환(Technical Reversal) 점수입니다.
 function getCategoryScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   return {
-    signalTech:  clamp(item.score_signal ?? 0),
-    supply:      clamp(item.score_supply ?? 0),
-    valueGrowth: clamp(item.score_value ?? 0),
-    momentum:    clamp(item.score_momentum ?? 0),
+    signal:    clamp(item.score_signal ?? 0),
+    supply:    clamp(item.score_supply ?? 0),
+    valuation: clamp(item.score_value ?? 0),
+    technical: clamp(item.score_momentum ?? 0),
   };
 }
 
@@ -151,10 +152,10 @@ function StockRow({
   const signalAge = getSignalAge(sigDateRaw);
 
   const miniBars = [
-    { label: '신호', value: scores.signalTech, color: 'bg-amber-500' },
-    { label: '수급', value: scores.supply,     color: 'bg-sky-500' },
-    { label: '가치', value: scores.valueGrowth, color: 'bg-violet-500' },
-    { label: '모멘텀', value: scores.momentum,   color: 'bg-emerald-500' },
+    { label: '신호', value: scores.signal,    color: 'bg-amber-500' },
+    { label: '수급', value: scores.supply,    color: 'bg-sky-500' },
+    { label: '가치', value: scores.valuation, color: 'bg-violet-500' },
+    { label: '기술', value: scores.technical, color: 'bg-emerald-500' },
   ];
 
   return (

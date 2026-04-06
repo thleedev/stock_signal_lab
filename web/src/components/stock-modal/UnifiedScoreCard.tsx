@@ -38,12 +38,13 @@ const CHECKLIST_CATEGORY_META: Record<
 };
 
 // ── 등급 유틸 ─────────────────────────────────────────────────────────────────
+// 스펙 기준: A+(90+) A(80+) B+(65+) B(50+) C(35+) D(0+)
 function getGradeStyle(score: number): { badge: string; label: string } {
-  if (score >= 85) return { badge: 'bg-red-600 text-white',        label: '적극매수' };
-  if (score >= 70) return { badge: 'bg-red-500 text-white',        label: '매수'     };
-  if (score >= 55) return { badge: 'bg-orange-400 text-white',     label: '관심'     };
-  if (score >= 40) return { badge: 'bg-yellow-400 text-gray-900',  label: '보통'     };
-  if (score >= 25) return { badge: 'bg-gray-400 text-white',       label: '관망'     };
+  if (score >= 90) return { badge: 'bg-red-600 text-white',        label: '적극매수' };
+  if (score >= 80) return { badge: 'bg-red-500 text-white',        label: '매수'     };
+  if (score >= 65) return { badge: 'bg-orange-400 text-white',     label: '관심'     };
+  if (score >= 50) return { badge: 'bg-yellow-400 text-gray-900',  label: '보통'     };
+  if (score >= 35) return { badge: 'bg-gray-400 text-white',       label: '관망'     };
   return                   { badge: 'bg-gray-600 text-gray-200',   label: '주의'     };
 }
 
@@ -242,12 +243,13 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
     return () => controller.abort();
   }, [data.symbol]);
 
-  // 레이더 데이터 — score_* 필드로 구성
+  // 레이더 데이터 — 스펙 4축: 신호보너스/수급강도/가치매력/기술전환
+  // (score_momentum = DB 컬럼명, 실제로는 기술전환 점수)
   const radarData = useMemo(() => [
-    { category: '신호·기술',  value: Math.round(data.score_signal ?? 0) },
-    { category: '수급',       value: Math.round(data.score_supply ?? 0) },
-    { category: '가치·성장',  value: Math.round(data.score_value ?? 0) },
-    { category: '모멘텀',     value: Math.round(data.score_momentum ?? 0) },
+    { category: '신호',   value: Math.round(data.score_signal ?? 0) },
+    { category: '수급',   value: Math.round(data.score_supply ?? 0) },
+    { category: '가치',   value: Math.round(data.score_value ?? 0) },
+    { category: '기술전환', value: Math.round(data.score_momentum ?? 0) },
   ], [data.score_signal, data.score_supply, data.score_value, data.score_momentum]);
 
   return (
@@ -304,14 +306,13 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
         </div>
       )}
 
-      {/* ── 축별 점수 바 (score_* 기반) ── */}
+      {/* ── 축별 점수 바 — 스펙 4축 + 리스크 감점 ── */}
       <div className="space-y-2">
         {[
           { label: '신호',    value: data.score_signal   ?? 0, color: 'bg-amber-500',   text: 'text-amber-500'   },
           { label: '수급',    value: data.score_supply   ?? 0, color: 'bg-sky-500',     text: 'text-sky-500'     },
           { label: '가치',    value: data.score_value    ?? 0, color: 'bg-violet-500',  text: 'text-violet-500'  },
-          { label: '모멘텀',  value: data.score_momentum ?? 0, color: 'bg-emerald-500', text: 'text-emerald-500' },
-          { label: '성장',    value: data.score_growth   ?? 0, color: 'bg-orange-500',  text: 'text-orange-500'  },
+          { label: '기술전환', value: data.score_momentum ?? 0, color: 'bg-emerald-500', text: 'text-emerald-500' },
           { label: '리스크',  value: data.score_risk     ?? 0, color: 'bg-red-500',     text: 'text-red-500'     },
         ].map((item) => (
           <div key={item.label} className="flex items-center gap-3 px-1">
