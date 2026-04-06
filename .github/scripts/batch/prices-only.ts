@@ -56,11 +56,19 @@ export async function runPricesOnly(): Promise<{ collected: number }> {
   }
   const pages = await Promise.all(pagePromises);
 
-  const allItems: NaverStockItem[] = [
+  // 중복 symbol 제거 (KOSPI/KOSDAQ 동시 등재 종목 방어)
+  const seen = new Set<string>();
+  const allItems: NaverStockItem[] = [];
+  for (const item of [
     ...(kospiFirst.stocks ?? []),
     ...(kosdaqFirst.stocks ?? []),
     ...pages.flatMap(p => p.items),
-  ];
+  ]) {
+    if (item.itemCode && !seen.has(item.itemCode)) {
+      seen.add(item.itemCode);
+      allItems.push(item);
+    }
+  }
 
   log('prices-only', `${allItems.length}종목 수집 완료, DB upsert 시작`);
 
