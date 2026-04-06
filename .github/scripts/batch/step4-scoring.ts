@@ -19,7 +19,8 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
     const { data: cacheRows, error: cacheErr } = await supabase
       .from('stock_cache')
       .select('symbol, current_price, per, pbr, roe, roe_estimated, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, market_cap, forward_per, target_price, invest_opinion, dividend_yield, high_52w, low_52w, is_managed, volume, float_shares')
-      .not('current_price', 'is', null);
+      .not('current_price', 'is', null)
+      .limit(10000);
 
     if (cacheErr || !cacheRows) throw new Error(`stock_cache 조회 실패: ${cacheErr?.message}`);
     log('step4', `${cacheRows.length}종목 기본 데이터 조회 완료`);

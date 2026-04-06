@@ -88,11 +88,13 @@ export async function runStep1DailyPrices(opts: {
     const { data: allSymbols } = await supabase
       .from('stock_cache')
       .select('symbol')
-      .not('current_price', 'is', null);
+      .not('current_price', 'is', null)
+      .limit(10000);
     const { data: existing } = await supabase
       .from('daily_prices')
       .select('symbol')
-      .eq('date', date);
+      .eq('date', date)
+      .limit(10000);
     const existingSet = new Set((existing ?? []).map(r => r.symbol as string));
     symbols = (allSymbols ?? []).map(r => r.symbol as string).filter(s => !existingSet.has(s));
     log('step1', `repair 대상: ${symbols.length}종목`);
@@ -101,7 +103,8 @@ export async function runStep1DailyPrices(opts: {
     const { data } = await supabase
       .from('stock_cache')
       .select('symbol')
-      .not('current_price', 'is', null);
+      .not('current_price', 'is', null)
+      .limit(10000);
     symbols = (data ?? []).map(r => r.symbol as string);
     log('step1', `full 대상: ${symbols.length}종목`);
   }

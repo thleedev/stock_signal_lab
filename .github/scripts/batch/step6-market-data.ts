@@ -71,8 +71,8 @@ async function fetchFearGreed(): Promise<number | null> {
 
 export async function runStep6MarketData(): Promise<void> {
   log('step6', '시황 지표 수집 시작');
-  const now = new Date().toISOString();
-  const rows: { indicator_type: string; value: number; updated_at: string }[] = [];
+  const today = new Date().toISOString().slice(0, 10);
+  const rows: { date: string; indicator_type: string; value: number }[] = [];
 
   // Yahoo Finance 병렬 fetch
   const yahooEntries = Object.entries(YAHOO_TICKERS).filter(([, ticker]) => ticker !== '');
@@ -80,7 +80,7 @@ export async function runStep6MarketData(): Promise<void> {
     yahooEntries.map(([type, ticker]) => fetchYahooQuote(ticker).then(v => ({ type, value: v })))
   );
   for (const { type, value } of yahooResults) {
-    if (value !== null) rows.push({ indicator_type: type, value, updated_at: now });
+    if (value !== null) rows.push({ date: today, indicator_type: type, value });
   }
 
   // FRED: HY스프레드, 수익률곡선
@@ -88,19 +88,19 @@ export async function runStep6MarketData(): Promise<void> {
     fetchFred('BAMLH0A0HYM2'),
     fetchFred('T10Y2Y'),
   ]);
-  if (hySpread !== null) rows.push({ indicator_type: 'HY_SPREAD', value: hySpread, updated_at: now });
-  if (yieldCurve !== null) rows.push({ indicator_type: 'YIELD_CURVE', value: yieldCurve, updated_at: now });
+  if (hySpread !== null) rows.push({ date: today, indicator_type: 'HY_SPREAD', value: hySpread });
+  if (yieldCurve !== null) rows.push({ date: today, indicator_type: 'YIELD_CURVE', value: yieldCurve });
 
   // CNN Fear & Greed
   const fg = await fetchFearGreed();
-  if (fg !== null) rows.push({ indicator_type: 'FEAR_GREED', value: fg, updated_at: now });
+  if (fg !== null) rows.push({ date: today, indicator_type: 'FEAR_GREED', value: fg });
 
   log('step6', `${rows.length}개 지표 수집, upsert 시작`);
 
   if (rows.length > 0) {
     const { error } = await supabase
       .from('market_indicators')
-      .upsert(rows, { onConflict: 'indicator_type' });
+      .upsert(rows, { onConflict: 'date,indicator_type' });
     if (error) log('step6', `upsert 오류: ${error.message}`);
   }
 

@@ -29,6 +29,7 @@ export async function runStep7Events(): Promise<void> {
     const { error } = await supabase.from('market_events').upsert({
       event_date: date,
       event_type: 'fomc',
+      event_category: 'rate',
       title: `FOMC 금리결정 (${month}월)`,
       source: 'fred_api',
       country: 'US',
@@ -48,6 +49,7 @@ export async function runStep7Events(): Promise<void> {
     const { error } = await supabase.from('market_events').upsert({
       event_date: expiryDate,
       event_type: 'expiry',
+      event_category: 'expiry',
       title: `선물옵션 만기일 (${month}월)`,
       source: 'rule_based',
       country: 'KR',
