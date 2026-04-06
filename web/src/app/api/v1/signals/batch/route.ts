@@ -27,6 +27,8 @@ export async function POST(request: NextRequest) {
     name: s.name,
     signal_type: s.signal_type,
     source: s.source,
+    // signal_price를 top-level 컬럼에 저장 (트리거가 NEW.signal_price로 참조)
+    signal_price: s.signal_price ?? null,
     batch_id: body.batch_id || null,
     is_fallback: s.is_fallback ?? false,
     raw_data: {
