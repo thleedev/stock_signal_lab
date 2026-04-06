@@ -81,31 +81,39 @@ export async function runStep1DailyPrices(opts: {
   const { mode, date } = opts;
   log('step1', `일봉 수집 시작 mode=${mode} date=${date}`);
 
+  /** Supabase max_rows(1000) 제한 우회: 페이지네이션으로 전체 조회 */
+  async function fetchAllSymbols(): Promise<string[]> {
+    const PAGE = 1000;
+    const result: string[] = [];
+    let from = 0;
+    while (true) {
+      const { data } = await supabase
+        .from('stock_cache')
+        .select('symbol')
+        .not('current_price', 'is', null)
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      result.push(...data.map(r => r.symbol as string));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return result;
+  }
+
   let symbols: string[];
 
   if (mode === 'repair') {
-    // repair 모드: stock_cache에 있지만 daily_prices에 없는 종목만 수집
-    const { data: allSymbols } = await supabase
-      .from('stock_cache')
-      .select('symbol')
-      .not('current_price', 'is', null)
-      .limit(10000);
-    const { data: existing } = await supabase
-      .from('daily_prices')
-      .select('symbol')
-      .eq('date', date)
-      .limit(10000);
-    const existingSet = new Set((existing ?? []).map(r => r.symbol as string));
-    symbols = (allSymbols ?? []).map(r => r.symbol as string).filter(s => !existingSet.has(s));
+    const [allSymbols, existing] = await Promise.all([
+      fetchAllSymbols(),
+      supabase.from('daily_prices').select('symbol').eq('date', date).limit(10000)
+        .then(r => (r.data ?? []).map(row => row.symbol as string)),
+    ]);
+    const existingSet = new Set(existing);
+    symbols = allSymbols.filter(s => !existingSet.has(s));
     log('step1', `repair 대상: ${symbols.length}종목`);
   } else {
     // full 모드: stock_cache 전종목 수집
-    const { data } = await supabase
-      .from('stock_cache')
-      .select('symbol')
-      .not('current_price', 'is', null)
-      .limit(10000);
-    symbols = (data ?? []).map(r => r.symbol as string);
+    symbols = await fetchAllSymbols();
     log('step1', `full 대상: ${symbols.length}종목`);
   }
 

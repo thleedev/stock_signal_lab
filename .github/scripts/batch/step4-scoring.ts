@@ -15,14 +15,25 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
   let scored = 0;
 
   try {
-    // 기본 캐시 데이터 전체 조회 (현재가 있는 종목만)
-    const { data: cacheRows, error: cacheErr } = await supabase
-      .from('stock_cache')
-      .select('symbol, current_price, per, pbr, roe, roe_estimated, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, market_cap, forward_per, target_price, invest_opinion, dividend_yield, high_52w, low_52w, is_managed, volume, float_shares')
-      .not('current_price', 'is', null)
-      .limit(10000);
+    // 기본 캐시 데이터 전체 조회 - Supabase max_rows(1000) 우회를 위해 페이지네이션
+    const COLS = 'symbol, current_price, per, pbr, roe, roe_estimated, foreign_net_qty, institution_net_qty, foreign_net_5d, institution_net_5d, foreign_streak, institution_streak, short_sell_ratio, market_cap, forward_per, target_price, invest_opinion, dividend_yield, high_52w, low_52w, is_managed, volume, float_shares';
+    const cacheRows: Record<string, unknown>[] = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from('stock_cache')
+        .select(COLS)
+        .not('current_price', 'is', null)
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`stock_cache 조회 실패: ${error.message}`);
+      if (!data || data.length === 0) break;
+      cacheRows.push(...(data as Record<string, unknown>[]));
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
 
-    if (cacheErr || !cacheRows) throw new Error(`stock_cache 조회 실패: ${cacheErr?.message}`);
+    if (cacheRows.length === 0) throw new Error('stock_cache 조회 결과 없음');
     log('step4', `${cacheRows.length}종목 기본 데이터 조회 완료`);
 
     // DART 재무/공시 데이터 전체 조회 후 Map 으로 변환
