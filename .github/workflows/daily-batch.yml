@@ -2,8 +2,8 @@ name: Daily Batch
 
 on:
   schedule:
-    - cron: '*/15 23 * * 1-5'   # 장중 현재가 08:00~08:45 KST (UTC 23:xx)
-    - cron: '*/15 0-11 * * 2-6' # 장중 현재가 09:00~20:45 KST (UTC 00:xx~11:xx, 화~토 = 월~금 KST)
+    - cron: '*/15 23 * * 0-4'   # 장중 현재가 08:00~08:45 KST (UTC 일~목 23:xx = KST 월~금 08:xx)
+    - cron: '*/15 0-11 * * 1-5' # 장중 현재가 09:00~20:45 KST (UTC 월~금 00:xx~11:xx = KST 월~금 09:xx~20:xx)
     - cron: '10 7 * * 1-5'      # 메인 배치 16:10 KST
     - cron: '0 22 * * *'        # 보정 배치 07:00 KST
   workflow_dispatch:
