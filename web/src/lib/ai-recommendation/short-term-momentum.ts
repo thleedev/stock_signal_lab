@@ -46,13 +46,25 @@ export interface ShortTermRecommendation {
 // 헬퍼: 등급 판정
 // ---------------------------------------------------------------------------
 
-/** 총점 기반 등급을 반환한다. (종목추천 탭과 동일 기준) */
+/**
+ * 총점 기반 등급을 반환한다.
+ *
+ * 임계값 근거:
+ *   - 프리필터 통과 종목의 실제 점수 분포: 30~85 (중앙값 약 45)
+ *   - 데이터 미수신(장중) 구간의 구조적 감점 고려
+ *   - A+ (78+): 모멘텀·수급·촉매 모두 최상위권 (상위 ~5%)
+ *   - A  (65+): 주요 지표 양호, 리스크 낮음 (상위 ~15%)
+ *   - B+ (52+): 평균 이상 (상위 ~35%)
+ *   - B  (40+): 프리필터 통과 평균 수준 (상위 ~60%)
+ *   - C  (28+): 조건 일부 부족 (관망)
+ *   - D  (28미만): 여러 조건 미충족
+ */
 function assignGrade(score: number): { grade: string; label: string } {
-  if (score >= 90) return { grade: 'A+', label: '적극매수' };
-  if (score >= 80) return { grade: 'A', label: '매수' };
-  if (score >= 65) return { grade: 'B+', label: '관심' };
-  if (score >= 50) return { grade: 'B', label: '보통' };
-  if (score >= 35) return { grade: 'C', label: '관망' };
+  if (score >= 78) return { grade: 'A+', label: '적극매수' };
+  if (score >= 65) return { grade: 'A', label: '매수' };
+  if (score >= 52) return { grade: 'B+', label: '관심' };
+  if (score >= 40) return { grade: 'B', label: '보통' };
+  if (score >= 28) return { grade: 'C', label: '관망' };
   return { grade: 'D', label: '주의' };
 }
 
@@ -191,28 +203,35 @@ export async function generateShortTermRecommendations(
   );
   const threeDaysAgoStr = threeDaysAgoDate.toISOString().slice(0, 10);
 
+  // daily_prices 조회용: 21거래일 ≈ 30 캘린더일 전 날짜 (종목별 limit 보장을 위해 날짜 필터 사용)
+  const thirtyDaysAgoDate = new Date(
+    new Date().getTime() + 9 * 60 * 60 * 1000 - 30 * 24 * 60 * 60 * 1000,
+  );
+  const thirtyDaysAgoStr = thirtyDaysAgoDate.toISOString().slice(0, 10);
+
   // -----------------------------------------------------------------------
   // 1. 병렬 데이터 조회 (Promise.allSettled으로 장애 내성 확보)
   // -----------------------------------------------------------------------
   const [cacheResult, priceResult, signalResult, sectorResult] = await Promise.allSettled([
-    // stock_cache: 종목별 기본 정보
+    // stock_cache: 종목별 기본 정보 (volume 포함 — 장중 todayVolume 보완용)
     supabase
       .from('stock_cache')
       .select(
-        'symbol, name, market, sector, current_price, price_change_pct, ' +
+        'symbol, name, market, sector, current_price, price_change_pct, volume, ' +
         'foreign_net_qty, institution_net_qty, foreign_streak, institution_streak, ' +
         'forward_per, target_price, invest_opinion, per, pbr, roe, dividend_yield, ' +
         'high_52w, low_52w, market_cap',
       )
       .in('symbol', symbols),
 
-    // daily_prices: 최근 5일 (20일 평균 거래량 용으로 최대 21일분)
+    // daily_prices: 최근 30일 (날짜 필터 + 명시적 limit으로 Supabase 1000행 한도 우회)
     supabase
       .from('daily_prices')
       .select('symbol, date, open, high, low, close, volume')
       .in('symbol', symbols)
+      .gte('date', thirtyDaysAgoStr)
       .order('date', { ascending: false })
-      .limit(symbols.length * 21),
+      .limit(Math.max(symbols.length * 30, 3000)),
 
     // signals: 최근 3일 내 BUY 신호
     supabase
@@ -304,13 +323,15 @@ export async function generateShortTermRecommendations(
     const today = isLatestToday
       ? latestPrice
       : {
-          // stock_cache에서 가상 당일 캔들 생성 (OHLCV 부분 부재)
+          // stock_cache에서 가상 당일 캔들 생성
+          // volume: stock_cache.volume 사용 (prices-only 배치가 15분마다 갱신)
+          // open: null 유지 (갭률 계산 불가)
           date: todayKst,
           close: cache?.current_price ?? latestPrice?.close ?? 0,
           open: null,
           high: cache?.current_price ?? latestPrice?.close ?? 0,
           low: cache?.current_price ?? latestPrice?.close ?? 0,
-          volume: 0,
+          volume: (cache?.volume as number | null) ?? 0,
         };
     const yesterday = isLatestToday
       ? (prices.length > 1 ? prices[1] : null)

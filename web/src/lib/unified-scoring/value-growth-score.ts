@@ -1,19 +1,22 @@
 // web/src/lib/unified-scoring/value-growth-score.ts
 import type { ScoreReason } from '@/types/score-reason';
 import type { CategoryScore, ScoringInput } from './types';
+import { isContrarianStyle } from './presets';
 import { getMarketCapTier } from '@/lib/ai-recommendation/market-cap-tier';
 
 /**
  * 가치·성장 카테고리 (0~100)
  *
  * 밸류에이션 파트 (0~55): PER/PBR/ROE/배당/목표가/PEG
- * 이익성장 파트 (0~45): EPS성장/매출성장/영업이익성장/ROE개선
+ * 이익성장 파트 (0~40): EPS성장/매출성장/영업이익성장/ROE개선
+ * 역발상 보너스: PBR 초저평가, 목표가 대폭 괴리, 자사주 매입
  */
-export function calcValueGrowthScore(input: ScoringInput): CategoryScore {
+export function calcValueGrowthScore(input: ScoringInput, styleId = 'balanced'): CategoryScore {
   const reasons: ScoreReason[] = [];
   let raw = 0;
   const maxRaw = 100;
   const tier = getMarketCapTier(input.marketCap);
+  const contrarian = isContrarianStyle(styleId);
 
   // ── 밸류에이션 파트 (0~55) ──
 
@@ -155,10 +158,26 @@ export function calcValueGrowthScore(input: ScoringInput): CategoryScore {
     }
   }
 
-  // 목표가 상향 (0~5)
-  if (input.investOpinion !== null && input.investOpinion >= 4.5) {
-    raw += 5;
-    reasons.push({ label: '목표가 상향', points: 5, detail: `의견 ${input.investOpinion.toFixed(1)}`, met: true });
+  // ── 역발상 심층가치 신호 ──
+  // 역발상은 하락 중인 종목을 다루므로, "얼마나 깊이 저평가됐는가"가 핵심 변별 기준
+  if (contrarian) {
+    // PBR 초저평가 보너스 (0~5): PBR < 0.5이면 기존 +8에 추가로 가산
+    // 청산가치 대비 50% 할인 = 하락 여지 제한적, 반등 시 큰 상승 여력
+    if (input.pbr !== null && input.pbr > 0 && input.pbr < 0.5) {
+      raw += 5;
+      reasons.push({ label: 'PBR 초저평가 (역발상)', points: 5, detail: `PBR ${input.pbr.toFixed(2)}배 — 청산가치 대비 50%↓ 할인`, met: true });
+    }
+
+    // 목표가 대폭 괴리 보너스 (0~5): 상승여력 50% 이상
+    // 애널리스트들이 강력한 반등을 예상 = 역발상 확신도 높음
+    if (input.targetPrice && input.currentPrice && input.currentPrice > 0) {
+      const upside = ((input.targetPrice - input.currentPrice) / input.currentPrice) * 100;
+      if (upside >= 50) {
+        raw += 5;
+        reasons.push({ label: '목표가 대폭 괴리 (역발상)', points: 5, detail: `상승여력 ${upside.toFixed(0)}% — 강한 반전 기대`, met: true });
+      }
+    }
+
   }
 
   const normalized = Math.max(0, Math.min(raw, maxRaw));

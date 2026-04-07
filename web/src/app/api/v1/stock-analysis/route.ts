@@ -12,6 +12,9 @@ import { calcSupplyStrength } from '@/lib/scoring/supply-strength';
 import { calcValuationAttractiveness } from '@/lib/scoring/valuation-attractiveness';
 import { calcSignalBonus } from '@/lib/scoring/signal-bonus';
 import { calcRiskScore } from '@/lib/scoring/risk-score';
+import { calcUnifiedScore } from '@/lib/unified-scoring/engine';
+import type { ScoringInput } from '@/lib/unified-scoring/types';
+import { STYLE_PRESETS } from '@/lib/unified-scoring/presets';
 import type { DailyPrice } from '@/lib/ai-recommendation/technical-score';
 import type { ScoreReason } from '@/types/score-reason';
 
@@ -35,11 +38,22 @@ export interface AnalysisCategory {
   reasons: ChecklistReason[];
 }
 
+/** 통합 스코어링 카테고리 (unified-scoring 연결 시) */
+export interface UnifiedAnalysisCategory {
+  id: string;
+  label: string;
+  score: number;
+  reasons: ChecklistReason[];
+}
+
 /** stock-analysis API 응답 타입 */
 export interface StockAnalysisResponse {
   symbol: string;
   scored_at: string;
   categories: AnalysisCategory[];
+  /** style 파라미터 전달 시 unified-scoring 엔진 결과 */
+  unified_categories?: UnifiedAnalysisCategory[];
+  unified_style?: string;
 }
 
 /** ScoreReason 배열을 ChecklistReason 배열로 변환합니다. */
@@ -62,6 +76,7 @@ function riskToDisplayScore(riskScore: number): number {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol');
+  const style = searchParams.get('style') ?? undefined; // unified-scoring 스타일 ID
 
   if (!symbol) {
     return NextResponse.json({ error: 'symbol 파라미터가 필요합니다.' }, { status: 400 });
@@ -80,14 +95,15 @@ export async function GET(request: NextRequest) {
   try {
     // 1. 필요한 데이터를 병렬로 조회합니다.
     const [cacheRes, pricesRes, dartRes, signalsRes] = await Promise.all([
-      // stock_cache: 종목 재무·수급 데이터
+      // stock_cache: 종목 재무·수급 데이터 (unified-scoring용 추가 컬럼 포함)
       supabase
         .from('stock_cache')
         .select(
-          'symbol, current_price, market_cap, per, pbr, roe, dividend_yield, ' +
-          'high_52w, low_52w, forward_per, target_price, invest_opinion, ' +
+          'symbol, name, market, current_price, price_change_pct, market_cap, ' +
+          'per, pbr, roe, dividend_yield, eps, forward_per, forward_eps, bps, ' +
+          'high_52w, low_52w, target_price, invest_opinion, ' +
           'foreign_streak, institution_streak, foreign_net_qty, institution_net_qty, ' +
-          'foreign_net_5d, institution_net_5d, short_sell_ratio, ' +
+          'foreign_net_5d, institution_net_5d, short_sell_ratio, volume, float_shares, ' +
           'is_managed, updated_at, latest_signal_price, signal_count_30d'
         )
         .eq('symbol', symbol)
@@ -101,12 +117,13 @@ export async function GET(request: NextRequest) {
         .gte('date', ninetyDaysAgo)
         .order('date', { ascending: true }),
 
-      // stock_dart_info: DART 재무 데이터 (CB/BW, 감사의견, 대주주 지분율 등)
+      // stock_dart_info: DART 재무 데이터 (CB/BW, 감사의견, 대주주 지분율, 성장률 등)
       supabase
         .from('stock_dart_info')
         .select(
           'symbol, has_recent_cbw, audit_opinion, ' +
-          'major_shareholder_pct, major_shareholder_delta, has_treasury_buyback'
+          'major_shareholder_pct, major_shareholder_delta, has_treasury_buyback, ' +
+          'revenue_growth_yoy, operating_profit_growth_yoy, roe_estimated'
         )
         .eq('symbol', symbol)
         .maybeSingle(),
@@ -237,7 +254,119 @@ export async function GET(request: NextRequest) {
       five_day_change_pct: fiveDayChangePct,
     });
 
-    // 5. 응답 구성
+    // 5. unified-scoring 계산 (style 파라미터 전달 시)
+    let unified_categories: UnifiedAnalysisCategory[] | undefined;
+    if (style) {
+      // prices는 ASC(오래된→최신) — unified-scoring은 DESC(최신→오래된) 필요
+      const descPrices = [...prices].reverse();
+
+      // 파생값 계산
+      const latestP = descPrices[0];
+      const prevP   = descPrices[1];
+
+      const priceChangePct = latestP && prevP && prevP.close > 0
+        ? ((latestP.close - prevP.close) / prevP.close) * 100
+        : (cache.price_change_pct as number | null) ?? null;
+
+      const closePosition = latestP && (latestP.high - latestP.low) > 0
+        ? (latestP.close - latestP.low) / (latestP.high - latestP.low)
+        : null;
+
+      const gapPct = latestP && prevP && prevP.close > 0
+        ? ((latestP.open - prevP.close) / prevP.close) * 100
+        : null;
+
+      const cumReturn3d = descPrices.length >= 4 && descPrices[3].close > 0
+        ? ((descPrices[0].close - descPrices[3].close) / descPrices[3].close) * 100
+        : null;
+
+      const avg20Vol = descPrices.length >= 20
+        ? descPrices.slice(0, 20).reduce((s, p) => s + p.volume, 0) / 20
+        : null;
+      const volumeRatio = latestP && avg20Vol && avg20Vol > 0
+        ? latestP.volume / avg20Vol
+        : null;
+
+      const tradingValue = latestP
+        ? latestP.close * latestP.volume
+        : null;
+
+      const scoringInput: ScoringInput = {
+        symbol,
+        name:   (cache.name   as string | null) ?? '',
+        market: (cache.market as string | null) ?? '',
+        currentPrice:       (cache.current_price   as number | null),
+        priceChangePct,
+        high52w:            (cache.high_52w         as number | null),
+        low52w:             (cache.low_52w          as number | null),
+        marketCap:          (cache.market_cap       as number | null),
+        per:                (cache.per              as number | null),
+        forwardPer:         (cache.forward_per      as number | null),
+        forwardEps:         (cache.forward_eps      as number | null) ?? null,
+        eps:                (cache.eps              as number | null) ?? null,
+        pbr:                (cache.pbr              as number | null),
+        bps:                (cache.bps              as number | null) ?? null,
+        roe:                (cache.roe              as number | null),
+        roeEstimated:       (dart?.roe_estimated    as number | null) ?? null,
+        dividendYield:      (cache.dividend_yield   as number | null),
+        targetPrice:        (cache.target_price     as number | null),
+        investOpinion:      (cache.invest_opinion   as number | null),
+        foreignNetQty:      (cache.foreign_net_qty  as number | null),
+        institutionNetQty:  (cache.institution_net_qty as number | null),
+        foreignNet5d:       (cache.foreign_net_5d   as number | null),
+        institutionNet5d:   (cache.institution_net_5d as number | null),
+        foreignStreak:      (cache.foreign_streak   as number | null),
+        institutionStreak:  (cache.institution_streak as number | null),
+        shortSellRatio:     (cache.short_sell_ratio as number | null),
+        volume:             (cache.volume           as number | null) ?? (latestP?.volume ?? null),
+        floatShares:        (cache.float_shares     as number | null) ?? null,
+        signalCount30d:     (cache.signal_count_30d as number | null),
+        latestSignalPrice:  lastSignalPrice,
+        latestSignalDate:   signals.length > 0 ? signals[0].timestamp : null,
+        signalSources:      [...new Set(todaySignals.map(s => s.source))],
+        latestSignalDaysAgo: daysSinceLastSignal,
+        isManaged:           (cache.is_managed       as boolean | null) ?? false,
+        hasRecentCbw:        (dart?.has_recent_cbw   as boolean | null) ?? false,
+        auditOpinion:        (dart?.audit_opinion    as string  | null) ?? null,
+        majorShareholderPct:   (dart?.major_shareholder_pct   as number | null) ?? null,
+        majorShareholderDelta: (dart?.major_shareholder_delta as number | null) ?? null,
+        hasTreasuryBuyback:    (dart?.has_treasury_buyback    as boolean | null) ?? false,
+        revenueGrowthYoy:        (dart?.revenue_growth_yoy          as number | null) ?? null,
+        operatingProfitGrowthYoy:(dart?.operating_profit_growth_yoy as number | null) ?? null,
+        dailyPrices: descPrices,
+        volumeRatio,
+        closePosition,
+        gapPct,
+        cumReturn3d,
+        tradingValue,
+        sectorAvgChangePct: null,
+        sectorRank:         null,
+        sectorTotal:        null,
+      };
+
+      const unifiedResult = calcUnifiedScore(scoringInput, style);
+      const categoryLabels: Record<string, string> = {
+        signalTech:  '신호·기술',
+        supply:      '수급',
+        valueGrowth: '가치·성장',
+        momentum:    '모멘텀',
+        risk:        '리스크',
+      };
+
+      unified_categories = (Object.entries(unifiedResult.categories) as [string, { score?: number; normalized: number; reasons: { label: string; met: boolean; detail: string }[] }][])
+        .map(([id, cat]) => ({
+          id,
+          label: categoryLabels[id] ?? id,
+          score: Math.round(cat.normalized),
+          reasons: cat.reasons.map(r => ({
+            label: r.label,
+            passed: r.met,
+            value: r.detail || undefined,
+          })),
+        }));
+    }
+
+    // 6. 응답 구성
     const categories: AnalysisCategory[] = [
       {
         id: 'technical',
@@ -275,6 +404,7 @@ export async function GET(request: NextRequest) {
       symbol,
       scored_at: new Date().toISOString(),
       categories,
+      ...(unified_categories ? { unified_categories, unified_style: style } : {}),
     };
 
     return NextResponse.json(response, {

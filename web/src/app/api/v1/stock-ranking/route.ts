@@ -86,6 +86,31 @@ const SELECT_COLS = `
 const SUPABASE_PAGE = 1000; // Supabase max_rows 제한
 
 /**
+ * 실시간 등락률 → 모멘텀 점수 (벨커브)
+ *
+ * 상승 초입(+1~3%)을 최고점(90)으로 두고, 과열(+7%↑)은 점수를 낮춤.
+ * 기존 선형 공식은 당일 최대상승 종목만 상위에 올려 "이미 늦은" 종목 추천 문제 발생.
+ *
+ * 구간별 점수:
+ *   ≤ -5%     → 10  (뚜렷한 하락)
+ *   -5% ~ 0%  → 10 ~ 40  (약세 ~ 보합)
+ *    0% ~ 1%  → 40 ~ 60  (보합 ~ 소폭 상승)
+ *    1% ~ 3%  → 60 ~ 90  ★ 최적 구간 (상승 초입)
+ *    3% ~ 5%  → 90 ~ 60  (적정 ~ 과열 경계)
+ *    5% ~ 8%  → 60 ~ 15  (과열 진입)
+ *   ≥  8%     → 10        (급등, 추격매수 위험)
+ */
+function calcBellMomentum(pricePct: number): number {
+  if (pricePct <= -5) return 10;
+  if (pricePct <= 0) return 10 + (pricePct + 5) * 6;  // -5%→10, 0%→40
+  if (pricePct <= 1) return 40 + pricePct * 20;        // 0%→40, 1%→60
+  if (pricePct <= 3) return 60 + (pricePct - 1) * 15; // 1%→60, 3%→90
+  if (pricePct <= 5) return 90 - (pricePct - 3) * 15; // 3%→90, 5%→60
+  if (pricePct <= 8) return 60 - (pricePct - 5) * 15; // 5%→60, 8%→15
+  return Math.max(10, 15 - (pricePct - 8) * 2);        // 8%↑ → 10
+}
+
+/**
  * 커스텀 가중치로 score_total 재계산
  *
  * DB에 저장된 카테고리별 점수(0~100)에 사용자 가중치를 적용해 순위를 재산정.
@@ -100,20 +125,36 @@ function computeCustomScore(
   wST: number, wSU: number, wVG: number, wMO: number, wRI: number,
   isContrarian: boolean
 ): number {
-  const techScore  = isContrarian ? (row.score_reversal as number ?? 0) : (row.score_momentum as number ?? 0);
-  const signalScore = row.score_signal as number ?? 0;
-  const supplyScore = row.score_supply as number ?? 0;
-  const valueScore  = row.score_value  as number ?? 0;
+  const clamp = (v: number) => Math.min(100, Math.max(0, v));
+
+  // DB 점수 (0~100, 전일 배치 기준)
+  const rawTech    = isContrarian ? (row.score_reversal as number ?? 0) : (row.score_momentum as number ?? 0);
+  const techScore   = clamp(rawTech);    // 기술전환 (MA정배열·수익률 등, 후행성)
+  const signalScore = clamp(row.score_signal as number ?? 0);
+  const supplyScore = clamp(row.score_supply as number ?? 0);
+  const valueScore  = clamp(row.score_value  as number ?? 0);
   const riskAbs     = Math.abs(row.score_risk as number ?? 0);
+
+  // 실시간 모멘텀: 벨커브 — 상승 초입(+1~3%)이 최고점, 과열(+7%↑)은 페널티
+  // 선형 공식(pricePct*5+38)은 최대상승 종목만 상위에 올려 "이미 늦은" 종목만 추천함
+  const cache = (row.stock_cache ?? {}) as Record<string, unknown>;
+  const pricePct = (cache.price_change_pct as number | null) ?? 0;
+  const liveMomentum = clamp(calcBellMomentum(pricePct));
+
+  // 모멘텀 가중치가 높을수록(단기 모멘텀형) 실시간 등락률 비중 증가
+  // wMO=15(균형형) → live 20%, wMO=40(단기형) → live 60%
+  const liveRatio = Math.min(0.6, (wMO - 10) / 50);
+  const blendedTech = techScore * (1 - liveRatio) + liveMomentum * liveRatio;
 
   const positiveSum = wST + wSU + wVG + wMO;
   if (positiveSum === 0) return 0;
 
+  // signalTech = signal + tech 평균, momentum = blendedTech 단독
   const base = (
-    wST * (signalScore + techScore) / 2 +
+    wST * (signalScore + blendedTech) / 2 +
     wSU * supplyScore +
     wVG * valueScore +
-    wMO * techScore
+    wMO * blendedTech
   ) / positiveSum;
 
   const riskPenalty = Math.min(0.20, (riskAbs / 100) * 0.20 * (wRI / 15));

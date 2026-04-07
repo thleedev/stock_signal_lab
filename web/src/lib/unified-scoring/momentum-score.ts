@@ -1,16 +1,19 @@
 // web/src/lib/unified-scoring/momentum-score.ts
 import type { ScoreReason } from '@/types/score-reason';
 import type { CategoryScore, ScoringInput } from './types';
+import { isContrarianStyle } from './presets';
 
 /**
  * 모멘텀 카테고리 (0~100)
  *
- * 일간 등락률, 3일 누적, 거래량비율, 종가위치, 캔들패턴, 박스돌파, 섹터강도
+ * 일반: 일간 등락률, 3일 누적, 거래량비율, 종가위치, 캔들패턴, 박스돌파, 섹터강도 (최대 100)
+ * 역발상: 망치형 캔들, 낙폭 감소/반전, 52주 저점 근접 신호 추가
  */
-export function calcMomentumScore(input: ScoringInput): CategoryScore {
+export function calcMomentumScore(input: ScoringInput, styleId = 'balanced'): CategoryScore {
   const reasons: ScoreReason[] = [];
   let raw = 0;
   const maxRaw = 100;
+  const contrarian = isContrarianStyle(styleId);
 
   // 일간 등락률 (0~15)
   if (input.priceChangePct !== null) {
@@ -104,6 +107,68 @@ export function calcMomentumScore(input: ScoringInput): CategoryScore {
     if (excess > 2) {
       raw += 8;
       reasons.push({ label: '섹터 초과수익', points: 8, detail: `+${excess.toFixed(1)}%p`, met: true });
+    }
+  }
+
+  // 연속 상승 (0~5): 2일 연속 양봉 (실제 최대 합계 90→100 보정)
+  if (prices.length >= 3) {
+    const isConsecutiveUp = prices[0].close > prices[1].close && prices[1].close > prices[2].close;
+    if (isConsecutiveUp) {
+      raw += 5;
+      reasons.push({ label: '연속 상승', points: 5, detail: '2일 연속 종가 상승', met: true });
+    }
+  }
+
+  // 중기 모멘텀 20일 (0~5): 20일 수익률 > 10%
+  if (prices.length >= 20) {
+    const return20d = ((prices[0].close - prices[19].close) / prices[19].close) * 100;
+    if (return20d > 10) {
+      raw += 5;
+      reasons.push({ label: '중기 모멘텀', points: 5, detail: `20일 ${return20d.toFixed(1)}%`, met: true });
+    }
+  }
+
+  // ── 역발상 전용 신호 (0~34) ──
+  // 역발상은 하락 추세에서 반전 신호를 포착하는 것이 핵심
+  // 일반 상승 신호들이 0점에 가깝지만, 아래 신호들로 변별력 확보
+  if (contrarian) {
+    // 망치형 캔들 (0~12): 아래꼬리가 몸통의 2배 이상 + 전체 범위의 40% 이상
+    // 하락 추세에서 매도 압력 소진을 나타내는 강한 반전 신호
+    if (prices.length >= 1) {
+      const c = prices[0];
+      const body = Math.abs(c.close - c.open);
+      const lowerShadow = Math.min(c.open, c.close) - c.low;
+      const range = c.high - c.low;
+      if (range > 0 && lowerShadow >= body * 2 && lowerShadow >= range * 0.4) {
+        raw += 12;
+        reasons.push({ label: '망치형 캔들 (역발상)', points: 12, detail: `아래꼬리 ${lowerShadow.toFixed(0)} / 몸통 ${body.toFixed(0)}`, met: true });
+      }
+    }
+
+    // 낙폭 감소 / 반전 첫날 (0~10): 어제보다 오늘 낙폭이 줄거나 반등
+    // 매도세 약화 = 하락 추세 종료 가능성
+    if (prices.length >= 3) {
+      const d0 = prices[0].close - prices[1].close; // 오늘 가격 변화
+      const d1 = prices[1].close - prices[2].close; // 어제 가격 변화
+      if (d1 < 0 && d0 > d1) {
+        // 어제 하락했는데 오늘 덜 하락하거나 반등
+        const pts = d0 >= 0 ? 10 : 6; // 반등이면 10점, 낙폭 감소만이면 6점
+        raw += pts;
+        reasons.push({ label: '낙폭 감소 (역발상)', points: pts, detail: `어제 ${d1.toFixed(0)} → 오늘 ${d0.toFixed(0)}원`, met: true });
+      }
+    }
+
+    // 52주 저점 근접 (0~12): 저점 대비 5% / 15% 이내
+    // 강한 지지 구간에서 매수 = 리스크 대비 기대수익 좋음
+    if (input.low52w && input.currentPrice && input.low52w > 0) {
+      const distPct = ((input.currentPrice - input.low52w) / input.low52w) * 100;
+      if (distPct <= 5) {
+        raw += 12;
+        reasons.push({ label: '52주 저점 근접 (역발상)', points: 12, detail: `저점 대비 +${distPct.toFixed(1)}%`, met: true });
+      } else if (distPct <= 15) {
+        raw += 6;
+        reasons.push({ label: '52주 저점 인근 (역발상)', points: 6, detail: `저점 대비 +${distPct.toFixed(1)}%`, met: true });
+      }
     }
   }
 

@@ -84,12 +84,25 @@ export function calcSignalTechScore(input: ScoringInput, styleId: string): Categ
     const sma20 = sma(closes, 20);
     const sma60 = prices.length >= 60 ? sma(closes, 60) : null;
 
-    // SMA 정배열 (5>20>60): +12
-    if (sma5 !== null && sma20 !== null && sma60 !== null && sma5 > sma20 && sma20 > sma60) {
-      raw += 12;
-      reasons.push({ label: '이평 정배열', points: 12, detail: `5일 ${sma5.toFixed(0)} > 20일 ${sma20.toFixed(0)} > 60일 ${sma60.toFixed(0)}`, met: true });
-    } else if (sma5 !== null && sma20 !== null && sma60 !== null) {
-      reasons.push({ label: '이평 정배열', points: 0, detail: '정배열 아님', met: false });
+    // SMA 정배열 (5>20>60): 역발상은 역배열(MA5<MA20) 가점, 일반은 정배열 가점
+    if (sma5 !== null && sma20 !== null && sma60 !== null) {
+      if (contrarian) {
+        // 역발상: MA 역배열(하락추세)에서 반전 기회 → 정배열이 아닌 경우 가점
+        if (sma5 < sma20 && sma20 > sma60) {
+          raw += 8;
+          reasons.push({ label: '이평 역배열 (역발상)', points: 8, detail: `MA5(${sma5.toFixed(0)}) < MA20(${sma20.toFixed(0)}) — 반전 대기`, met: true });
+        } else if (sma5 > sma20 && sma20 > sma60) {
+          // 정배열이면 역발상 기회 없음 → 가점 없음
+          reasons.push({ label: '이평 정배열', points: 0, detail: '정배열 — 역발상 후보 아님', met: false });
+        }
+      } else {
+        if (sma5 > sma20 && sma20 > sma60) {
+          raw += 12;
+          reasons.push({ label: '이평 정배열', points: 12, detail: `5일 ${sma5.toFixed(0)} > 20일 ${sma20.toFixed(0)} > 60일 ${sma60.toFixed(0)}`, met: true });
+        } else {
+          reasons.push({ label: '이평 정배열', points: 0, detail: '정배열 아님', met: false });
+        }
+      }
     }
 
     // RSI 계산 (14일)
@@ -176,7 +189,7 @@ export function calcSignalTechScore(input: ScoringInput, styleId: string): Categ
         if (closes[i] > closes[i - 1]) consecDown++;
         else break;
       }
-      if (consecDown >= 5 && closes[0] > closes[1]) {
+      if (consecDown >= 3 && closes[0] > closes[1]) {
         raw += 8;
         reasons.push({ label: '연속하락 후 반등 (역발상)', points: 8, detail: `${consecDown}일 하락 후 반등`, met: true });
       }

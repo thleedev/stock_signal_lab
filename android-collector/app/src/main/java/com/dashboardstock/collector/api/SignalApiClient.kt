@@ -52,10 +52,11 @@ object SignalApiClient {
     }
 
     /**
-     * 신호 리스트를 Supabase에 직접 전송
+     * 신호 리스트를 Supabase upsert_signals_bulk RPC로 전송
      *
-     * signal_time이 있는 신호는 먼저 기존 null 행을 PATCH 시도 →
-     * 매칭되면 UPDATE만 하고 INSERT 건너뜀 (중복 방지)
+     * DB에서 같은 (symbol, source, signal_type, 날짜KST) 중복은 자동으로
+     * signal_time = COALESCE(new, existing) 으로 업데이트됨.
+     * 수집기는 단순히 모든 신호를 그대로 보내면 됨.
      *
      * @throws Exception 전송 실패 시 (호출부에서 Room 큐잉 처리)
      */
@@ -63,123 +64,39 @@ object SignalApiClient {
         if (signals.isEmpty()) return
 
         val batchId = UUID.randomUUID().toString()
-        Log.d(TAG, "Sending ${signals.size} signals, batch=$batchId")
+        Log.d(TAG, "Sending ${signals.size} signals via upsert RPC, batch=$batchId")
 
-        // signal_time이 있는 신호: 기존 null 행 PATCH 시도 → 매칭되면 INSERT 생략
-        // signal_time이 없는 신호: 바로 INSERT (idx_signals_dedup_null_time으로 중복 방지)
-        val toInsert = mutableListOf<SignalInput>()
-        var patchedCount = 0
-        for (s in signals) {
-            if (s.signalTime != null && s.symbol != null) {
-                val patched = patchNullSignalTime(s)
-                if (patched) {
-                    patchedCount++
-                    Log.d(TAG, "Patched null signal_time for ${s.symbol} → ${s.signalTime}")
-                } else {
-                    toInsert.add(s)
-                }
-            } else {
-                toInsert.add(s)
-            }
-        }
-        Log.d(TAG, "Patched=$patchedCount, toInsert=${toInsert.size}")
-
-        if (toInsert.isEmpty()) {
-            Log.i(TAG, "All signals patched, no INSERT needed")
-            sendHeartbeat()
-            triggerAiRecommendations()
-            return
-        }
-
-        val rows = toInsert.map { s ->
+        val rows = signals.map { s ->
             SignalRow(
-                timestamp = s.timestamp,
-                symbol = s.symbol,
-                name = s.name,
-                signalType = s.signalType,
-                signalPrice = s.signalPrice,
-                signalTime = s.signalTime,
-                source = s.source,
-                batchId = batchId,
-                isFallback = s.isFallback,
-                rawData = buildRawData(s),
-                deviceId = BuildConfig.DEVICE_ID
+                timestamp  = s.timestamp, symbol = s.symbol, name = s.name,
+                signalType = s.signalType, signalPrice = s.signalPrice,
+                signalTime = s.signalTime, source = s.source, batchId = batchId,
+                isFallback = s.isFallback, rawData = buildRawData(s),
+                deviceId   = BuildConfig.DEVICE_ID
             )
         }
 
-        val body = gson.toJson(rows).toRequestBody(JSON_TYPE)
-        val request = supabaseRequest("signals")
-            .header("Prefer", "resolution=ignore-duplicates,return=minimal")
+        // payload 키로 감싸서 RPC 호출
+        val payloadJson = gson.toJson(rows)
+        val body = """{"payload":$payloadJson}""".toRequestBody(JSON_TYPE)
+
+        val request = supabaseRequest("rpc/upsert_signals_bulk")
             .post(body)
             .build()
 
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful) {
-            val errorBody = response.body?.string() ?: "unknown error"
-            response.close()
-            throw RuntimeException("Supabase insert failed (${response.code}): $errorBody")
-        }
+        val code = response.code
+        val respBody = response.body?.string()
         response.close()
-        Log.i(TAG, "Inserted ${rows.size}, patched $patchedCount (total ${signals.size})")
 
+        if (!response.isSuccessful) {
+            Log.e(TAG, "upsert_signals_bulk failed ($code): $respBody")
+            throw Exception("RPC upsert failed: $code")
+        }
+
+        Log.i(TAG, "upsert_signals_bulk OK: ${signals.size} signals, batch=$batchId")
         sendHeartbeat()
         triggerAiRecommendations()
-    }
-
-    /**
-     * signal_time IS NULL인 기존 행을 PATCH (timestamp ±2시간 이내 매칭)
-     * @return true면 매칭되어 UPDATE 완료, false면 매칭 없음 (INSERT 필요)
-     */
-    private fun patchNullSignalTime(s: SignalInput): Boolean {
-        val maxRetries = 2
-        val signalOdt = OffsetDateTime.parse(s.signalTime)
-        val rangeStart = signalOdt.minusHours(2)
-            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-        val rangeEnd = signalOdt.plusHours(2)
-            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-
-        val path = "signals?symbol=eq.${s.symbol}" +
-                "&source=eq.${s.source}" +
-                "&signal_type=eq.${s.signalType}" +
-                "&signal_time=is.null" +
-                "&timestamp=gte.${rangeStart}" +
-                "&timestamp=lte.${rangeEnd}"
-
-        val patchBody = gson.toJson(mapOf("signal_time" to s.signalTime))
-            .toRequestBody(JSON_TYPE)
-
-        for (attempt in 0..maxRetries) {
-            try {
-                val request = supabaseRequest(path)
-                    .header("Prefer", "return=representation")
-                    .patch(patchBody)
-                    .build()
-
-                val response = client.newCall(request).execute()
-                val isOk = response.isSuccessful
-                val responseBody = response.body?.string() ?: "[]"
-                response.close()
-
-                if (!isOk) {
-                    // HTTP 에러는 재시도하지 않음 (서버 측 문제)
-                    Log.w(TAG, "patchNullSignalTime HTTP error ${response.code} for ${s.symbol}")
-                    return false
-                }
-
-                // 응답이 빈 배열이면 매칭 없음
-                return responseBody != "[]" && responseBody.isNotBlank()
-            } catch (e: Exception) {
-                if (attempt < maxRetries) {
-                    val delayMs = 1000L * (1 shl attempt) // 1s, 2s 지수 백오프
-                    Log.w(TAG, "patchNullSignalTime retry ${attempt + 1}/$maxRetries for ${s.symbol}, backoff=${delayMs}ms", e)
-                    Thread.sleep(delayMs)
-                } else {
-                    Log.w(TAG, "patchNullSignalTime failed after ${maxRetries + 1} attempts for ${s.symbol}", e)
-                    return false
-                }
-            }
-        }
-        return false
     }
 
     /**
@@ -278,12 +195,14 @@ object SignalApiClient {
         for (s in signals) {
             if (s.symbol == null || s.signalTime == null) continue
 
-            // signal_time 기준 ±2시간 범위 계산
+            // signal_time 기준 ±2시간 범위 계산 ('+' → %2B URL 인코딩)
             val signalOdt = OffsetDateTime.parse(s.signalTime)
             val rangeStart = signalOdt.minusHours(2)
                 .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                .replace("+", "%2B")
             val rangeEnd = signalOdt.plusHours(2)
                 .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                .replace("+", "%2B")
 
             // signal_time IS NULL + timestamp가 ±2시간 이내인 행만 PATCH
             val path = "signals?symbol=eq.${s.symbol}" +

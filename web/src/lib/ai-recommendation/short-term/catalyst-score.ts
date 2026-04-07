@@ -1,12 +1,12 @@
 /**
  * 초단기 촉매 스코어
  *
- * 원점수 범위: -10 ~ 60 -> 정규화: (raw + 10) / 70 * 100
+ * 원점수 범위: -10 ~ 70 -> 정규화: (raw + 10) / 80 * 100
  *
  * 구성 요소:
  *   A. 신호 신선도 (최대 25점, 하나만 적용)
  *   B. 섹터/테마 모멘텀 (최대 25점, 하나만 적용)
- *   C. 신호가 대비 현재 위치 (최대 10점)
+ *   C. 신호가 대비 현재 위치 (최대 20점) — 아직 안 오른 종목을 강하게 우대
  */
 
 // ---------------------------------------------------------------------------
@@ -119,24 +119,29 @@ function calcSectorMomentumScore(
 }
 
 // ---------------------------------------------------------------------------
-// C. 신호가 대비 현재 위치 (최대 10점)
+// C. 신호가 대비 현재 위치 (최대 20점)
 // ---------------------------------------------------------------------------
 
 /**
  * 신호가 대비 현재 위치 점수를 계산한다.
  *
- * - 현재가 <= 신호가 (signalPriceGapPct <= 0): +10
- * - 신호가 대비 [0%, +3%): +5
- * - 신호가 대비 [+3%, +7%): 0
- * - 신호가 대비 >= +7%: 0 (리스크로 이관)
- * - signalPriceGapPct null: 0
+ * 핵심 설계 원칙: "신호 받고 아직 안 오른 종목 = 1-2일 내 상승 최고 후보"
+ *
+ * - 신호가 대비 -3% 이상 저평가: +20 (시장이 아직 미반응 = 최고 진입 기회)
+ * - 현재가 <= 신호가 (≤0%): +15 (신호 후 미반응 = 진입 적기)
+ * - 신호가 대비 [0%, +3%): +8 (신호 후 소폭 상승 = 진입 가능)
+ * - 신호가 대비 [+3%, +7%): +3 (이미 어느 정도 상승, 추격 주의)
+ * - 신호가 대비 >= +7%: 0 (이미 상승 → 리스크 패널티 별도 적용)
+ * - signalPriceGapPct null: +5 (데이터 없으면 중립)
  */
 function calcSignalPricePositionScore(
   signalPriceGapPct: number | null,
 ): number {
-  if (signalPriceGapPct === null) return 0;
-  if (signalPriceGapPct <= 0) return 10;
-  if (signalPriceGapPct < 3) return 5;
+  if (signalPriceGapPct === null) return 5;
+  if (signalPriceGapPct <= -3) return 20;
+  if (signalPriceGapPct <= 0) return 15;
+  if (signalPriceGapPct < 3) return 8;
+  if (signalPriceGapPct < 7) return 3;
   return 0;
 }
 
@@ -147,8 +152,8 @@ function calcSignalPricePositionScore(
 /**
  * 초단기 촉매 스코어를 계산한다.
  *
- * 원점수 범위: -10 ~ 60
- * 정규화: (raw + 10) / 70 * 100 -> 0 ~ 100
+ * 원점수 범위: -10 ~ 70
+ * 정규화: (raw + 10) / 80 * 100 -> 0 ~ 100
  */
 export function calcCatalystScore(input: CatalystInput): CatalystResult {
   const a = calcSignalFreshnessScore(input.todayBuySources, input.daysSinceLastBuy);
@@ -164,10 +169,10 @@ export function calcCatalystScore(input: CatalystInput): CatalystResult {
 
   // 원점수 합산 후 범위 clamp
   const rawUnclamped = a + b + c;
-  const raw = Math.max(-10, Math.min(60, rawUnclamped));
+  const raw = Math.max(-10, Math.min(70, rawUnclamped));
 
-  // 정규화: (raw + 10) / 70 * 100
-  const normalized = Math.max(0, Math.min(100, ((raw + 10) / 70) * 100));
+  // 정규화: (raw + 10) / 80 * 100
+  const normalized = Math.max(0, Math.min(100, ((raw + 10) / 80) * 100));
 
   return { raw, normalized };
 }

@@ -154,6 +154,18 @@ function calcWarningPenalty(
  * 정규화: (raw + 25) / 80 * 100 -> 0 ~ 100
  */
 export function calcShortTermSupplyScore(input: ShortTermSupplyInput): ShortTermSupplyResult {
+  // 수급 데이터 자체가 없으면 중립 처리 (null → 0 변환 후 "동반 매도" 패널티 방지)
+  const supplyDataAvailable = input.foreignNet !== null || input.institutionNet !== null;
+  if (!supplyDataAvailable) {
+    const neutralRaw = 0; // -25 ~ 55 범위에서 중립 위치
+    return {
+      raw: neutralRaw,
+      normalized: Math.round(((neutralRaw + 25) / 80) * 100), // 31
+      foreignBuying: false,
+      institutionBuying: false,
+    };
+  }
+
   const foreignNet = n(input.foreignNet);
   const institutionNet = n(input.institutionNet);
   const programNet = n(input.programNet);

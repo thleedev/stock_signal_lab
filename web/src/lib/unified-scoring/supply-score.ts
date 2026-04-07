@@ -65,18 +65,25 @@ export function calcSupplyScore(input: ScoringInput, styleId: string): CategoryS
   }
 
   // 연속매수일 (각 0~8)
+  // 역발상 전환 보너스(streak 1~3)를 받는 경우 같은 데이터 중복 집계 방지
   if (input.foreignStreak !== null && input.foreignStreak > 0) {
-    const pts = input.foreignStreak >= 5 ? 8 : input.foreignStreak >= 3 ? 5 : 2;
-    raw += pts;
-    reasons.push({ label: '외국인 연속매수', points: pts, detail: `${input.foreignStreak}일째`, met: true });
+    const isContrarianReversal = contrarian && input.foreignStreak <= 3;
+    if (!isContrarianReversal) {
+      const pts = input.foreignStreak >= 5 ? 8 : input.foreignStreak >= 3 ? 5 : 2;
+      raw += pts;
+      reasons.push({ label: '외국인 연속매수', points: pts, detail: `${input.foreignStreak}일째`, met: true });
+    }
   }
   if (input.institutionStreak !== null && input.institutionStreak > 0) {
-    const pts = input.institutionStreak >= 5 ? 8 : input.institutionStreak >= 3 ? 5 : 2;
-    raw += pts;
-    reasons.push({ label: '기관 연속매수', points: pts, detail: `${input.institutionStreak}일째`, met: true });
+    const isContrarianReversal = contrarian && input.institutionStreak <= 3;
+    if (!isContrarianReversal) {
+      const pts = input.institutionStreak >= 5 ? 8 : input.institutionStreak >= 3 ? 5 : 2;
+      raw += pts;
+      reasons.push({ label: '기관 연속매수', points: pts, detail: `${input.institutionStreak}일째`, met: true });
+    }
   }
 
-  // 역발상: 매도→매수 전환 보너스
+  // 역발상: 매도→매수 전환 보너스 (streak 1~3일째만)
   if (contrarian) {
     if (input.foreignStreak !== null && input.foreignStreak > 0 && input.foreignStreak <= 3) {
       raw += 15;

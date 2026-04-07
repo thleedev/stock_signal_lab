@@ -68,10 +68,12 @@ export function applyPreFilter(input: PreFilterInput): PreFilterResult {
 
   // 1. 등락률 범위 검증
   //    - 강한 촉매 시: -1% 이상이면 통과 (아직 안 오른 종목도 포함)
+  //    - 당일 신호 존재 시: 0% 이상 허용 (신호 직후 미반응 = 최적 진입 타이밍)
   //    - 기본: +0.5% 이상
   //    - 상한: 8% 미만 (공통)
   if (hasCandle) {
-    const lowerBound = strongCatalyst ? -1 : 0.5;
+    const signalToday = (input.todayBuySources ?? 0) >= 1;
+    const lowerBound = strongCatalyst ? -1 : signalToday ? 0 : 0.5;
     if (input.priceChangePct < lowerBound || input.priceChangePct >= 8) {
       reasons.push('등락률 범위 미달');
     }

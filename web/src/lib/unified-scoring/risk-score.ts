@@ -1,6 +1,7 @@
 // web/src/lib/unified-scoring/risk-score.ts
 import type { ScoreReason } from '@/types/score-reason';
 import type { CategoryScore, ScoringInput } from './types';
+import { isContrarianStyle } from './presets';
 
 /**
  * 리스크 감점 카테고리 (0~100)
@@ -8,7 +9,8 @@ import type { CategoryScore, ScoringInput } from './types';
  * 기술적 과열 (최대 40), 수급 이탈 (최대 25), DART 리스크 (최대 35)
  * normalized 값이 높을수록 리스크가 높음 (감점이 큼)
  */
-export function calcRiskScore(input: ScoringInput): CategoryScore {
+export function calcRiskScore(input: ScoringInput, styleId = 'balanced'): CategoryScore {
+  const contrarian = isContrarianStyle(styleId);
   const reasons: ScoreReason[] = [];
   let raw = 0;
   const maxRaw = 100;
@@ -65,19 +67,20 @@ export function calcRiskScore(input: ScoringInput): CategoryScore {
   }
 
   // ── 수급 이탈 (최대 25) ──
+  // 역발상 과매도형: 외국인+기관 매도는 바닥 포착 기회 → 패널티 없음
+  // 일반 스타일: 스마트머니 이탈은 리스크 신호
 
-  // 외국인+기관 동시 순매도: -15
   const foreignSelling = (input.foreignNetQty ?? 0) < 0;
   const instSelling = (input.institutionNetQty ?? 0) < 0;
-  if (foreignSelling && instSelling) {
+  if (!contrarian && foreignSelling && instSelling) {
     raw += 15;
     reasons.push({ label: '스마트머니 이탈', points: -15, detail: '외국인+기관 동시 순매도', met: false });
   } else {
-    reasons.push({ label: '스마트머니 이탈 없음', points: 0, detail: '', met: true });
+    reasons.push({ label: '스마트머니 이탈 없음', points: 0, detail: contrarian ? '역발상: 매도압력 = 바닥 기회' : '', met: true });
   }
 
-  // 외국인 5일 연속 매도: -10
-  if (input.foreignStreak !== null && input.foreignStreak <= -5) {
+  // 외국인 5일 연속 매도: -10 (역발상에서는 패널티 없음)
+  if (!contrarian && input.foreignStreak !== null && input.foreignStreak <= -5) {
     raw += 10;
     reasons.push({ label: '외국인 연속 매도', points: -10, detail: `${Math.abs(input.foreignStreak)}일 연속`, met: false });
   }

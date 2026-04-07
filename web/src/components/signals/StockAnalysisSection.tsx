@@ -783,7 +783,7 @@ export function StockAnalysisSection({
           className="fixed z-50 pointer-events-none"
           style={hoverCardStyle}
         >
-          <AnalysisHoverCard item={hover.item} history={history} />
+          <AnalysisHoverCard item={hover.item} history={history} style={styleId} />
         </div>
       )}
 

@@ -6,11 +6,14 @@ import {
 } from 'recharts';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import type { ScoreHistoryPoint } from '@/hooks/use-score-history';
-import type { StockAnalysisResponse, AnalysisCategory } from '@/app/api/v1/stock-analysis/route';
+import type { StockAnalysisResponse, AnalysisCategory, UnifiedAnalysisCategory } from '@/app/api/v1/stock-analysis/route';
+import { STYLE_PRESETS } from '@/lib/unified-scoring/presets';
 
 interface Props {
   item: StockRankItem;
   history: ScoreHistoryPoint[];
+  /** 통합 스코어링 스타일 ID (전달 시 unified-scoring 분석 결과 표시) */
+  style?: string;
 }
 
 // score_momentum은 DB 컬럼명이지만 실제로는 기술전환(Technical Reversal) 점수입니다.
@@ -21,15 +24,20 @@ const SCORE_BARS: { label: string; field: 'score_signal' | 'score_supply' | 'sco
   { label: '기술', field: 'score_momentum', color: 'bg-emerald-500' },
 ];
 
-const CATEGORY_COLOR: Record<AnalysisCategory['id'], string> = {
+const CATEGORY_COLOR: Record<string, string> = {
+  // 구버전 (stock-analysis 기본)
   signal:    'text-amber-400',
   supply:    'text-sky-400',
   valuation: 'text-violet-400',
   technical: 'text-emerald-400',
   risk:      'text-red-400',
+  // unified-scoring 카테고리 ID
+  signalTech:  'text-amber-400',
+  valueGrowth: 'text-violet-400',
+  momentum:    'text-emerald-400',
 };
 
-export function AnalysisHoverCard({ item, history }: Props) {
+export function AnalysisHoverCard({ item, history, style }: Props) {
   const riskScore = item.score_risk ?? 0;
   const totalScore = item.score_total ?? 0;
 
@@ -39,7 +47,8 @@ export function AnalysisHoverCard({ item, history }: Props) {
   useEffect(() => {
     if (!item.symbol) return;
     const controller = new AbortController();
-    fetch(`/api/v1/stock-analysis?symbol=${encodeURIComponent(item.symbol)}`, {
+    const styleParam = style ? `&style=${encodeURIComponent(style)}` : '';
+    fetch(`/api/v1/stock-analysis?symbol=${encodeURIComponent(item.symbol)}${styleParam}`, {
       signal: controller.signal,
     })
       .then((res) => {
@@ -96,7 +105,14 @@ export function AnalysisHoverCard({ item, history }: Props) {
             ))}
           </div>
         ) : analysisData ? (
-          <ChecklistSection categories={analysisData.categories} />
+          <>
+            {analysisData.unified_categories && (
+              <div className="text-[10px] text-[var(--muted)] mb-1.5">
+                {STYLE_PRESETS.find(p => p.id === analysisData.unified_style)?.name ?? analysisData.unified_style} 분석
+              </div>
+            )}
+            <ChecklistSection categories={analysisData.unified_categories ?? analysisData.categories} />
+          </>
         ) : (
           <p className="text-[10px] text-[var(--muted)]">조건 데이터를 불러오지 못했습니다.</p>
         )}
@@ -121,7 +137,7 @@ export function AnalysisHoverCard({ item, history }: Props) {
 }
 
 /** 카테고리별 충족/미충족/해당없음 조건 전체 나열 (토글 없음) */
-function ChecklistSection({ categories }: { categories: AnalysisCategory[] }) {
+function ChecklistSection({ categories }: { categories: (AnalysisCategory | UnifiedAnalysisCategory)[] }) {
   // risk 카테고리는 별도 표기
   const mainCats = categories.filter(c => c.id !== 'risk');
   const riskCat = categories.find(c => c.id === 'risk');

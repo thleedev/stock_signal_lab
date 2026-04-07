@@ -112,12 +112,16 @@ export interface ShortTermWeights {
   risk: number;       // 기본 15 (감산)
 }
 
-// 단기추천: 모멘텀 축소, 촉매 상향, 리스크 강화
+// 단기추천: "1-2일 내 오를 종목" 예측에 최적화
+//   catalyst: 신호신선도·신호가 위치가 핵심 예측 변수 (이미 안 오른 종목 발굴)
+//   momentum: 당일 가격 행태 비중 축소 (이미 오른 종목 과대평가 방지)
+//   supply: 기관·외국인 유입이 단기 상승의 직접 동력
+//   valuation: 목표가 괴리율 반영 강화
 export const DEFAULT_SHORT_TERM_WEIGHTS: ShortTermWeights = {
-  momentum: 38,
-  supply: 22,
-  catalyst: 28,
-  valuation: 7,
+  momentum: 20,
+  supply: 23,
+  catalyst: 45,
+  valuation: 12,
   risk: 18,
 };
 

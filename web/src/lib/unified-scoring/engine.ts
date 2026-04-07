@@ -30,13 +30,18 @@ export function calcUnifiedScore(
   // 각 카테고리 점수 산출
   const signalTech = calcSignalTechScore(input, styleId);
   const supply = calcSupplyScore(input, styleId);
-  const valueGrowth = calcValueGrowthScore(input);
-  const momentum = calcMomentumScore(input);
-  const risk = calcRiskScore(input);
+  const valueGrowth = calcValueGrowthScore(input, styleId);
+  const momentum = calcMomentumScore(input, styleId);
+  const risk = calcRiskScore(input, styleId);
 
   const categories = { signalTech, supply, valueGrowth, momentum, risk };
 
   // 최종 점수 계산
+  //
+  // positiveBase: 4개 양수 카테고리를 positiveWeightSum으로 나눠 0~100 정규화
+  // riskPenalty: w.risk도 동일한 positiveWeightSum 기준으로 나눠 일관된 스케일 적용
+  //   → w.risk=15, positiveSum=85 시 리스크 만점(100)에서 최대 ~17.6점 감점
+  //   → 기존(w.risk/100)은 15점 고정 감점으로 양수 가중치와 스케일이 달랐음
   const positiveWeightSum = w.signalTech + w.supply + w.valueGrowth + w.momentum;
   const positiveBase = positiveWeightSum > 0
     ? (
@@ -47,7 +52,7 @@ export function calcUnifiedScore(
       ) / positiveWeightSum
     : 0;
 
-  const riskPenalty = risk.normalized * (w.risk / 100);
+  const riskPenalty = positiveWeightSum > 0 ? risk.normalized * (w.risk / positiveWeightSum) : 0;
   const totalScore = Math.max(0, Math.min(Math.round(positiveBase - riskPenalty), 100));
   const grade = calcGrade(totalScore);
 
