@@ -3,7 +3,7 @@ import { log } from '../shared/logger.js';
 import { calcCompositeScore } from '../../../web/src/lib/scoring/composite-score.js';
 
 const SCORE_CHUNK = 200; // 스코어 upsert 청크 크기
-const PRICE_PAGE = 5000; // daily_prices 한 번에 가져올 행 수
+const PRICE_PAGE = 1000; // Supabase max_rows 제한 (1000) — 초과 시 루프가 조기 종료됨
 
 /**
  * Step 4: 통합 점수 계산
