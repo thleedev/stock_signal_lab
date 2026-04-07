@@ -7,16 +7,15 @@ function makePrice(close: number, volume = 500000): DailyPrice {
 }
 
 describe('calcCompositeScore', () => {
-  it('삼성전자 시뮬 — 가치우량 + 수급전환 → B+ (65점+)', () => {
-    // 40일치: 초반 하락 후 반등 (52주 저점 +12% 구간)
+  it('삼성전자 시뮬 — 모멘텀 상승 추세 + 가치우량 + 수급강세 → B+ (60점+)', () => {
+    // 65일치: 꾸준한 상승 추세 (MA 정배열 + 60일 수익률 +15%+)
     const prices: DailyPrice[] = [];
-    for (let i = 0; i < 25; i++) prices.push(makePrice(60000 - i * 500));
-    for (let i = 0; i < 15; i++) prices.push(makePrice(47500 + i * 600));
+    for (let i = 0; i < 65; i++) prices.push(makePrice(160000 + i * 600));
 
     const result = calcCompositeScore({
       prices,
-      high52w: 90000,
-      low52w: 45000,
+      high52w: 228500,
+      low52w: 52000,
       foreignStreak: 3,
       institutionStreak: 1,
       foreignNetQty: 1000000,
@@ -24,24 +23,25 @@ describe('calcCompositeScore', () => {
       foreignNet5d: 2000000,
       institutionNet5d: 800000,
       shortSellRatio: 0.5,
-      currentPrice: 56500,
-      targetPrice: 72000,
-      forwardPer: 12,
-      per: 16,
-      pbr: 1.0,
-      roe: 12,
-      dividendYield: 2.0,
+      currentPrice: 199600,
+      targetPrice: 256720,
+      forwardPer: 7.33,
+      per: 28,
+      pbr: 2.9,
+      roe: 10,
+      dividendYield: 1.5,
       investOpinion: 4.0,
       todaySourceCount: 0,
       daysSinceLastSignal: null,
       recentCount30d: 0,
       lastSignalPrice: null,
-      marketCap: 3500000,
+      marketCap: 11815597000000,
       isManaged: false,
       hasRecentCbw: false,
       auditOpinion: null,
     });
     expect(result.score_total).toBeGreaterThanOrEqual(60);
+    expect(result.score_technical).toBeGreaterThan(30);
   });
 
   it('관리종목 → 리스크 페널티로 감점', () => {

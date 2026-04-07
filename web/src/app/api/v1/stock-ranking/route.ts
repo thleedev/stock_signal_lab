@@ -22,7 +22,8 @@ export type StockRankItem = {
   score_value: number;      // 가치매력
   score_growth: number;     // (score_value와 동일값 저장됨 — 하위호환용)
   score_supply: number;     // 수급강도
-  score_momentum: number;   // 기술전환 (DB 컬럼명이 momentum이나 실제로는 기술전환)
+  score_momentum: number;   // 모멘텀 (추세 지속력)
+  score_reversal: number;   // 기술적 반전 신호 (contrarian 스타일 전용)
   score_risk: number;       // 리스크 감점 절대값
   score_signal: number;     // 신호보너스
   name: string | null;
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
     .from('stock_scores')
     .select(`
       symbol, scored_at,
-      score_value, score_growth, score_supply, score_momentum, score_risk, score_signal, score_total,
+      score_value, score_growth, score_supply, score_momentum, score_reversal, score_risk, score_signal, score_total,
       checklist_tech_pass, checklist_tech_total,
       checklist_sup_pass, checklist_sup_total,
       checklist_val_pass, checklist_val_total,
@@ -130,6 +131,7 @@ export async function GET(request: NextRequest) {
       score_growth: row.score_growth as number,
       score_supply: row.score_supply as number,
       score_momentum: row.score_momentum as number,
+      score_reversal: row.score_reversal as number,
       score_risk: row.score_risk as number,
       score_signal: row.score_signal as number,
       name: cache.name,

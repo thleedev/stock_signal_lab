@@ -9,6 +9,7 @@
  */
 
 import { calcTechnicalReversal } from './technical-reversal';
+import { calcReversalScore } from './reversal-score';
 import { calcSupplyStrength } from './supply-strength';
 import { calcValuationAttractiveness } from './valuation-attractiveness';
 import { calcSignalBonus } from './signal-bonus';
@@ -88,8 +89,10 @@ export interface CompositeScoreInput {
 export interface CompositeScoreResult {
   /** 최종 종합 점수 (0~100) */
   score_total: number;
-  /** 기술전환 점수 (0~100) */
+  /** 모멘텀 점수 (0~100) — balanced/value/supply/momentum 스타일 */
   score_technical: number;
+  /** 반전 신호 점수 (0~100) — contrarian 스타일 전용 */
+  score_reversal: number;
   /** 수급강도 점수 (0~100) */
   score_supply: number;
   /** 가치매력 점수 (0~100) */
@@ -154,7 +157,13 @@ export function calcCompositeScore(input: CompositeScoreInput, style: StyleId = 
     : STYLE_WEIGHTS[style];
 
   // 각 축 점수 계산
-  const techResult = calcTechnicalReversal(input.prices, input.high52w, input.low52w);
+  // contrarian 스타일은 반전 신호 모듈, 나머지는 모멘텀 모듈 사용
+  const techResult = style === 'contrarian'
+    ? calcReversalScore(input.prices, input.high52w, input.low52w)
+    : calcTechnicalReversal(input.prices, input.high52w, input.low52w);
+  const reversalResult = style !== 'contrarian'
+    ? calcReversalScore(input.prices, input.high52w, input.low52w)
+    : techResult;
   const supplyResult = calcSupplyStrength({
     foreignStreak: input.foreignStreak,
     institutionStreak: input.institutionStreak,
@@ -204,13 +213,7 @@ export function calcCompositeScore(input: CompositeScoreInput, style: StyleId = 
     five_day_change_pct: fiveDayChangePct,
   }, 'standard');
 
-  // 기술전환 점수 보정:
-  // 데이터가 충분하고 골든크로스(MA5>MA20) 상태인 종목은 "기술적으로 건강"하므로
-  // tech 점수의 최솟값을 43으로 보장한다.
-  // (RSI 과열 등으로 반전 신호 점수가 낮아도 추세 건강성은 인정)
-  const techScore = (!techResult.data_insufficient && techResult.golden_cross)
-    ? Math.max(techResult.normalizedScore, 43)
-    : techResult.normalizedScore;
+  const techScore = techResult.normalizedScore;
 
   // 가중 합산 (가중치 합계로 정규화)
   const wSum = weights.tech + weights.supply + weights.val + weights.signal;
@@ -229,6 +232,7 @@ export function calcCompositeScore(input: CompositeScoreInput, style: StyleId = 
   return {
     score_total,
     score_technical: Math.round(techScore),
+    score_reversal: Math.round(reversalResult.normalizedScore),
     score_supply: Math.round(supplyResult.normalizedScore),
     score_valuation: Math.round(valResult.normalizedScore),
     score_signal: Math.round(signalResult.normalizedScore),

@@ -1,6 +1,7 @@
 /**
  * technical-reversal.ts
- * MA/RSI/볼린저 밴드 기반 기술적 반전 점수 계산 모듈
+ * 가격 모멘텀(추세 지속력) 점수 계산 모듈
+ * MA 정배열, 수익률, 52주 고점 근접, 거래량 동반 상승 등을 측정한다.
  * rawScore 범위: -20 ~ 65, normalizedScore: 0~100
  */
 import { calcSMA, calcRSI } from '@/lib/ai-recommendation/technical-score';
@@ -10,41 +11,31 @@ import type { ScoreReason, NormalizedScoreBase } from '@/types/score-reason';
 export interface TechnicalReversalResult extends NormalizedScoreBase {
   /** 데이터 부족 여부 (20일 미만) */
   data_insufficient: boolean;
-  /** MA5 골든크로스 (MA5 > MA20 상향돌파, 최근 5일 내) */
+  /** MA5 골든크로스 여부 (하위호환) */
   golden_cross: boolean;
-  /** RSI 값 (null = 계산 불가) */
+  /** RSI 값 */
   rsi: number | null;
   /** MA 정배열 (MA5 > MA20 > MA60) */
   ma_aligned: boolean;
-  /** 볼린저 하단 터치 후 양봉 반등 */
+  /** 볼린저 하단 터치 후 양봉 반등 (하위호환, 항상 false) */
   bollinger_rebound: boolean;
-  /** 52주 저점 +5~20% 반등 구간 */
-  week52_rebound: boolean;
-  /** 52주 고점 90%+ 모멘텀 구간 */
+  /** 52주 고점 75%+ 구간 */
   week52_high_zone: boolean;
-  /** 거래량 급증 (20일 평균 1.5배 이상) */
+  /** 52주 저점 반등 (하위호환, 항상 false) */
+  week52_rebound: boolean;
+  /** 거래량 동반 상승 (5일 평균 > 20일 평균 1.2배) */
   volume_surge: boolean;
-  /** 연속 하락(2일+) 후 첫 양봉 */
+  /** 연속 하락 후 양봉 (하위호환, 항상 false) */
   consecutive_drop_rebound: boolean;
 }
 
-/** rawScore 최대값 — 정규화 기준 */
 const MAX_RAW = 65;
 
-/**
- * 기술적 반전 점수를 계산한다.
- *
- * @param prices - 일별 가격 배열 (오래된 순)
- * @param high52w - 52주 고가 (없으면 null)
- * @param low52w - 52주 저가 (없으면 null)
- * @returns TechnicalReversalResult
- */
 export function calcTechnicalReversal(
   prices: DailyPrice[],
   high52w: number | null,
   low52w: number | null,
 ): TechnicalReversalResult {
-  // 데이터 부족 시 빈 결과 반환
   const empty: TechnicalReversalResult = {
     rawScore: 0,
     normalizedScore: 0,
@@ -54,8 +45,8 @@ export function calcTechnicalReversal(
     rsi: null,
     ma_aligned: false,
     bollinger_rebound: false,
-    week52_rebound: false,
     week52_high_zone: false,
+    week52_rebound: false,
     volume_surge: false,
     consecutive_drop_rebound: false,
   };
@@ -67,268 +58,134 @@ export function calcTechnicalReversal(
   const reasons: ScoreReason[] = [];
   let rawScore = 0;
 
-  // ── MA5, MA20, MA60 계산 ──
   const ma5 = calcSMA(closes, 5);
   const ma20 = calcSMA(closes, 20);
   const ma60 = prices.length >= 60 ? calcSMA(closes, 60) : [];
-
   const lastMa5 = ma5[ma5.length - 1];
   const lastMa20 = ma20[ma20.length - 1];
-
-  // ── 골든크로스: MA5가 MA20 상향 돌파 (최근 20일 내) 또는 현재 MA5 > MA20 ──
-  // 골든크로스 발생 시 25점, 단순 MA5 > MA20 상태면 10점 (추세 유지 가점)
-  let goldenCross = false;
-  let goldenCrossScore = 0;
-  let goldenCrossDetail = '미발생';
-
-  const crossLookback = Math.min(20, ma5.length - 1, ma20.length - 1);
-  for (let i = 1; i <= crossLookback; i++) {
-    const cur5 = ma5[ma5.length - i];
-    const cur20 = ma20[ma20.length - i];
-    const pre5 = ma5.length - i - 1 >= 0 ? ma5[ma5.length - i - 1] : null;
-    const pre20 = ma20.length - i - 1 >= 0 ? ma20[ma20.length - i - 1] : null;
-    if (cur5 > cur20 && pre5 !== null && pre20 !== null && pre5 <= pre20) {
-      goldenCross = true;
-      // 최근 5일 내 발생 시 만점, 그 이후는 감쇠
-      goldenCrossScore = i <= 5 ? 25 : Math.round(25 * (1 - (i - 5) / 15));
-      goldenCrossDetail = `MA5 > MA20 상향 돌파 (${i}일 전)`;
-      break;
-    }
-  }
-
-  // 골든크로스 미발생이지만 MA5 > MA20 상태 유지 시 소폭 가산
-  if (!goldenCross && lastMa5 > lastMa20) {
-    goldenCrossScore = 10;
-    goldenCrossDetail = `MA5(${lastMa5.toFixed(0)}) > MA20(${lastMa20.toFixed(0)}) 상태 유지`;
-  }
-
-  rawScore += goldenCrossScore;
-  if (goldenCrossScore > 0) {
-    reasons.push({
-      label: 'MA5 골든크로스',
-      points: Math.round((goldenCrossScore / MAX_RAW) * 100),
-      detail: goldenCrossDetail,
-      met: true,
-    });
-  } else {
-    reasons.push({ label: 'MA5 골든크로스', points: 0, detail: goldenCrossDetail, met: false });
-  }
-  goldenCross = goldenCross || lastMa5 > lastMa20;
-
-  // ── RSI 점수: 과매도 회복 구간 가점, 과매수 구간 감점 ──
-  const rsi = calcRSI(closes);
-  let rsiScore = 0;
-  let rsiDetail = rsi !== null ? `RSI ${rsi.toFixed(1)}` : 'RSI 계산 불가';
-  if (rsi !== null) {
-    if (rsi >= 25 && rsi <= 45) {
-      // 과매도 회복 구간 — 최적 반전 진입 신호
-      rsiScore = 20;
-      rsiDetail = `RSI ${rsi.toFixed(1)} (과매도 회복 구간)`;
-    } else if (rsi > 45 && rsi <= 55) {
-      // 중립 구간 — 소폭 가산
-      rsiScore = 8;
-      rsiDetail = `RSI ${rsi.toFixed(1)} (중립)`;
-    } else if (rsi > 55 && rsi < 70) {
-      // 상승 모멘텀 구간 — 중립
-      rsiScore = 0;
-      rsiDetail = `RSI ${rsi.toFixed(1)} (상승 모멘텀)`;
-    } else if (rsi >= 70) {
-      // 과매수 구간 — 스펙 기준 -15점 감점
-      rsiScore = -15;
-      rsiDetail = `RSI ${rsi.toFixed(1)} (과매수 구간, 단기 과열)`;
-    }
-  }
-  rawScore += rsiScore;
-  reasons.push({
-    label: 'RSI',
-    points: Math.round((rsiScore / MAX_RAW) * 100),
-    detail: rsiDetail,
-    met: rsiScore > 0,
-  });
-
-  // ── 52주 저점 +5~20% 반등 구간 ──
+  const lastMa60 = ma60.length > 0 ? ma60[ma60.length - 1] : null;
   const lastClose = closes[closes.length - 1];
-  let week52Rebound = false;
-  let week52ReboundScore = 0;
-  if (low52w && low52w > 0) {
-    const reboundPct = ((lastClose - low52w) / low52w) * 100;
-    if (reboundPct >= 5 && reboundPct <= 20) {
-      week52ReboundScore = 20;
-      week52Rebound = true;
-      reasons.push({
-        label: '52주 저점 반등',
-        points: Math.round((20 / MAX_RAW) * 100),
-        detail: `52주 저점 대비 +${reboundPct.toFixed(1)}% (진입 구간)`,
-        met: true,
-      });
-    } else {
-      reasons.push({
-        label: '52주 저점 반등',
-        points: 0,
-        detail: `52주 저점 대비 ${reboundPct >= 0 ? '+' : ''}${reboundPct.toFixed(1)}%`,
-        met: false,
-      });
-    }
-  } else {
-    reasons.push({ label: '52주 저점 반등', points: 0, detail: '52주 데이터 없음', met: false });
-  }
-  rawScore += week52ReboundScore;
 
-  // ── 거래량 급증 (당일 > 20일 평균 1.5배) ──
-  const volSMA20 =
-    volumes.length >= 20 ? volumes.slice(-20).reduce((a, b) => a + b, 0) / 20 : null;
-  const lastVol = volumes[volumes.length - 1];
-  const volumeSurge = volSMA20 !== null && lastVol >= volSMA20 * 1.5;
-  if (volumeSurge) {
-    rawScore += 15;
-    const ratio = (lastVol / volSMA20!).toFixed(1);
-    reasons.push({
-      label: '거래량 급증',
-      points: Math.round((15 / MAX_RAW) * 100),
-      detail: `20일 평균 대비 ${ratio}배`,
-      met: true,
-    });
-  } else {
-    reasons.push({
-      label: '거래량 급증',
-      points: 0,
-      detail:
-        volSMA20 !== null
-          ? `20일 평균 대비 ${(lastVol / volSMA20).toFixed(1)}배`
-          : '거래량 데이터 부족',
-      met: false,
-    });
-  }
-
-  // ── 볼린저 하단 터치 후 양봉 반등 ──
-  let bollingerRebound = false;
-  if (prices.length >= 21) {
-    const prevCloses = closes.slice(0, -1);
-    const slice20 = prevCloses.slice(-20);
-    const mean20 = slice20.reduce((a, b) => a + b, 0) / 20;
-    const variance20 = slice20.reduce((a, b) => a + Math.pow(b - mean20, 2), 0) / 20;
-    const bolLow = mean20 - 2 * Math.sqrt(variance20);
-    const prevClose = closes[closes.length - 2];
-    const curClose = closes[closes.length - 1];
-    const curOpen = prices[prices.length - 1].open;
-    if (prevClose <= bolLow && curClose > curOpen) {
-      bollingerRebound = true;
-      rawScore += 15;
-      reasons.push({
-        label: '볼린저 하단 반등',
-        points: Math.round((15 / MAX_RAW) * 100),
-        detail: `볼린저 하단(${bolLow.toFixed(0)}) 터치 후 양봉`,
-        met: true,
-      });
-    } else {
-      reasons.push({
-        label: '볼린저 하단 반등',
-        points: 0,
-        detail: '볼린저 하단 미터치',
-        met: false,
-      });
-    }
-  } else {
-    reasons.push({ label: '볼린저 하단 반등', points: 0, detail: '데이터 부족', met: false });
-  }
-
-  // ── MA5 > MA20 > MA60 정배열 ──
-  const maAligned =
-    ma60.length > 0 && lastMa5 > lastMa20 && lastMa20 > ma60[ma60.length - 1];
+  // ── MA 정배열: MA5 > MA20 > MA60 — 25점 ──
+  const maAligned = lastMa60 !== null && lastMa5 > lastMa20 && lastMa20 > lastMa60;
+  const maPartial = lastMa5 > lastMa20; // MA60 부족 시 부분 인정
+  let maScore = 0;
   if (maAligned) {
-    rawScore += 10;
-    reasons.push({
-      label: 'MA 정배열',
-      points: Math.round((10 / MAX_RAW) * 100),
-      detail: 'MA5 > MA20 > MA60',
-      met: true,
-    });
+    maScore = 25;
+    reasons.push({ label: 'MA 정배열', points: Math.round((25 / MAX_RAW) * 100), detail: `MA5(${lastMa5.toFixed(0)}) > MA20(${lastMa20.toFixed(0)}) > MA60(${lastMa60!.toFixed(0)})`, met: true });
+  } else if (maPartial) {
+    maScore = 12;
+    reasons.push({ label: 'MA 정배열', points: Math.round((12 / MAX_RAW) * 100), detail: `MA5(${lastMa5.toFixed(0)}) > MA20(${lastMa20.toFixed(0)}) (부분 정배열)`, met: true });
   } else {
-    reasons.push({ label: 'MA 정배열', points: 0, detail: '정배열 미충족', met: false });
+    reasons.push({ label: 'MA 정배열', points: 0, detail: 'MA 정배열 미충족', met: false });
   }
+  rawScore += maScore;
 
-  // ── 52주 고점 90%+ 모멘텀 구간 ──
+  // ── 20일 수익률 ──
+  let ret20Score = 0;
+  if (prices.length >= 20) {
+    const ret20 = ((lastClose - closes[closes.length - 20]) / closes[closes.length - 20]) * 100;
+    if (ret20 >= 10) {
+      ret20Score = 15;
+      reasons.push({ label: '20일 수익률', points: Math.round((15 / MAX_RAW) * 100), detail: `20일 수익률 +${ret20.toFixed(1)}%`, met: true });
+    } else if (ret20 >= 5) {
+      ret20Score = 8;
+      reasons.push({ label: '20일 수익률', points: Math.round((8 / MAX_RAW) * 100), detail: `20일 수익률 +${ret20.toFixed(1)}%`, met: true });
+    } else if (ret20 >= 0) {
+      ret20Score = 3;
+      reasons.push({ label: '20일 수익률', points: Math.round((3 / MAX_RAW) * 100), detail: `20일 수익률 +${ret20.toFixed(1)}%`, met: true });
+    } else {
+      reasons.push({ label: '20일 수익률', points: 0, detail: `20일 수익률 ${ret20.toFixed(1)}%`, met: false });
+    }
+  } else {
+    reasons.push({ label: '20일 수익률', points: 0, detail: '데이터 부족', met: false });
+  }
+  rawScore += ret20Score;
+
+  // ── 60일 수익률 ──
+  let ret60Score = 0;
+  if (prices.length >= 60) {
+    const ret60 = ((lastClose - closes[closes.length - 60]) / closes[closes.length - 60]) * 100;
+    if (ret60 >= 15) {
+      ret60Score = 15;
+      reasons.push({ label: '60일 수익률', points: Math.round((15 / MAX_RAW) * 100), detail: `60일 수익률 +${ret60.toFixed(1)}%`, met: true });
+    } else if (ret60 >= 5) {
+      ret60Score = 8;
+      reasons.push({ label: '60일 수익률', points: Math.round((8 / MAX_RAW) * 100), detail: `60일 수익률 +${ret60.toFixed(1)}%`, met: true });
+    } else if (ret60 >= 0) {
+      ret60Score = 3;
+      reasons.push({ label: '60일 수익률', points: Math.round((3 / MAX_RAW) * 100), detail: `60일 수익률 +${ret60.toFixed(1)}%`, met: true });
+    } else {
+      reasons.push({ label: '60일 수익률', points: 0, detail: `60일 수익률 ${ret60.toFixed(1)}%`, met: false });
+    }
+  } else {
+    reasons.push({ label: '60일 수익률', points: 0, detail: '데이터 부족 (60일 미만)', met: false });
+  }
+  rawScore += ret60Score;
+
+  // ── 52주 고점 75%+ 모멘텀 구간 — 15점 ──
   let week52HighZone = false;
+  let week52Score = 0;
   if (high52w && low52w && high52w > low52w) {
     const position = (lastClose - low52w) / (high52w - low52w);
     if (position >= 0.9) {
       week52HighZone = true;
-      rawScore += 10;
-      reasons.push({
-        label: '52주 고점 구간',
-        points: Math.round((10 / MAX_RAW) * 100),
-        detail: `52주 범위 ${(position * 100).toFixed(0)}% (강한 모멘텀)`,
-        met: true,
-      });
+      week52Score = 15;
+      reasons.push({ label: '52주 고점 구간', points: Math.round((15 / MAX_RAW) * 100), detail: `52주 범위 ${(position * 100).toFixed(0)}% (강한 모멘텀)`, met: true });
+    } else if (position >= 0.75) {
+      week52HighZone = true;
+      week52Score = 8;
+      reasons.push({ label: '52주 고점 구간', points: Math.round((8 / MAX_RAW) * 100), detail: `52주 범위 ${(position * 100).toFixed(0)}%`, met: true });
     } else {
-      reasons.push({
-        label: '52주 고점 구간',
-        points: 0,
-        detail: `52주 범위 ${(position * 100).toFixed(0)}%`,
-        met: false,
-      });
+      reasons.push({ label: '52주 고점 구간', points: 0, detail: `52주 범위 ${(position * 100).toFixed(0)}%`, met: false });
     }
   } else {
     reasons.push({ label: '52주 고점 구간', points: 0, detail: '52주 데이터 없음', met: false });
   }
+  rawScore += week52Score;
 
-  // ── 연속 하락 후 첫 양봉 (직전 3일+ 하락, 당일 양봉) — 스펙 기준 3일+ ──
-  let consecutiveDropRebound = false;
-  {
-    const recentCloses = closes.slice(-5); // [4일전, 3일전, 2일전, 어제, 오늘]
-    let drops = 0;
-    for (let i = 1; i < recentCloses.length - 1; i++) { // i=1,2,3 → 3구간 체크
-      if (recentCloses[i] < recentCloses[i - 1]) drops++;
-    }
-    const todayBullish = lastClose > prices[prices.length - 1].open;
-    if (drops >= 3 && todayBullish) {
-      consecutiveDropRebound = true;
-      rawScore += 10;
-      reasons.push({
-        label: '연속하락 반등',
-        points: Math.round((10 / MAX_RAW) * 100),
-        detail: `${drops}일 하락 후 양봉 반등`,
-        met: true,
-      });
+  // ── 거래량 동반 상승: 5일 평균 > 20일 평균 1.2배 — 10점 ──
+  const volSMA5 = volumes.length >= 5 ? volumes.slice(-5).reduce((a, b) => a + b, 0) / 5 : null;
+  const volSMA20 = volumes.length >= 20 ? volumes.slice(-20).reduce((a, b) => a + b, 0) / 20 : null;
+  const volumeSurge = volSMA5 !== null && volSMA20 !== null && volSMA5 >= volSMA20 * 1.2;
+  if (volumeSurge) {
+    rawScore += 10;
+    reasons.push({ label: '거래량 동반', points: Math.round((10 / MAX_RAW) * 100), detail: `5일 평균 거래량이 20일 평균 대비 ${(volSMA5! / volSMA20!).toFixed(1)}배`, met: true });
+  } else {
+    reasons.push({ label: '거래량 동반', points: 0, detail: volSMA5 && volSMA20 ? `5일 평균 거래량 20일 대비 ${(volSMA5 / volSMA20).toFixed(1)}배` : '거래량 데이터 부족', met: false });
+  }
+
+  // ── 5일 수익률 양수 — 5점 ──
+  if (prices.length >= 6) {
+    const ret5 = ((lastClose - closes[closes.length - 6]) / closes[closes.length - 6]) * 100;
+    if (ret5 > 0) {
+      rawScore += 5;
+      reasons.push({ label: '5일 수익률', points: Math.round((5 / MAX_RAW) * 100), detail: `5일 수익률 +${ret5.toFixed(1)}%`, met: true });
     } else {
-      reasons.push({
-        label: '연속하락 반등',
-        points: 0,
-        detail: '연속하락 반등 패턴 없음 (3일+ 연속 하락 후 양봉 조건 미충족)',
-        met: false,
-      });
+      reasons.push({ label: '5일 수익률', points: 0, detail: `5일 수익률 ${ret5.toFixed(1)}%`, met: false });
     }
+  }
+
+  // ── RSI: 과매수 감점 (모멘텀은 RSI 70+ 허용하되 극단적 과열만 감점) ──
+  const rsi = calcRSI(closes);
+  let rsiScore = 0;
+  let rsiDetail = rsi !== null ? `RSI ${rsi.toFixed(1)}` : 'RSI 계산 불가';
+  if (rsi !== null && rsi >= 80) {
+    rsiScore = -10;
+    rsiDetail = `RSI ${rsi.toFixed(1)} (극단 과열 감점)`;
+    rawScore += rsiScore;
+    reasons.push({ label: 'RSI', points: Math.round((rsiScore / MAX_RAW) * 100), detail: rsiDetail, met: false });
+  } else {
+    reasons.push({ label: 'RSI', points: 0, detail: rsiDetail, met: true });
   }
 
   // ── MA 역배열 감점 ──
-  const maReverse =
-    ma60.length > 0 && lastMa5 < lastMa20 && lastMa20 < ma60[ma60.length - 1];
+  const maReverse = lastMa60 !== null && lastMa5 < lastMa20 && lastMa20 < lastMa60;
   if (maReverse) {
-    rawScore -= 5;
-    reasons.push({
-      label: 'MA 역배열',
-      points: -Math.round((5 / MAX_RAW) * 100),
-      detail: 'MA5 < MA20 < MA60 역배열',
-      met: false,
-    });
+    rawScore -= 10;
+    reasons.push({ label: 'MA 역배열', points: -Math.round((10 / MAX_RAW) * 100), detail: 'MA5 < MA20 < MA60 역배열', met: false });
   }
 
-  // ── 5일 급락 감점 (-15%+) ──
-  if (prices.length >= 6) {
-    const price5dAgo = closes[closes.length - 6];
-    const cum5d = ((lastClose - price5dAgo) / price5dAgo) * 100;
-    if (cum5d <= -15) {
-      rawScore -= 10;
-      reasons.push({
-        label: '5일 급락',
-        points: -Math.round((10 / MAX_RAW) * 100),
-        detail: `5일 누적 ${cum5d.toFixed(1)}% 급락`,
-        met: false,
-      });
-    }
-  }
-
-  // rawScore를 [-20, MAX_RAW] 범위로 클램핑 후 0~100으로 정규화
   const clampedRaw = Math.max(-20, Math.min(rawScore, MAX_RAW));
   const normalizedScore = Math.round(Math.max(0, (clampedRaw / MAX_RAW) * 100) * 10) / 10;
 
@@ -337,13 +194,13 @@ export function calcTechnicalReversal(
     normalizedScore,
     reasons,
     data_insufficient: false,
-    golden_cross: goldenCross,
+    golden_cross: maPartial,
     rsi,
     ma_aligned: maAligned,
-    bollinger_rebound: bollingerRebound,
-    week52_rebound: week52Rebound,
+    bollinger_rebound: false,
     week52_high_zone: week52HighZone,
+    week52_rebound: false,
     volume_surge: volumeSurge,
-    consecutive_drop_rebound: consecutiveDropRebound,
+    consecutive_drop_rebound: false,
   };
 }

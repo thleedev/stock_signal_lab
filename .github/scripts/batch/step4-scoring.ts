@@ -182,6 +182,7 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           score_growth: result.score_valuation,
           score_supply: result.score_supply,
           score_momentum: result.score_technical,
+          score_reversal: result.score_reversal,
           score_risk: scoreRisk,
           score_signal: result.score_signal,
           score_total: result.score_total,
