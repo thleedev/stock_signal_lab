@@ -2,7 +2,7 @@ import { supabase } from '../shared/supabase.js';
 import { log } from '../shared/logger.js';
 import { calcCompositeScore } from '../../../web/src/lib/scoring/composite-score.js';
 
-const CHUNK_SIZE = 200;
+const CHUNK_SIZE = 15; // 15종목 × 최대 65거래일 = ~975행 (Supabase 기본 1000행 제한 이내)
 
 /**
  * Step 4: 통합 점수 계산
@@ -206,8 +206,8 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
         else scored += scoreRows.length;
       }
 
-      // 5청크(1,000종목)마다 진행 상황 로그
-      if ((i / CHUNK_SIZE) % 5 === 0) {
+      // 100청크(1,500종목)마다 진행 상황 로그
+      if ((i / CHUNK_SIZE) % 100 === 0) {
         log('step4', `진행 ${Math.min(i + CHUNK_SIZE, symbols.length)}/${symbols.length} scored=${scored}`);
       }
     }
