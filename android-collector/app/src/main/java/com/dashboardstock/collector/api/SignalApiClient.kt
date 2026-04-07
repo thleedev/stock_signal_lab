@@ -65,8 +65,33 @@ object SignalApiClient {
         val batchId = UUID.randomUUID().toString()
         Log.d(TAG, "Sending ${signals.size} signals, batch=$batchId")
 
-        // 모든 신호 INSERT — DB upsert ignoreDuplicates로 중복 처리
-        val rows = signals.map { s ->
+        // signal_time이 있는 신호: 기존 null 행 PATCH 시도 → 매칭되면 INSERT 생략
+        // signal_time이 없는 신호: 바로 INSERT (idx_signals_dedup_null_time으로 중복 방지)
+        val toInsert = mutableListOf<SignalInput>()
+        var patchedCount = 0
+        for (s in signals) {
+            if (s.signalTime != null && s.symbol != null) {
+                val patched = patchNullSignalTime(s)
+                if (patched) {
+                    patchedCount++
+                    Log.d(TAG, "Patched null signal_time for ${s.symbol} → ${s.signalTime}")
+                } else {
+                    toInsert.add(s)
+                }
+            } else {
+                toInsert.add(s)
+            }
+        }
+        Log.d(TAG, "Patched=$patchedCount, toInsert=${toInsert.size}")
+
+        if (toInsert.isEmpty()) {
+            Log.i(TAG, "All signals patched, no INSERT needed")
+            sendHeartbeat()
+            triggerAiRecommendations()
+            return
+        }
+
+        val rows = toInsert.map { s ->
             SignalRow(
                 timestamp = s.timestamp,
                 symbol = s.symbol,
@@ -84,7 +109,7 @@ object SignalApiClient {
 
         val body = gson.toJson(rows).toRequestBody(JSON_TYPE)
         val request = supabaseRequest("signals")
-            .header("Prefer", "return=minimal")
+            .header("Prefer", "resolution=ignore-duplicates,return=minimal")
             .post(body)
             .build()
 
@@ -95,7 +120,7 @@ object SignalApiClient {
             throw RuntimeException("Supabase insert failed (${response.code}): $errorBody")
         }
         response.close()
-        Log.i(TAG, "Inserted ${rows.size} signals (${signals.size - rows.size} patched)")
+        Log.i(TAG, "Inserted ${rows.size}, patched $patchedCount (total ${signals.size})")
 
         sendHeartbeat()
         triggerAiRecommendations()

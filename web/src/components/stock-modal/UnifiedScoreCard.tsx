@@ -38,8 +38,8 @@ function ColorRadar({ data }: { data: StockRankItem }) {
   const cx = 70, cy = 65, r = 42, labelOff = 14;
 
   // 축별 텍스트 앵커 (위=가운데, 오른쪽=왼쪽정렬, 아래=가운데, 왼쪽=오른쪽정렬)
-  const anchorMap: Record<number, string> = { [-90]: 'middle', 0: 'start', 90: 'middle', 180: 'end' };
-  const baselineMap: Record<number, string> = { [-90]: 'auto', 0: 'middle', 90: 'hanging', 180: 'middle' };
+  const anchorMap: Record<number, React.SVGAttributes<SVGTextElement>['textAnchor']> = { [-90]: 'middle', 0: 'start', 90: 'middle', 180: 'end' };
+  const baselineMap: Record<number, React.SVGAttributes<SVGTextElement>['dominantBaseline']> = { [-90]: 'auto', 0: 'middle', 90: 'hanging', 180: 'middle' };
 
   const axes = RADAR_AXES.map(ax => {
     const val = Math.min(100, Math.max(0, (data[ax.scoreKey] as number) ?? 0));
