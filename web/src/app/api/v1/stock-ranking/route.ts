@@ -111,14 +111,55 @@ function calcBellMomentum(pricePct: number): number {
 }
 
 /**
+ * 역발상 스타일 전용 수급 전환 점수 (0~100)
+ *
+ * 일반 score_supply는 "지속적 매수 강도"를 측정해 하락주에 불리하다.
+ * 역발상에서는 "매도세 종료 + 매수 전환 조짐"을 측정해야 한다.
+ *
+ * 점수 체계 (기준 30점에서 가감):
+ *   외국인 연속 매수 1~3일:  +25 (막 전환, 가장 유망)
+ *   외국인 연속 매도 -1~-2일: +12 (매도 마지막 단계 가능)
+ *   외국인 연속 매도 -5일↓:  -15 (강한 매도 지속, 위험)
+ *   기관 동일 기준 적용
+ *   5일 합산 순매수 전환:    +10
+ */
+function calcContrarianSupply(cache: Record<string, unknown>): number {
+  const fStreak = (cache.foreign_streak as number | null) ?? 0;
+  const iStreak = (cache.institution_streak as number | null) ?? 0;
+  const fNet5d  = (cache.foreign_net_5d    as number | null) ?? 0;
+  const iNet5d  = (cache.institution_net_5d as number | null) ?? 0;
+
+  let score = 30; // 역발상 기본점 (하락주라 매수세 낮은 것은 당연)
+
+  // 외국인 수급 전환 신호
+  if (fStreak >= 1 && fStreak <= 3)  score += 25; // 매수 막 전환
+  else if (fStreak >= -2 && fStreak < 0) score += 12; // 매도 약화
+  else if (fStreak < -5) score -= 15; // 강한 매도 지속
+
+  // 기관 수급 전환 신호
+  if (iStreak >= 1 && iStreak <= 3)  score += 20; // 매수 막 전환
+  else if (iStreak >= -2 && iStreak < 0) score += 10; // 매도 약화
+  else if (iStreak < -5) score -= 10; // 강한 매도 지속
+
+  // 5일 순매수 전환 (외국인+기관 합산)
+  if (fNet5d + iNet5d > 0) score += 10;
+
+  return Math.min(100, Math.max(0, score));
+}
+
+/**
  * 커스텀 가중치로 score_total 재계산
  *
  * DB에 저장된 카테고리별 점수(0~100)에 사용자 가중치를 적용해 순위를 재산정.
- * signalTech: AI신호(score_signal) + 기술적 점수(score_momentum/reversal) 평균
- * supply:     score_supply
- * valueGrowth: score_value
- * momentum:   score_momentum (contrarian이면 score_reversal)
- * risk:       리스크 패널티 강도 조정 (기본=15)
+ *
+ * [일반 스타일]
+ *   signalTech: AI신호(score_signal) + 기술적 점수(score_momentum) 평균
+ *   supply:     score_supply (지속적 매수 강도)
+ *
+ * [역발상 스타일]
+ *   signalTech: score_reversal 단독 — score_signal은 하락주에 거의 없어 발목 잡음
+ *   supply:     calcContrarianSupply — "매도 종료 + 매수 전환 조짐"으로 재계산
+ *   momentum:   score_reversal 단독 (liveRatio=0, wMO=10이라 비중 낮음)
  */
 function computeCustomScore(
   row: Record<string, unknown>,
@@ -127,32 +168,42 @@ function computeCustomScore(
 ): number {
   const clamp = (v: number) => Math.min(100, Math.max(0, v));
 
+  const cache = (row.stock_cache ?? {}) as Record<string, unknown>;
+
   // DB 점수 (0~100, 전일 배치 기준)
-  const rawTech    = isContrarian ? (row.score_reversal as number ?? 0) : (row.score_momentum as number ?? 0);
-  const techScore   = clamp(rawTech);    // 기술전환 (MA정배열·수익률 등, 후행성)
-  const signalScore = clamp(row.score_signal as number ?? 0);
-  const supplyScore = clamp(row.score_supply as number ?? 0);
-  const valueScore  = clamp(row.score_value  as number ?? 0);
-  const riskAbs     = Math.abs(row.score_risk as number ?? 0);
+  const reversalScore = clamp(row.score_reversal as number ?? 0);
+  const techScore     = clamp(row.score_momentum as number ?? 0);
+  const signalScore   = clamp(row.score_signal   as number ?? 0);
+  const supplyScore   = clamp(row.score_supply   as number ?? 0);
+  const valueScore    = clamp(row.score_value    as number ?? 0);
+  const riskAbs       = Math.abs(row.score_risk  as number ?? 0);
 
   // 실시간 모멘텀: 벨커브 — 상승 초입(+1~3%)이 최고점, 과열(+7%↑)은 페널티
-  // 선형 공식(pricePct*5+38)은 최대상승 종목만 상위에 올려 "이미 늦은" 종목만 추천함
-  const cache = (row.stock_cache ?? {}) as Record<string, unknown>;
   const pricePct = (cache.price_change_pct as number | null) ?? 0;
   const liveMomentum = clamp(calcBellMomentum(pricePct));
 
   // 모멘텀 가중치가 높을수록(단기 모멘텀형) 실시간 등락률 비중 증가
   // wMO=15(균형형) → live 20%, wMO=40(단기형) → live 60%
-  const liveRatio = Math.min(0.6, (wMO - 10) / 50);
-  const blendedTech = techScore * (1 - liveRatio) + liveMomentum * liveRatio;
+  // 역발상(wMO=10) → liveRatio=0, 실시간 가격 영향 없음
+  const liveRatio  = Math.min(0.6, (wMO - 10) / 50);
+  const blendedTech = isContrarian
+    ? reversalScore // 역발상: reversal 단독 (live 비중 0)
+    : techScore * (1 - liveRatio) + liveMomentum * liveRatio;
+
+  const effectiveSupply = isContrarian
+    ? calcContrarianSupply(cache) // 역발상: 수급 전환 신호
+    : supplyScore;                // 일반: 배치 수급 점수
+
+  const effectiveSignalTech = isContrarian
+    ? blendedTech                         // 역발상: reversal 단독 (signal은 하락주에 0에 가까움)
+    : (signalScore + blendedTech) / 2;    // 일반: AI신호 + 기술 평균
 
   const positiveSum = wST + wSU + wVG + wMO;
   if (positiveSum === 0) return 0;
 
-  // signalTech = signal + tech 평균, momentum = blendedTech 단독
   const base = (
-    wST * (signalScore + blendedTech) / 2 +
-    wSU * supplyScore +
+    wST * effectiveSignalTech +
+    wSU * effectiveSupply +
     wVG * valueScore +
     wMO * blendedTech
   ) / positiveSum;
