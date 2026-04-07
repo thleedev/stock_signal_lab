@@ -53,13 +53,14 @@ class KiwoomAccessibilityService : AccessibilityService() {
 
     enum class State {
         IDLE,
-        LAUNCHING_APP,      // 키움앱 실행 대기
-        CLICKING_AI_SIGNAL, // "AI매매신호" 메뉴 클릭
-        WAITING_SIGNAL,     // 매수/매도 화면 대기
-        CLICKING_BUY,       // 매수 숫자 클릭 시도 중
-        SCRAPING_BUY,       // 매수 종목 파싱
-        CLICKING_SELL_TAB,  // 매도 탭 클릭 + 전환 검증 중
-        SCRAPING_SELL,      // 매도 종목 파싱
+        LAUNCHING_APP,          // 키움앱 실행 대기
+        CLICKING_AI_SIGNAL,     // "AI매매신호" 메뉴 클릭
+        NAVIGATING_LASSI_MAIN,  // 라씨 메인화면 경유 → 재진입 (종목 로딩 트리거)
+        WAITING_SIGNAL,         // 매수/매도 화면 대기
+        CLICKING_BUY,           // 매수 숫자 클릭 시도 중
+        SCRAPING_BUY,           // 매수 종목 파싱
+        CLICKING_SELL_TAB,      // 매도 탭 클릭 + 전환 검증 중
+        SCRAPING_SELL,          // 매도 종목 파싱
         COMPLETED,
         FAILED
     }
@@ -161,6 +162,7 @@ class KiwoomAccessibilityService : AccessibilityService() {
             when (state) {
                 State.LAUNCHING_APP -> onLaunchingApp(root)
                 State.CLICKING_AI_SIGNAL -> onClickingAiSignal(root)
+                State.NAVIGATING_LASSI_MAIN -> onNavigatingLassiMain(root)
                 State.WAITING_SIGNAL -> onWaitingSignal(root)
                 State.CLICKING_BUY -> onClickingTab(root, "매수")
                 State.SCRAPING_BUY -> onScrapingTab(root, "매수", buySignals)
@@ -179,9 +181,14 @@ class KiwoomAccessibilityService : AccessibilityService() {
 
     /**
      * LAUNCHING_APP: 키움앱이 로드되면 → "AI매매신호" 메뉴 클릭 단계로
+     *
+     * 공지사항/팝업이 뜨면 닫기 버튼을 먼저 처리한 뒤 재시도
      */
     private fun onLaunchingApp(root: AccessibilityNodeInfo) {
         dumpNodeTree(root, 0, 3)
+
+        // 팝업 감지 → 닫으면 재처리 예약 후 리턴
+        if (tryDismissPopup(root)) return
 
         // 앱이 로드됐는지 확인 (content-desc에 "AI매매신호"가 있으면 앱 로드 완료)
         val descs = collectContentDescs(root)
@@ -203,6 +210,45 @@ class KiwoomAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * 공지사항/팝업 감지 후 닫기 버튼 클릭
+     *
+     * 반환: true이면 팝업을 닫았으므로 호출자는 즉시 리턴해야 함
+     * 팝업 닫기 후 1.5초 뒤 processState() 재호출 예약됨
+     */
+    private fun tryDismissPopup(root: AccessibilityNodeInfo): Boolean {
+        val texts = collectTexts(root)
+        val descs = collectContentDescs(root)
+        val allTexts = texts + descs
+
+        // 팝업 존재 여부 판단 키워드
+        val popupIndicators = listOf("공지사항", "오늘 하루 보지 않기", "업데이트 안내", "서비스 안내")
+        val hasPopup = allTexts.any { t -> popupIndicators.any { p -> t.contains(p) } }
+        if (!hasPopup) return false
+
+        Log.i(TAG, "Popup detected (indicators found), trying to dismiss")
+
+        // 닫기 버튼 우선순위: 정확 일치 → 포함 일치
+        val dismissCandidates = listOf("닫기", "확인", "오늘 하루 보지 않기", "X", "✕", "닫 기")
+        for (keyword in dismissCandidates) {
+            val node = findTextNode(root, keyword)
+                ?: findTextNodeContaining(root, keyword)
+                ?: continue
+            val rect = Rect()
+            node.getBoundsInScreen(rect)
+            if (rect.isEmpty) { node.recycle(); continue }
+            Log.i(TAG, "Dismissing popup: clicking '$keyword' at $rect")
+            clickWithMultiStrategy(node, rect)
+            node.recycle()
+            waiting = true
+            handler.postDelayed({ waiting = false; processState() }, 1500)
+            return true
+        }
+
+        Log.w(TAG, "Popup detected but no dismiss button found, ignoring")
+        return false
+    }
+
+    /**
      * CLICKING_AI_SIGNAL: "AI매매신호" content-desc 노드를 찾아 클릭
      */
     private fun onClickingAiSignal(root: AccessibilityNodeInfo) {
@@ -220,12 +266,12 @@ class KiwoomAccessibilityService : AccessibilityService() {
             clickWithMultiStrategy(aiNode, rect)
             aiNode.recycle()
 
-            // 화면 전환 대기 → WAITING_SIGNAL
+            // 화면 전환 대기 → NAVIGATING_LASSI_MAIN (라씨 메인 경유 후 재진입)
             waiting = true
             handler.postDelayed({
                 waiting = false
                 clickAttempt = 0
-                transitionTo(State.WAITING_SIGNAL)
+                transitionTo(State.NAVIGATING_LASSI_MAIN)
                 processState()
             }, 2500)
         } else if (clickAttempt < 3) {
@@ -236,6 +282,76 @@ class KiwoomAccessibilityService : AccessibilityService() {
             // 못찾으면 바로 매수/매도 화면 대기
             clickAttempt = 0
             transitionTo(State.WAITING_SIGNAL)
+        }
+    }
+
+    /**
+     * NAVIGATING_LASSI_MAIN: 라씨매매신호 메인 탭으로 이동 후 AI신호 화면 재진입
+     *
+     * 영웅문 WebView는 첫 진입 시 종목 목록이 불완전하게 로드될 수 있음.
+     * 라씨 메인화면을 경유하면 재진입 시 종목이 정상 로드됨.
+     * 실패 시 WAITING_SIGNAL로 바이패스.
+     */
+    private fun onNavigatingLassiMain(root: AccessibilityNodeInfo) {
+        val descs = collectContentDescs(root)
+        val texts = collectTexts(root)
+
+        // 이미 신호 화면(매수/매도)이 정상 로드된 경우 → 경유 불필요, 바로 진행
+        if ((texts.any { it == "매수" } && texts.any { it == "매도" }) &&
+            (texts.any { it.matches(Regex("\\d+")) })
+        ) {
+            Log.i(TAG, "Signal screen already loaded, skip Lassi main navigation")
+            lassiClickAttempt = 0
+            transitionTo(State.WAITING_SIGNAL)
+            handler.postDelayed({ processState() }, 300)
+            return
+        }
+
+        // 라씨매매신호 메인 탭 찾기
+        val lassiNode = findNodeByContentDesc(root, "라씨매매신호")
+            ?: findTextNodeContaining(root, "라씨매매신호")
+
+        if (lassiNode != null) {
+            val rect = Rect()
+            lassiNode.getBoundsInScreen(rect)
+            Log.i(TAG, "Navigating to 라씨 main at $rect")
+            clickWithMultiStrategy(lassiNode, rect)
+            lassiNode.recycle()
+
+            // 라씨 메인 로딩 대기 후 AI신호 화면 재진입
+            waiting = true
+            handler.postDelayed({
+                waiting = false
+                val freshRoot = rootInActiveWindow
+                if (freshRoot != null) {
+                    val aiNode = findNodeByContentDesc(freshRoot, "AI매매신호")
+                        ?: findTextNodeContaining(freshRoot, "AI매매신호")
+                    if (aiNode != null) {
+                        val aiRect = Rect()
+                        aiNode.getBoundsInScreen(aiRect)
+                        Log.i(TAG, "Re-entering AI signal screen at $aiRect")
+                        clickWithMultiStrategy(aiNode, aiRect)
+                        aiNode.recycle()
+                    } else {
+                        Log.w(TAG, "AI매매신호 not found after Lassi main, proceeding anyway")
+                    }
+                    freshRoot.recycle()
+                }
+                // AI신호 화면 재로딩 대기
+                waiting = true
+                handler.postDelayed({
+                    waiting = false
+                    lassiClickAttempt = 0
+                    transitionTo(State.WAITING_SIGNAL)
+                    processState()
+                }, 2500)
+            }, 1500)
+        } else {
+            // 라씨 메인 탭을 못 찾으면 바로 WAITING_SIGNAL
+            Log.w(TAG, "라씨매매신호 main tab not found, skipping navigation")
+            lassiClickAttempt = 0
+            transitionTo(State.WAITING_SIGNAL)
+            handler.postDelayed({ processState() }, 500)
         }
     }
 
@@ -1135,6 +1251,12 @@ class KiwoomAccessibilityService : AccessibilityService() {
             State.LAUNCHING_APP, State.CLICKING_AI_SIGNAL, State.WAITING_SIGNAL -> {
                 // 앱 로딩/메뉴 클릭 지연 — 한번 더 대기
                 handler.postDelayed(stepTimeoutRunnable, STEP_TIMEOUT_MS)
+            }
+            State.NAVIGATING_LASSI_MAIN -> {
+                // 라씨 메인 경유 타임아웃 → 바로 WAITING_SIGNAL로 진행
+                Log.w(TAG, "NAVIGATING_LASSI_MAIN timeout, bypassing to WAITING_SIGNAL")
+                lassiClickAttempt = 0
+                transitionTo(State.WAITING_SIGNAL)
             }
             State.CLICKING_BUY -> {
                 // 클릭 실패 → 현재 화면에서 파싱 시도

@@ -91,11 +91,11 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
         const arr = priceMap.get(p.symbol as string) ?? [];
         arr.push({
           date: p.date as string,
-          open: p.open as number,
-          high: p.high as number,
-          low: p.low as number,
-          close: p.close as number,
-          volume: p.volume as number,
+          open: Number(p.open),
+          high: Number(p.high),
+          low: Number(p.low),
+          close: Number(p.close),
+          volume: Number(p.volume),
         });
         priceMap.set(p.symbol as string, arr);
       }
