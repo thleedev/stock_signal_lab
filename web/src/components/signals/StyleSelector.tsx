@@ -160,7 +160,7 @@ export function StyleSelector({ currentStyleId, onStyleChange }: Props) {
           {STYLE_PRESETS.map(preset => (
             <button
               key={preset.id}
-              onClick={() => handleSelect(preset.id)}
+              onClick={() => handleSelect(preset.id, preset.weights)}
               className={`w-full text-left px-3 py-2 text-sm hover:bg-[var(--card-hover)] ${currentStyleId === preset.id ? 'bg-[var(--accent)]/10 text-[var(--accent)]' : ''}`}
             >
               <div className="font-medium">{preset.name}</div>
