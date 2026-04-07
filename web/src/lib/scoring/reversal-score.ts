@@ -97,9 +97,6 @@ export function calcReversalScore(
     if (rsi >= 25 && rsi <= 45) {
       rsiScore = 20;
       rsiDetail = `RSI ${rsi.toFixed(1)} (과매도 회복 구간)`;
-    } else if (rsi > 45 && rsi <= 55) {
-      rsiScore = 8;
-      rsiDetail = `RSI ${rsi.toFixed(1)} (중립)`;
     } else if (rsi >= 70) {
       rsiScore = -15;
       rsiDetail = `RSI ${rsi.toFixed(1)} (과매수, 반전 신호 없음)`;

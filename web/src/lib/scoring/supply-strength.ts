@@ -64,23 +64,32 @@ export function calcSupplyStrength(input: SupplyStrengthInput): SupplyStrengthRe
   const foreignBuying = foreignNetQty !== null && foreignNetQty > 0;
   const institutionBuying = institutionNetQty !== null && institutionNetQty > 0;
 
-  // ── 외국인 수급 (전환 시점에 최고점) ──
+  // ── 외국인 수급 (전환 시점에 최고점, 완만한 곡선) ──
   let fScore = 0;
   let fDetail = '';
-  if (fStreak >= 1 && fStreak <= 2) {
-    fScore = 20;
-    fDetail = `외국인 매수 전환 ${fStreak}일 (새 수급 유입)`;
+  if (fStreak === 1) {
+    fScore = 10;
+    fDetail = `외국인 매수 전환 ${fStreak}일 (수급 유입 시작)`;
+  } else if (fStreak === 2) {
+    fScore = 16;
+    fDetail = `외국인 매수 ${fStreak}일 (수급 유입 확인)`;
   } else if (fStreak >= 3 && fStreak <= 5) {
-    fScore = 15;
+    fScore = 20;
     fDetail = `외국인 ${fStreak}일 연속 매수 (매집 중)`;
   } else if (fStreak > 5) {
-    fScore = 5;
+    fScore = 15;
     fDetail = `외국인 ${fStreak}일 연속 매수 (과열 주의)`;
+  } else if (fStreak === -1) {
+    fScore = -3;
+    fDetail = `외국인 ${Math.abs(fStreak)}일 매도`;
+  } else if (fStreak === -2) {
+    fScore = -8;
+    fDetail = `외국인 ${Math.abs(fStreak)}일 연속 매도`;
   } else if (fStreak <= -3) {
     fScore = -15;
     fDetail = `외국인 ${Math.abs(fStreak)}일 연속 매도 ⚠️`;
   } else {
-    fDetail = fStreak < 0 ? `외국인 ${Math.abs(fStreak)}일 매도` : '외국인 중립';
+    fDetail = '외국인 중립';
   }
   rawScore += fScore;
   reasons.push({
@@ -90,23 +99,32 @@ export function calcSupplyStrength(input: SupplyStrengthInput): SupplyStrengthRe
     met: fScore > 0,
   });
 
-  // ── 기관 수급 (동일 기준) ──
+  // ── 기관 수급 (완만한 곡선, 외국인과 동일 기준) ──
   let iScore = 0;
   let iDetail = '';
-  if (iStreak >= 1 && iStreak <= 2) {
-    iScore = 20;
-    iDetail = `기관 매수 전환 ${iStreak}일 (새 수급 유입)`;
+  if (iStreak === 1) {
+    iScore = 10;
+    iDetail = `기관 매수 전환 ${iStreak}일 (수급 유입 시작)`;
+  } else if (iStreak === 2) {
+    iScore = 16;
+    iDetail = `기관 매수 ${iStreak}일 (수급 유입 확인)`;
   } else if (iStreak >= 3 && iStreak <= 5) {
-    iScore = 15;
+    iScore = 20;
     iDetail = `기관 ${iStreak}일 연속 매수 (매집 중)`;
   } else if (iStreak > 5) {
-    iScore = 5;
+    iScore = 15;
     iDetail = `기관 ${iStreak}일 연속 매수 (과열 주의)`;
+  } else if (iStreak === -1) {
+    iScore = -3;
+    iDetail = `기관 ${Math.abs(iStreak)}일 매도`;
+  } else if (iStreak === -2) {
+    iScore = -8;
+    iDetail = `기관 ${Math.abs(iStreak)}일 연속 매도`;
   } else if (iStreak <= -3) {
     iScore = -15;
     iDetail = `기관 ${Math.abs(iStreak)}일 연속 매도 ⚠️`;
   } else {
-    iDetail = iStreak < 0 ? `기관 ${Math.abs(iStreak)}일 매도` : '기관 중립';
+    iDetail = '기관 중립';
   }
   rawScore += iScore;
   reasons.push({

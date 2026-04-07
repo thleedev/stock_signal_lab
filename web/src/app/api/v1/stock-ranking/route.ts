@@ -195,8 +195,8 @@ function computeCustomScore(
     : supplyScore;                // 일반: 배치 수급 점수
 
   const effectiveSignalTech = isContrarian
-    ? blendedTech                         // 역발상: reversal 단독 (signal은 하락주에 0에 가까움)
-    : (signalScore + blendedTech) / 2;    // 일반: AI신호 + 기술 평균
+    ? blendedTech                                                         // 역발상: reversal 단독 (signal은 하락주에 0에 가까움)
+    : (signalScore > 0 ? (signalScore + blendedTech) / 2 : blendedTech); // 일반: AI신호 있으면 평균, 없으면 기술 단독
 
   const positiveSum = wST + wSU + wVG + wMO;
   if (positiveSum === 0) return 0;

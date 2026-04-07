@@ -196,6 +196,10 @@ export function calcValuationAttractiveness(
     });
   }
 
+  // ── 데이터 없음 중립 베이스: 정보 없음 ≠ 저평가 아님 ──────────────────
+  const hasAnyData = targetPrice !== null || per !== null || pbr !== null;
+  if (!hasAnyData) rawScore = Math.max(rawScore, 20);
+
   // ── 최종 정규화 ───────────────────────────────────────────────────────
   const clampedRaw = Math.max(-20, Math.min(rawScore, MAX_RAW));
   const normalizedScore = Math.round(Math.max(0, (clampedRaw / MAX_RAW) * 100) * 10) / 10;
