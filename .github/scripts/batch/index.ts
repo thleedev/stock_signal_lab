@@ -25,6 +25,10 @@ async function main() {
       const result = await runPricesOnly();
       summary.collected = result.collected;
 
+      const s4 = await runStep4Scoring({ date: targetDate });
+      summary.scored = s4.scored;
+      summary.errors.push(...s4.errors);
+
     } else if (mode === 'repair') {
       log('main', `누락 보정 모드 date=${targetDate}`);
       const result = await runStep1DailyPrices({ mode: 'repair', date: targetDate });
