@@ -2,7 +2,8 @@ import { supabase } from '../shared/supabase.js';
 import { log } from '../shared/logger.js';
 import { calcCompositeScore } from '../../../web/src/lib/scoring/composite-score.js';
 
-const CHUNK_SIZE = 15; // 15종목 × 최대 65거래일 = ~975행 (Supabase 기본 1000행 제한 이내)
+const SCORE_CHUNK = 200; // 스코어 upsert 청크 크기
+const PRICE_PAGE = 5000; // daily_prices 한 번에 가져올 행 수
 
 /**
  * Step 4: 통합 점수 계산
@@ -72,21 +73,20 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
     }
 
     const symbols = cacheRows.map(r => r.symbol as string);
+    const since = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
 
-    // 200종목 단위 청크로 처리 (daily_prices IN 쿼리 부하 분산)
-    for (let i = 0; i < symbols.length; i += CHUNK_SIZE) {
-      const chunk = symbols.slice(i, i + CHUNK_SIZE);
-
-      // 최근 90 캘린더일 일봉 조회 (SMA60 계산에 충분한 거래일 확보)
-      const { data: priceRows } = await supabase
+    // daily_prices 전체를 pagination으로 한 번에 읽어 priceMap 구성
+    // (청크별 IN 쿼리 대신 range pagination → 쿼리 횟수 대폭 감소)
+    const priceMap = new Map<string, { date: string; open: number; high: number; low: number; close: number; volume: number }[]>();
+    let priceFrom = 0;
+    while (true) {
+      const { data: priceRows, error: priceErr } = await supabase
         .from('daily_prices')
         .select('symbol, date, open, high, low, close, volume')
-        .in('symbol', chunk)
-        .gte('date', new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10))
-        .order('date', { ascending: true }); // oldest-first (calcCompositeScore 요구사항)
-
-      // 종목별 일봉 배열 Map 구성 (오름차순 = 오래된 것부터)
-      const priceMap = new Map<string, { date: string; open: number; high: number; low: number; close: number; volume: number }[]>();
+        .gte('date', since)
+        .order('date', { ascending: true })
+        .range(priceFrom, priceFrom + PRICE_PAGE - 1);
+      if (priceErr) throw new Error(`daily_prices 조회 실패: ${priceErr.message}`);
       for (const p of priceRows ?? []) {
         const arr = priceMap.get(p.symbol as string) ?? [];
         arr.push({
@@ -99,7 +99,14 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
         });
         priceMap.set(p.symbol as string, arr);
       }
+      if (!priceRows || priceRows.length < PRICE_PAGE) break;
+      priceFrom += PRICE_PAGE;
+    }
+    log('step4', `일봉 데이터 로드 완료: ${priceMap.size}종목`);
 
+    // 200종목 단위 청크로 스코어 계산 및 upsert
+    for (let i = 0; i < symbols.length; i += SCORE_CHUNK) {
+      const chunk = symbols.slice(i, i + SCORE_CHUNK);
       const scoreRows: Record<string, unknown>[] = [];
 
       for (const symbol of chunk) {
@@ -206,9 +213,9 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
         else scored += scoreRows.length;
       }
 
-      // 100청크(1,500종목)마다 진행 상황 로그
-      if ((i / CHUNK_SIZE) % 100 === 0) {
-        log('step4', `진행 ${Math.min(i + CHUNK_SIZE, symbols.length)}/${symbols.length} scored=${scored}`);
+      // 청크마다 진행 상황 로그
+      if ((i / SCORE_CHUNK) % 5 === 0) {
+        log('step4', `진행 ${Math.min(i + SCORE_CHUNK, symbols.length)}/${symbols.length} scored=${scored}`);
       }
     }
 
