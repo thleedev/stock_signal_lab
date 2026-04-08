@@ -30,8 +30,10 @@ function SignalCard({
       {/* 신호 타입 */}
       <SignalBadge type={signal.signal_type} />
 
-      {/* 소스 배지 */}
-      <SourceBadge source={signal.source as "lassi" | "stockbot" | "quant" | "prizm"} />
+      {/* 소스 배지 (전체 모드에서는 source 없음) */}
+      {signal.source && (
+        <SourceBadge source={signal.source as "lassi" | "stockbot" | "quant" | "prizm"} />
+      )}
 
       {/* 즐겨찾기/포트 표시 */}
       {isFavorite && <span className="text-yellow-500 text-sm">★</span>}

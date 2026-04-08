@@ -44,6 +44,17 @@ export function getKstDayRange(date: string): { start: string; end: string } {
   };
 }
 
+/** KST 최근 N일 범위 반환 (오늘 포함) */
+export function getLastNDaysRange(n: number): { start: string; end: string } {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const from = new Date(kst.getTime() - (n - 1) * 86400000);
+  return {
+    start: `${from.toISOString().slice(0, 10)}T00:00:00+09:00`,
+    end: `${kst.toISOString().slice(0, 10)}T23:59:59+09:00`,
+  };
+}
+
 /** KST 이번주(월~오늘) 범위 반환 */
 export function getKstWeekRange(): { start: string; end: string } {
   const now = new Date();

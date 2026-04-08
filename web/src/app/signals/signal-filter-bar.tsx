@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 const DATE_OPTIONS = [
   { key: 'today',  label: '오늘'   },
-  { key: 'week',   label: '이번주' },
+  { key: 'week',   label: '최근7일' },
   { key: 'all',    label: '전체'   },
 ] as const;
 
