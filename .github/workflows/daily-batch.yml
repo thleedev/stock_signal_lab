@@ -36,22 +36,21 @@ jobs:
       - name: Detect mode
         id: detect-mode
         run: |
-          HOUR=$(date -u +%H)
-          MINUTE=$(date -u +%M)
+          SCHEDULE="${{ github.event.schedule }}"
           INPUT_MODE="${{ inputs.mode }}"
 
           if [ -n "$INPUT_MODE" ]; then
             MODE="$INPUT_MODE"
-          elif [ "$HOUR" = "07" ] && [ "$MINUTE" = "10" ]; then
+          elif [ "$SCHEDULE" = "10 7 * * 1-5" ]; then
             MODE="full"
-          elif [ "$HOUR" = "22" ] && [ "$MINUTE" = "00" ]; then
+          elif [ "$SCHEDULE" = "0 22 * * *" ]; then
             MODE="repair"
           else
             MODE="prices-only"
           fi
 
           echo "mode=$MODE" >> $GITHUB_OUTPUT
-          echo "Detected mode: $MODE"
+          echo "Detected mode: $MODE (schedule: $SCHEDULE)"
 
       - name: Run batch
         run: npx tsx batch/index.ts

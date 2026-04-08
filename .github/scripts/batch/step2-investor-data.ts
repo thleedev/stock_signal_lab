@@ -3,94 +3,187 @@ import { log } from '../shared/logger.js';
 
 const NAVER_API = 'https://m.stock.naver.com/api';
 
+interface DayStock {
+  foreign_net: number | null;
+  institution_net: number | null;
+}
+
 interface InvestorRow {
   symbol: string;
   foreign_net_qty: number | null;
   institution_net_qty: number | null;
+  foreign_net_5d: number | null;
+  institution_net_5d: number | null;
+  foreign_streak: number | null;
+  institution_streak: number | null;
   investor_updated_at: string;
 }
 
-/** 네이버 수급 API에서 특정 시장·페이지 데이터를 가져온다 */
-async function fetchInvestorPage(market: 'KOSPI' | 'KOSDAQ', page: number): Promise<InvestorRow[]> {
-  const url = `${NAVER_API}/stocks/invest/${market}?page=${page}&pageSize=100&sosok=&period=1`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-  if (!res.ok) return [];
-  const json = await res.json() as { stocks?: Record<string, unknown>[] };
-  const now = new Date().toISOString();
+function parseQty(s: unknown): number | null {
+  if (s == null || s === '-' || s === '') return null;
+  const n = parseFloat(String(s).replace(/,/g, ''));
+  return isNaN(n) ? null : n;
+}
 
-  return (json.stocks ?? [])
-    .filter(item => typeof item.itemCode === 'string' && (item.itemCode as string).length === 6)
-    .map(item => ({
-      symbol: item.itemCode as string,
-      foreign_net_qty: typeof item.foreignPurchaseQuantity === 'string'
-        ? parseFloat((item.foreignPurchaseQuantity as string).replace(/,/g, '')) || null
-        : null,
-      institution_net_qty: typeof item.institutionPurchaseQuantity === 'string'
-        ? parseFloat((item.institutionPurchaseQuantity as string).replace(/,/g, '')) || null
-        : null,
-      investor_updated_at: now,
-    }));
+/** 네이버 수급 API를 안전하게 fetch (JSON 파싱 실패 시 null 반환) */
+async function safeFetch(url: string): Promise<{ totalCount: number; stocks: Record<string, DayStock> }> {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return { totalCount: 0, stocks: {} };
+
+    const text = await res.text();
+    if (!text || text.trim().length < 2) return { totalCount: 0, stocks: {} };
+
+    const json = JSON.parse(text) as { totalCount?: number; stocks?: Record<string, unknown>[] };
+    const stocks: Record<string, DayStock> = {};
+
+    for (const item of json.stocks ?? []) {
+      const sym = item.itemCode as string;
+      if (typeof sym !== 'string' || sym.length !== 6) continue;
+      stocks[sym] = {
+        foreign_net: parseQty(item.foreignPurchaseQuantity),
+        institution_net: parseQty(item.institutionPurchaseQuantity),
+      };
+    }
+
+    return { totalCount: json.totalCount ?? 0, stocks };
+  } catch {
+    return { totalCount: 0, stocks: {} };
+  }
+}
+
+/** 시장 전체 수급 데이터 수집 (전체 페이지 병렬 fetch) */
+async function fetchMarketData(
+  market: 'KOSPI' | 'KOSDAQ',
+  period: 1 | 5,
+): Promise<Record<string, DayStock>> {
+  const baseUrl = `${NAVER_API}/stocks/invest/${market}?pageSize=100&sosok=&period=${period}`;
+  const first = await safeFetch(`${baseUrl}&page=1`);
+
+  if (first.totalCount === 0) return first.stocks;
+
+  const totalPages = Math.ceil(first.totalCount / 100);
+  const pagePromises: Promise<{ totalCount: number; stocks: Record<string, DayStock> }>[] = [];
+  for (let p = 2; p <= totalPages; p++) {
+    pagePromises.push(safeFetch(`${baseUrl}&page=${p}`));
+  }
+
+  const pages = await Promise.all(pagePromises);
+  const result = { ...first.stocks };
+  for (const page of pages) Object.assign(result, page.stocks);
+  return result;
+}
+
+/**
+ * streak 계산:
+ * - 기존 streak과 오늘 방향이 같으면 |streak| + 1 방향 유지
+ * - 방향이 바뀌면 ±1 로 리셋
+ * - 기존 streak 가 0이거나 없으면 오늘 방향으로 ±1
+ * - smallint 오버플로 방지: ±120 상한
+ */
+function nextStreak(prevStreak: number | null, todayNet: number | null): number | null {
+  if (todayNet == null) return prevStreak ?? null;
+  const todayDir = todayNet >= 0 ? 1 : -1;
+  const prev = prevStreak ?? 0;
+  const prevDir = prev >= 0 ? 1 : -1;
+
+  if (prev === 0) return todayDir;
+  if (todayDir === prevDir) {
+    const next = prev + todayDir;
+    return Math.max(-120, Math.min(120, next));
+  }
+  return todayDir;
 }
 
 /**
  * Step 2: 네이버 수급 데이터 수집
- * KOSPI·KOSDAQ 전 종목의 외국인/기관 순매수량을 stock_cache 에 upsert 한다.
+ * - period=1: 당일 외국인/기관 순매수량 (foreign_net_qty, institution_net_qty)
+ * - period=5: 5일 누적 순매수량 (foreign_net_5d, institution_net_5d)
+ * - streak: DB 기존값 + 당일 방향 비교로 증분/리셋 계산
  */
-export async function runStep2InvestorData(opts: { date: string }): Promise<{ errors: string[] }> {
-  log('step2', '수급 데이터 수집 시작');
+export async function runStep2InvestorData(_opts: { date: string }): Promise<{ errors: string[] }> {
+  log('step2', '수급 데이터 수집 시작 (당일·5일 누적·연속일수)');
   const errors: string[] = [];
 
   try {
-    // 첫 페이지를 병렬로 요청하고 totalCount 로 전체 페이지 수 계산
-    const [k1, kq1] = await Promise.all([
-      fetch(`${NAVER_API}/stocks/invest/KOSPI?page=1&pageSize=100&sosok=&period=1`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-      }).then(r => r.json() as Promise<{ totalCount: number; stocks: Record<string, unknown>[] }>),
-      fetch(`${NAVER_API}/stocks/invest/KOSDAQ?page=1&pageSize=100&sosok=&period=1`, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-      }).then(r => r.json() as Promise<{ totalCount: number; stocks: Record<string, unknown>[] }>),
+    // 당일(period=1) + 5일 누적(period=5) 병렬 수집
+    const [kospi1, kosdaq1, kospi5, kosdaq5] = await Promise.all([
+      fetchMarketData('KOSPI', 1),
+      fetchMarketData('KOSDAQ', 1),
+      fetchMarketData('KOSPI', 5),
+      fetchMarketData('KOSDAQ', 5),
     ]);
 
-    const kospiPages = Math.ceil((k1.totalCount ?? 0) / 100);
-    const kosdaqPages = Math.ceil((kq1.totalCount ?? 0) / 100);
+    const today = new Map(Object.entries({ ...kospi1, ...kosdaq1 }));
+    const fiveDay = new Map(Object.entries({ ...kospi5, ...kosdaq5 }));
+    const allSymbols = new Set([...today.keys(), ...fiveDay.keys()]);
+
+    if (allSymbols.size === 0) {
+      errors.push('step2: 수급 데이터 수집 결과 없음 (네이버 API 응답 이상)');
+      return { errors };
+    }
+
+    log('step2', `수집 완료: 당일 ${today.size}종목, 5일 ${fiveDay.size}종목`);
+
+    // 기존 streak 값 조회 (방향 연속성 계산에 필요)
+    const symbolList = [...allSymbols];
+    const existingStreakMap = new Map<string, { foreign_streak: number | null; institution_streak: number | null }>();
+
+    const PAGE = 1000;
+    for (let i = 0; i < symbolList.length; i += PAGE) {
+      const chunk = symbolList.slice(i, i + PAGE);
+      const { data } = await supabase
+        .from('stock_cache')
+        .select('symbol, foreign_streak, institution_streak')
+        .in('symbol', chunk);
+      for (const row of data ?? []) {
+        existingStreakMap.set(row.symbol as string, {
+          foreign_streak: row.foreign_streak as number | null,
+          institution_streak: row.institution_streak as number | null,
+        });
+      }
+    }
+
+    // 종목별 집계
     const now = new Date().toISOString();
+    const rows: InvestorRow[] = [];
 
-    // 2페이지 이후 병렬 수집
-    const pagePromises: Promise<InvestorRow[]>[] = [];
-    for (let p = 2; p <= kospiPages; p++) pagePromises.push(fetchInvestorPage('KOSPI', p));
-    for (let p = 2; p <= kosdaqPages; p++) pagePromises.push(fetchInvestorPage('KOSDAQ', p));
-    const pages = await Promise.all(pagePromises);
+    for (const symbol of allSymbols) {
+      const t = today.get(symbol);
+      const f = fiveDay.get(symbol);
+      const prev = existingStreakMap.get(symbol);
 
-    // 1페이지 데이터를 InvestorRow 형태로 변환
-    const firstRows: InvestorRow[] = [
-      ...(k1.stocks ?? []).filter(i => typeof i.itemCode === 'string' && (i.itemCode as string).length === 6).map(i => ({
-        symbol: i.itemCode as string,
-        foreign_net_qty: typeof i.foreignPurchaseQuantity === 'string' ? parseFloat((i.foreignPurchaseQuantity as string).replace(/,/g, '')) || null : null,
-        institution_net_qty: typeof i.institutionPurchaseQuantity === 'string' ? parseFloat((i.institutionPurchaseQuantity as string).replace(/,/g, '')) || null : null,
+      const foreign_net_qty = t?.foreign_net ?? null;
+      const institution_net_qty = t?.institution_net ?? null;
+      const foreign_net_5d = f?.foreign_net ?? null;
+      const institution_net_5d = f?.institution_net ?? null;
+
+      rows.push({
+        symbol,
+        foreign_net_qty,
+        institution_net_qty,
+        foreign_net_5d,
+        institution_net_5d,
+        foreign_streak: nextStreak(prev?.foreign_streak ?? null, foreign_net_qty),
+        institution_streak: nextStreak(prev?.institution_streak ?? null, institution_net_qty),
         investor_updated_at: now,
-      })),
-      ...(kq1.stocks ?? []).filter(i => typeof i.itemCode === 'string' && (i.itemCode as string).length === 6).map(i => ({
-        symbol: i.itemCode as string,
-        foreign_net_qty: typeof i.foreignPurchaseQuantity === 'string' ? parseFloat((i.foreignPurchaseQuantity as string).replace(/,/g, '')) || null : null,
-        institution_net_qty: typeof i.institutionPurchaseQuantity === 'string' ? parseFloat((i.institutionPurchaseQuantity as string).replace(/,/g, '')) || null : null,
-        investor_updated_at: now,
-      })),
-    ];
+      });
+    }
 
-    const allRows: InvestorRow[] = [...firstRows, ...pages.flat()];
-    log('step2', `${allRows.length}종목 수급 수집, upsert 시작`);
+    log('step2', `${rows.length}종목 집계 완료, upsert 시작`);
 
-    // 500건 단위 청크로 upsert
     const CHUNK = 500;
-    for (let i = 0; i < allRows.length; i += CHUNK) {
-      const chunk = allRows.slice(i, i + CHUNK);
+    for (let i = 0; i < rows.length; i += CHUNK) {
       const { error } = await supabase
         .from('stock_cache')
-        .upsert(chunk, { onConflict: 'symbol', ignoreDuplicates: false });
+        .upsert(rows.slice(i, i + CHUNK), { onConflict: 'symbol', ignoreDuplicates: false });
       if (error) errors.push(`step2 upsert ${i}: ${error.message}`);
     }
 
-    log('step2', `완료: ${allRows.length}종목 수급 갱신`);
+    log('step2', `완료: ${rows.length}종목 수급 갱신`);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     errors.push(`step2 오류: ${msg}`);
