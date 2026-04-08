@@ -71,22 +71,26 @@ export async function runStep2InvestorData(_opts: { date: string }): Promise<{ e
   const errors: string[] = [];
 
   try {
-    // 1. stock_cache에서 전종목 심볼 조회
-    const allSymbols: string[] = [];
+    // 1. stock_cache에서 전종목 심볼 + 필수 필드(name, market) 조회
+    // upsert 시 name NOT NULL 제약 위반 방지를 위해 함께 읽는다
+    const stockMeta = new Map<string, { name: string; market: string }>();
     let from = 0;
     const PAGE = 1000;
     while (true) {
       const { data, error } = await supabase
         .from('stock_cache')
-        .select('symbol')
+        .select('symbol, name, market')
         .not('current_price', 'is', null)
         .range(from, from + PAGE - 1);
       if (error) throw new Error(`stock_cache 조회 실패: ${error.message}`);
       if (!data || data.length === 0) break;
-      allSymbols.push(...data.map(r => r.symbol as string));
+      for (const r of data) {
+        stockMeta.set(r.symbol as string, { name: r.name as string, market: r.market as string });
+      }
       if (data.length < PAGE) break;
       from += PAGE;
     }
+    const allSymbols = [...stockMeta.keys()];
 
     log('step2', `${allSymbols.length}종목 수급 수집 시작 (concurrency=${CONCURRENCY})`);
 
@@ -94,6 +98,8 @@ export async function runStep2InvestorData(_opts: { date: string }): Promise<{ e
     const now = new Date().toISOString();
     const rows: {
       symbol: string;
+      name: string;
+      market: string;
       foreign_net_qty: number | null;
       institution_net_qty: number | null;
       foreign_net_5d: number | null;
@@ -114,8 +120,12 @@ export async function runStep2InvestorData(_opts: { date: string }): Promise<{ e
         if (r.status !== 'fulfilled' || r.value.days.length === 0) continue;
         const { symbol, days } = r.value;
 
+        const meta = stockMeta.get(symbol);
+        if (!meta) continue;
         rows.push({
           symbol,
+          name: meta.name,
+          market: meta.market,
           foreign_net_qty: days[0]?.foreign_net ?? null,
           institution_net_qty: days[0]?.institution_net ?? null,
           foreign_net_5d: days.reduce((s, d) => s + d.foreign_net, 0),
