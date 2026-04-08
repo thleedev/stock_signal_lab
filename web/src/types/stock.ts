@@ -28,6 +28,7 @@ export interface StockCache {
   signal_count_30d: number;
   ai_score: number | null;
   is_holding: boolean;
+  change_1m_pct: number | null;
   is_favorite: boolean;
   updated_at: string;
   // 소스별 최신 신호 (API에서 merge)

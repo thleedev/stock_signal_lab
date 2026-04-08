@@ -198,7 +198,8 @@ export async function GET(request: NextRequest) {
     q = q.in('symbol', buySymbols);
   }
 
-  q = q.order(sortBy, { ascending: !sortDir }).range(offset, offset + limit - 1);
+  const dbColumn = sortBy === 'change_1m' ? 'change_1m_pct' : sortBy;
+  q = q.order(dbColumn, { ascending: !sortDir }).range(offset, offset + limit - 1);
   const { data, count, error } = await q;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

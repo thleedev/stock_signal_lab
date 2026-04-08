@@ -3,6 +3,7 @@ export const SOURCE_LABELS: Record<string, string> = {
   lassi: "라씨매매",
   stockbot: "스톡봇",
   quant: "퀀트",
+  prizm: "프리즘",
 };
 
 /** 소스 레이블 — 축약형 (테이블 배지 등 공간이 좁은 UI) */
@@ -10,6 +11,7 @@ export const SOURCE_LABELS_SHORT: Record<string, string> = {
   lassi: "라씨",
   stockbot: "스톡봇",
   quant: "퀀트",
+  prizm: "프리즘",
 };
 
 /** 소스별 도트 색상 클래스 (포트폴리오 등 작은 인디케이터) */
@@ -17,6 +19,7 @@ export const SOURCE_DOTS: Record<string, string> = {
   lassi: "bg-red-400",
   stockbot: "bg-green-400",
   quant: "bg-blue-400",
+  prizm: "bg-purple-400",
 };
 
 /** 소스별 카드 배경 색상 클래스 (카드/영역 배경용) */
@@ -24,6 +27,7 @@ export const SOURCE_CARD_COLORS: Record<string, { card: string; text: string; bo
   lassi: { card: "border-red-800/50 bg-red-900/30", text: "text-red-400", borderColor: "border-red-700" },
   stockbot: { card: "border-green-800/50 bg-green-900/30", text: "text-green-400", borderColor: "border-green-700" },
   quant: { card: "border-blue-800/50 bg-blue-900/30", text: "text-blue-400", borderColor: "border-blue-700" },
+  prizm: { card: "border-purple-800/50 bg-purple-900/30", text: "text-purple-400", borderColor: "border-purple-700" },
 };
 
 /** 소스별 배지 색상 클래스 */
@@ -31,6 +35,7 @@ export const SOURCE_COLORS: Record<string, string> = {
   lassi: "bg-red-900/30 text-red-400 border-red-800/50",
   stockbot: "bg-green-900/30 text-green-400 border-green-800/50",
   quant: "bg-blue-900/30 text-blue-400 border-blue-800/50",
+  prizm: "bg-purple-900/30 text-purple-400 border-purple-800/50",
 };
 
 /** 신호 타입 레이블 */
@@ -57,6 +62,7 @@ export const SOURCE_LABELS_EMOJI: Record<string, string> = {
   lassi: "🔴 라씨매매",
   stockbot: "🟢 스톡봇",
   quant: "🔵 퀀트",
+  prizm: "🟣 프리즘",
 };
 
 /** raw_data JSONB에서 신호 가격 추출 */

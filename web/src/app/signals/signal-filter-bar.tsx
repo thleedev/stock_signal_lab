@@ -15,6 +15,7 @@ const SOURCE_OPTIONS = [
   { key: 'lassi',    label: '라씨'   },
   { key: 'stockbot', label: '스톡봇' },
   { key: 'quant',    label: '퀀트'   },
+  { key: 'prizm',    label: '프리즘' },
 ] as const;
 
 type SourceKey = typeof SOURCE_OPTIONS[number]['key'];

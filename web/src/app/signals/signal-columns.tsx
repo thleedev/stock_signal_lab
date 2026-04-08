@@ -31,7 +31,7 @@ function SignalCard({
       <SignalBadge type={signal.signal_type} />
 
       {/* 소스 배지 */}
-      <SourceBadge source={signal.source as "lassi" | "stockbot" | "quant"} />
+      <SourceBadge source={signal.source as "lassi" | "stockbot" | "quant" | "prizm"} />
 
       {/* 즐겨찾기/포트 표시 */}
       {isFavorite && <span className="text-yellow-500 text-sm">★</span>}
@@ -129,7 +129,7 @@ function SectorSummaryView({
   const buyGrouped = useGroupedSignals(buySignals);
   const sellGrouped = useGroupedSignals(sellSignals);
 
-  const sourceOrder = ["lassi", "stockbot", "quant"];
+  const sourceOrder = ["lassi", "stockbot", "quant", "prizm"];
   const marketOrder = ["KOSPI", "KOSDAQ", "ETF", "기타"];
 
   const allSources = [...new Set([...Object.keys(buyGrouped), ...Object.keys(sellGrouped)])];

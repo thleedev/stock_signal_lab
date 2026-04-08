@@ -1,7 +1,7 @@
 import { SOURCE_COLORS, SOURCE_LABELS } from "@/lib/signal-constants";
 
 interface SourceBadgeProps {
-  source: "lassi" | "stockbot" | "quant";
+  source: "lassi" | "stockbot" | "quant" | "prizm";
   size?: "sm" | "md";
 }
 

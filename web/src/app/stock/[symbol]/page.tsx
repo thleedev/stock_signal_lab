@@ -182,7 +182,7 @@ export default async function StockDetailPage({
                   <SignalBadge type={s.signal_type as string} />
 
                   {/* 소스 배지 */}
-                  <SourceBadge source={s.source as "lassi" | "stockbot" | "quant"} />
+                  <SourceBadge source={s.source as "lassi" | "stockbot" | "quant" | "prizm"} />
 
                   {/* 가격 */}
                   {sigPrice && (

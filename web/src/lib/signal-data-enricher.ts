@@ -135,20 +135,37 @@ export async function enrichSignalStocks(
     }
   }
 
-  // 3. 신호 집계 업데이트 (30일 BUY 신호 카운트 + 최근 매수가)
+  // 3. 신호 집계 업데이트 (30일 BUY 신호 카운트 + 최근 매수가 + 최근 매도일)
   const thirtyDaysAgo = new Date(nowKst.getTime() - 30 * 86400000).toISOString().slice(0, 10);
-  const { data: signalRows } = await supabase
-    .from('signals')
-    .select('symbol, timestamp, signal_type, raw_data')
-    .in('symbol', unique)
-    .in('signal_type', ['BUY', 'BUY_FORECAST'])
-    .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`);
 
-  if (signalRows && signalRows.length > 0) {
+  const [{ data: buyRows }, { data: sellRows }] = await Promise.all([
+    supabase
+      .from('signals')
+      .select('symbol, timestamp, signal_type, raw_data')
+      .in('symbol', unique)
+      .in('signal_type', ['BUY', 'BUY_FORECAST'])
+      .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`),
+    supabase
+      .from('signals')
+      .select('symbol, timestamp')
+      .in('symbol', unique)
+      .in('signal_type', ['SELL', 'SELL_COMPLETE'])
+      .order('timestamp', { ascending: false }),
+  ]);
+
+  // 심볼별 최신 SELL 날짜 맵
+  const latestSellMap = new Map<string, string>();
+  for (const row of sellRows ?? []) {
+    if (!latestSellMap.has(row.symbol as string)) {
+      latestSellMap.set(row.symbol as string, row.timestamp as string);
+    }
+  }
+
+  if (buyRows && buyRows.length > 0) {
     const countMap = new Map<string, {
       count: number; latestDate: string; latestType: string; latestPrice: number | null;
     }>();
-    for (const row of signalRows) {
+    for (const row of buyRows) {
       const sym = row.symbol as string;
       const existing = countMap.get(sym);
       if (!existing) {
@@ -173,6 +190,7 @@ export async function enrichSignalStocks(
       latest_signal_date: info.latestDate,
       latest_signal_type: info.latestType,
       latest_signal_price: info.latestPrice,
+      latest_sell_date: latestSellMap.get(symbol) ?? null,
     }));
 
     if (signalUpdates.length > 0) {
@@ -180,6 +198,15 @@ export async function enrichSignalStocks(
         .from('stock_cache')
         .upsert(signalUpdates, { onConflict: 'symbol' });
     }
+  } else if (latestSellMap.size > 0) {
+    // BUY는 없고 SELL만 있는 종목도 latest_sell_date 업데이트
+    const sellOnlyUpdates = [...latestSellMap.entries()].map(([symbol, ts]) => ({
+      symbol,
+      latest_sell_date: ts,
+    }));
+    await supabase
+      .from('stock_cache')
+      .upsert(sellOnlyUpdates, { onConflict: 'symbol' });
   }
 }
 

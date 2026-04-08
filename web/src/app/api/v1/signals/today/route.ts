@@ -22,11 +22,12 @@ export async function GET() {
   }
 
   // 소스별 그룹
-  const grouped: Record<string, typeof data> = { lassi: [], stockbot: [], quant: [] };
+  const grouped: Record<string, typeof data> = { lassi: [], stockbot: [], quant: [], prizm: [] };
   const counts: Record<string, { total: number; buy: number; sell: number }> = {
     lassi: { total: 0, buy: 0, sell: 0 },
     stockbot: { total: 0, buy: 0, sell: 0 },
     quant: { total: 0, buy: 0, sell: 0 },
+    prizm: { total: 0, buy: 0, sell: 0 },
   };
 
   for (const signal of data || []) {

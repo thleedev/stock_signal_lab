@@ -25,7 +25,7 @@ interface UnifiedAnalysisProps {
   symbolGroups?: Record<string, string[]>;
 }
 
-type SourceFilter = 'all' | 'quant' | 'lassi' | 'stockbot';
+type SourceFilter = 'all' | 'quant' | 'lassi' | 'stockbot' | 'prizm';
 
 interface GapInfo {
   source: string;

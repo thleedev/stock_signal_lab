@@ -239,7 +239,9 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('stock_scores')
       .select(SELECT_COLS)
-      .not('stock_cache.current_price', 'is', null);
+      .not('stock_cache.current_price', 'is', null)
+      // 최신 신호가 SELL인 종목 제외 (has_active_sell: generated column)
+      .eq('stock_cache.has_active_sell', false);
 
     if (market !== 'all') {
       query = query.eq('stock_cache.market', market);
