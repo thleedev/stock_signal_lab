@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Star, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2, Briefcase, Pin, PinOff, GripVertical } from "lucide-react";
 import { useGlobalPriceRefresh, type LivePriceMap } from "@/hooks/use-global-price-refresh";
+import { useBatchRefresh } from "@/hooks/use-batch-refresh";
 import { PriceUpdateBadge } from "@/components/common/price-update-badge";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
@@ -614,6 +615,11 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       onPricesRefreshed: handlePricesRefreshed,
     });
 
+  const { trigger: triggerRefresh, isRunning: batchRunning } = useBatchRefresh({
+    onCompleted: refreshPrices,
+  });
+
+
   // 테이블 헤더 JSX (재사용)
   const tableHeader = (
     <thead>
@@ -650,7 +656,8 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             priceUpdateLabel={priceUpdateTime}
             isStale={isStale}
             refreshing={refreshing}
-            onRefresh={refreshPrices}
+            batchRunning={batchRunning}
+            onRefresh={triggerRefresh}
           />
         }
       />

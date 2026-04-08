@@ -65,42 +65,52 @@ export default async function SignalsPage({
 
   if (activeTab === "signals") {
     if (selectedDate === "all") {
-      // ── 전체 모드: 현재 BUY 상태인 종목 전체 (stock_cache 기반, 기간 무관) ──
-      const cacheQuery = supabase
-        .from("stock_cache")
-        .select("symbol, name, market, latest_signal_date, latest_signal_type, latest_signal_price")
-        .eq("has_active_sell", false)
-        .not("latest_signal_date", "is", null)
-        .order("latest_signal_date", { ascending: false });
-      if (activeSource !== "all") {
-        // 소스 필터는 stock_cache에 source 정보가 없어 적용 불가 → 전체 표시
+      // ── 전체 모드: 현재 BUY/SELL 상태 종목 전체 (stock_cache 기반, 기간 무관, 페이지네이션) ──
+      const PAGE = 1000;
+
+      // BUY 상태 전체 수집
+      const activeBuyRows: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data } = await supabase
+          .from("stock_cache")
+          .select("symbol, name, market, latest_signal_date, latest_signal_type, latest_signal_price")
+          .eq("has_active_sell", false)
+          .not("latest_signal_date", "is", null)
+          .order("latest_signal_date", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (!data || data.length === 0) break;
+        activeBuyRows.push(...data);
+        if (data.length < PAGE) break;
       }
 
-      const { data: activeBuyStocks } = await cacheQuery;
-      const allSymbols = (activeBuyStocks ?? []).map((s) => s.symbol as string);
-
-      let nameMap: Record<string, string> = {};
-      if (allSymbols.length > 0) {
-        const { data: stockInfos } = await supabase
-          .from("stock_info")
-          .select("symbol, name")
-          .in("symbol", allSymbols);
-        if (stockInfos) {
-          nameMap = Object.fromEntries(stockInfos.map((s) => [s.symbol, s.name]));
-        }
+      // SELL 상태 전체 수집
+      const activeSellRows: Record<string, unknown>[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data } = await supabase
+          .from("stock_cache")
+          .select("symbol, name, market, latest_sell_date")
+          .eq("has_active_sell", true)
+          .not("latest_sell_date", "is", null)
+          .order("latest_sell_date", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (!data || data.length === 0) break;
+        activeSellRows.push(...data);
+        if (data.length < PAGE) break;
       }
 
-      buySignals = (activeBuyStocks ?? []).map((s) => ({
+      const toSignal = (s: Record<string, unknown>, type: "buy" | "sell") => ({
         symbol: s.symbol as string,
-        name: nameMap[s.symbol as string] || (s.name as string) || (s.symbol as string),
+        name: (s.name as string) || (s.symbol as string),
         market: (s.market as string) || "기타",
-        signal_type: (s.latest_signal_type as string) || "BUY",
+        signal_type: type === "buy" ? ((s.latest_signal_type as string) || "BUY") : "SELL",
         source: "",
-        timestamp: s.latest_signal_date as string,
+        timestamp: (type === "buy" ? s.latest_signal_date : s.latest_sell_date) as string,
         signal_price: s.latest_signal_price ? String(s.latest_signal_price) : "",
         sector: "",
-      }));
-      sellSignals = [];
+      });
+
+      buySignals  = activeBuyRows.map((s) => toSignal(s, "buy"));
+      sellSignals = activeSellRows.map((s) => toSignal(s, "sell"));
 
     } else {
       // ── 날짜 범위 모드: 오늘 / 최근7일 / 특정일 ──
