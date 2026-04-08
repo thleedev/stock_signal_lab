@@ -248,7 +248,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (dateParam === 'signal_all') {
-      query = query.gt('stock_cache.signal_count_30d', 0);
+      // 기간 무관하게 BUY 신호가 존재하는 종목만 (has_active_sell 필터와 조합으로 현재 상태 = BUY)
+      query = query.not('stock_cache.latest_signal_date', 'is', null);
     } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
       query = query.gte('stock_cache.latest_signal_date', `${dateParam}T00:00:00Z`);
     }

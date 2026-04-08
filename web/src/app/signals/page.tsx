@@ -94,14 +94,19 @@ export default async function SignalsPage({
     let nameMap: Record<string, string> = {};
     let marketMap: Record<string, string> = {};
     let sectorMap: Record<string, string> = {};
+    let activeSellSymbols = new Set<string>();
     if (signalSymbols.length > 0) {
       const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
-        supabase.from("stock_cache").select("symbol, name, market").in("symbol", signalSymbols),
+        supabase.from("stock_cache").select("symbol, name, market, has_active_sell").in("symbol", signalSymbols),
         supabase.from("stock_info").select("symbol, name, sector").in("symbol", signalSymbols),
       ]);
       if (stockNames) {
         nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
         marketMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.market || "기타"]));
+        // 현재 상태가 SELL인 종목 집합 (BUY 신호 필터링에 사용)
+        activeSellSymbols = new Set(
+          stockNames.filter((s) => s.has_active_sell === true).map((s) => s.symbol)
+        );
       }
       if (stockInfos) {
         sectorMap = Object.fromEntries(stockInfos.map((s) => [s.symbol, s.sector]));
@@ -130,7 +135,10 @@ export default async function SignalsPage({
       return timeB - timeA;
     });
 
-    buySignals = signals.filter((s) => s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST");
+    buySignals = signals.filter((s) =>
+      (s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST") &&
+      !activeSellSymbols.has(s.symbol)
+    );
     sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
   }
 
