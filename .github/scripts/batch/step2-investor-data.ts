@@ -2,179 +2,139 @@ import { supabase } from '../shared/supabase.js';
 import { log } from '../shared/logger.js';
 
 const NAVER_API = 'https://m.stock.naver.com/api';
+const CONCURRENCY = 80; // 과도한 병렬 요청 방지
 
-interface DayStock {
-  foreign_net: number | null;
-  institution_net: number | null;
+interface DayData {
+  foreign_net: number;
+  institution_net: number;
 }
 
-interface InvestorRow {
-  symbol: string;
-  foreign_net_qty: number | null;
-  institution_net_qty: number | null;
-  foreign_net_5d: number | null;
-  institution_net_5d: number | null;
-  foreign_streak: number | null;
-  institution_streak: number | null;
-  investor_updated_at: string;
-}
-
-function parseQty(s: unknown): number | null {
-  if (s == null || s === '-' || s === '') return null;
-  const n = parseFloat(String(s).replace(/,/g, ''));
-  return isNaN(n) ? null : n;
-}
-
-/** 네이버 수급 API를 안전하게 fetch (JSON 파싱 실패 시 null 반환) */
-async function safeFetch(url: string): Promise<{ totalCount: number; stocks: Record<string, DayStock> }> {
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) return { totalCount: 0, stocks: {} };
-
-    const text = await res.text();
-    if (!text || text.trim().length < 2) return { totalCount: 0, stocks: {} };
-
-    const json = JSON.parse(text) as { totalCount?: number; stocks?: Record<string, unknown>[] };
-    const stocks: Record<string, DayStock> = {};
-
-    for (const item of json.stocks ?? []) {
-      const sym = item.itemCode as string;
-      if (typeof sym !== 'string' || sym.length !== 6) continue;
-      stocks[sym] = {
-        foreign_net: parseQty(item.foreignPurchaseQuantity),
-        institution_net: parseQty(item.institutionPurchaseQuantity),
-      };
-    }
-
-    return { totalCount: json.totalCount ?? 0, stocks };
-  } catch {
-    return { totalCount: 0, stocks: {} };
-  }
-}
-
-/** 시장 전체 수급 데이터 수집 (전체 페이지 병렬 fetch) */
-async function fetchMarketData(
-  market: 'KOSPI' | 'KOSDAQ',
-  period: 1 | 5,
-): Promise<Record<string, DayStock>> {
-  const baseUrl = `${NAVER_API}/stocks/invest/${market}?pageSize=100&sosok=&period=${period}`;
-  const first = await safeFetch(`${baseUrl}&page=1`);
-
-  if (first.totalCount === 0) return first.stocks;
-
-  const totalPages = Math.ceil(first.totalCount / 100);
-  const pagePromises: Promise<{ totalCount: number; stocks: Record<string, DayStock> }>[] = [];
-  for (let p = 2; p <= totalPages; p++) {
-    pagePromises.push(safeFetch(`${baseUrl}&page=${p}`));
-  }
-
-  const pages = await Promise.all(pagePromises);
-  const result = { ...first.stocks };
-  for (const page of pages) Object.assign(result, page.stocks);
-  return result;
+function parseQty(s: unknown): number {
+  if (s == null || s === '-' || s === '') return 0;
+  return parseFloat(String(s).replace(/[+,]/g, '')) || 0;
 }
 
 /**
  * streak 계산:
  * - 기존 streak과 오늘 방향이 같으면 |streak| + 1 방향 유지
  * - 방향이 바뀌면 ±1 로 리셋
- * - 기존 streak 가 0이거나 없으면 오늘 방향으로 ±1
  * - smallint 오버플로 방지: ±120 상한
  */
-function nextStreak(prevStreak: number | null, todayNet: number | null): number | null {
-  if (todayNet == null) return prevStreak ?? null;
-  const todayDir = todayNet >= 0 ? 1 : -1;
-  const prev = prevStreak ?? 0;
-  const prevDir = prev >= 0 ? 1 : -1;
-
-  if (prev === 0) return todayDir;
-  if (todayDir === prevDir) {
-    const next = prev + todayDir;
-    return Math.max(-120, Math.min(120, next));
+function calcStreak(days: DayData[], key: keyof DayData): number {
+  if (days.length === 0) return 0;
+  const firstDir = days[0][key] >= 0 ? 1 : -1;
+  let count = 0;
+  for (const day of days) {
+    const dir = day[key] >= 0 ? 1 : -1;
+    if (dir === firstDir) count++;
+    else break;
   }
-  return todayDir;
+  return Math.max(-120, Math.min(120, firstDir * count));
+}
+
+/** 종목 하나의 최근 5일 수급 데이터를 가져온다 (most-recent-first) */
+async function fetchDays(symbol: string): Promise<DayData[]> {
+  try {
+    const res = await fetch(`${NAVER_API}/stock/${symbol}/integration`, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    if (!text || text.length < 10) return [];
+    const json = JSON.parse(text) as { dealTrendInfos?: Record<string, unknown>[] };
+    return (json.dealTrendInfos ?? []).map(d => ({
+      foreign_net: parseQty(d.foreignerPureBuyQuant),
+      institution_net: parseQty(d.organPureBuyQuant),
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /**
- * Step 2: 네이버 수급 데이터 수집
- * - period=1: 당일 외국인/기관 순매수량 (foreign_net_qty, institution_net_qty)
- * - period=5: 5일 누적 순매수량 (foreign_net_5d, institution_net_5d)
- * - streak: DB 기존값 + 당일 방향 비교로 증분/리셋 계산
+ * Step 2: 네이버 per-stock integration API로 수급 데이터 수집
+ *
+ * m.stock.naver.com/api/stocks/invest bulk API가 폐기(404)됨에 따라
+ * 개별 종목 /api/stock/{symbol}/integration 의 dealTrendInfos (최근 5영업일) 사용.
+ *
+ * 갱신 필드:
+ *   foreign_net_qty      — 가장 최근 1일 외국인 순매수
+ *   institution_net_qty  — 가장 최근 1일 기관 순매수
+ *   foreign_net_5d       — 최근 5일 누적 외국인 순매수
+ *   institution_net_5d   — 최근 5일 누적 기관 순매수
+ *   foreign_streak       — 외국인 연속 매수(+)/매도(-) 일수
+ *   institution_streak   — 기관 연속 매수(+)/매도(-) 일수
  */
 export async function runStep2InvestorData(_opts: { date: string }): Promise<{ errors: string[] }> {
-  log('step2', '수급 데이터 수집 시작 (당일·5일 누적·연속일수)');
+  log('step2', '수급 데이터 수집 시작 (per-stock integration API)');
   const errors: string[] = [];
 
   try {
-    // 당일(period=1) + 5일 누적(period=5) 병렬 수집
-    const [kospi1, kosdaq1, kospi5, kosdaq5] = await Promise.all([
-      fetchMarketData('KOSPI', 1),
-      fetchMarketData('KOSDAQ', 1),
-      fetchMarketData('KOSPI', 5),
-      fetchMarketData('KOSDAQ', 5),
-    ]);
-
-    const today = new Map(Object.entries({ ...kospi1, ...kosdaq1 }));
-    const fiveDay = new Map(Object.entries({ ...kospi5, ...kosdaq5 }));
-    const allSymbols = new Set([...today.keys(), ...fiveDay.keys()]);
-
-    if (allSymbols.size === 0) {
-      errors.push('step2: 수급 데이터 수집 결과 없음 (네이버 API 응답 이상)');
-      return { errors };
+    // 1. stock_cache에서 전종목 심볼 조회
+    const allSymbols: string[] = [];
+    let from = 0;
+    const PAGE = 1000;
+    while (true) {
+      const { data, error } = await supabase
+        .from('stock_cache')
+        .select('symbol')
+        .not('current_price', 'is', null)
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`stock_cache 조회 실패: ${error.message}`);
+      if (!data || data.length === 0) break;
+      allSymbols.push(...data.map(r => r.symbol as string));
+      if (data.length < PAGE) break;
+      from += PAGE;
     }
 
-    log('step2', `수집 완료: 당일 ${today.size}종목, 5일 ${fiveDay.size}종목`);
+    log('step2', `${allSymbols.length}종목 수급 수집 시작 (concurrency=${CONCURRENCY})`);
 
-    // 기존 streak 값 조회 (방향 연속성 계산에 필요)
-    const symbolList = [...allSymbols];
-    const existingStreakMap = new Map<string, { foreign_streak: number | null; institution_streak: number | null }>();
+    // 2. 병렬 fetch (CONCURRENCY 단위 배치)
+    const now = new Date().toISOString();
+    const rows: {
+      symbol: string;
+      foreign_net_qty: number | null;
+      institution_net_qty: number | null;
+      foreign_net_5d: number | null;
+      institution_net_5d: number | null;
+      foreign_streak: number | null;
+      institution_streak: number | null;
+      investor_updated_at: string;
+    }[] = [];
 
-    const PAGE = 1000;
-    for (let i = 0; i < symbolList.length; i += PAGE) {
-      const chunk = symbolList.slice(i, i + PAGE);
-      const { data } = await supabase
-        .from('stock_cache')
-        .select('symbol, foreign_streak, institution_streak')
-        .in('symbol', chunk);
-      for (const row of data ?? []) {
-        existingStreakMap.set(row.symbol as string, {
-          foreign_streak: row.foreign_streak as number | null,
-          institution_streak: row.institution_streak as number | null,
+    let fetched = 0;
+    for (let i = 0; i < allSymbols.length; i += CONCURRENCY) {
+      const batch = allSymbols.slice(i, i + CONCURRENCY);
+      const settled = await Promise.allSettled(
+        batch.map(symbol => fetchDays(symbol).then(days => ({ symbol, days })))
+      );
+
+      for (const r of settled) {
+        if (r.status !== 'fulfilled' || r.value.days.length === 0) continue;
+        const { symbol, days } = r.value;
+
+        rows.push({
+          symbol,
+          foreign_net_qty: days[0]?.foreign_net ?? null,
+          institution_net_qty: days[0]?.institution_net ?? null,
+          foreign_net_5d: days.reduce((s, d) => s + d.foreign_net, 0),
+          institution_net_5d: days.reduce((s, d) => s + d.institution_net, 0),
+          foreign_streak: calcStreak(days, 'foreign_net'),
+          institution_streak: calcStreak(days, 'institution_net'),
+          investor_updated_at: now,
         });
+        fetched++;
+      }
+
+      if ((i / CONCURRENCY) % 10 === 0 && i > 0) {
+        log('step2', `진행 ${i + batch.length}/${allSymbols.length} 수집=${fetched}`);
       }
     }
 
-    // 종목별 집계
-    const now = new Date().toISOString();
-    const rows: InvestorRow[] = [];
+    log('step2', `수집 완료: ${fetched}종목, upsert 시작`);
 
-    for (const symbol of allSymbols) {
-      const t = today.get(symbol);
-      const f = fiveDay.get(symbol);
-      const prev = existingStreakMap.get(symbol);
-
-      const foreign_net_qty = t?.foreign_net ?? null;
-      const institution_net_qty = t?.institution_net ?? null;
-      const foreign_net_5d = f?.foreign_net ?? null;
-      const institution_net_5d = f?.institution_net ?? null;
-
-      rows.push({
-        symbol,
-        foreign_net_qty,
-        institution_net_qty,
-        foreign_net_5d,
-        institution_net_5d,
-        foreign_streak: nextStreak(prev?.foreign_streak ?? null, foreign_net_qty),
-        institution_streak: nextStreak(prev?.institution_streak ?? null, institution_net_qty),
-        investor_updated_at: now,
-      });
-    }
-
-    log('step2', `${rows.length}종목 집계 완료, upsert 시작`);
-
+    // 3. stock_cache upsert
     const CHUNK = 500;
     for (let i = 0; i < rows.length; i += CHUNK) {
       const { error } = await supabase
