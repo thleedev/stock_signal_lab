@@ -729,21 +729,24 @@ export function StockAnalysisSection({
           <button type="button" onClick={() => setTrackerOpen(true)} title="순위 트래킹" className={iconBtnCls}>
             <BarChart3 size={15} />
           </button>
-          {/* 새로고침 + 업데이트 시각 */}
+          {/* 새로고침 + 상태 표시 */}
           <div className="flex items-center gap-1">
-            {(priceRefreshing || snapshotStatus.updating) && (
-              <span className="text-[10px] text-blue-400 animate-pulse whitespace-nowrap">
-                {snapshotStatus.updating ? '순위 업데이트 중...' : '가격 갱신 중...'}
-              </span>
+            {priceRefreshing && (
+              <span className="text-[10px] text-blue-400 animate-pulse whitespace-nowrap">가격 갱신 중...</span>
+            )}
+            {!priceRefreshing && snapshotStatus.updating && (
+              <span className="text-[10px] text-blue-400 animate-pulse whitespace-nowrap">순위 업데이트 중...</span>
             )}
             {!priceRefreshing && !snapshotStatus.updating && snapshotLabel && (
               <span className="text-[10px] text-[var(--muted)] whitespace-nowrap">{snapshotLabel}</span>
             )}
             <button
               onClick={handleRefresh}
-              disabled={loading || priceRefreshing || snapshotStatus.updating} title="새로고침" className={iconBtnCls}
+              disabled={loading || priceRefreshing || snapshotStatus.updating}
+              title="새로고침"
+              className={iconBtnCls}
             >
-              {loading || priceRefreshing || snapshotStatus.updating ? <Loader2 size={15} className="animate-spin" /> : <span className="text-sm leading-none">↺</span>}
+              {loading || priceRefreshing ? <Loader2 size={15} className="animate-spin" /> : <span className="text-sm leading-none">↺</span>}
             </button>
           </div>
         </div>
