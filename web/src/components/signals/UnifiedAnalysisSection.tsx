@@ -561,6 +561,19 @@ export function UnifiedAnalysisSection({ initialDateMode = 'today', signalMap, f
   }, [doFetch, todayStr, initialDateMode]);
   useEffect(() => { setFavs(new Set(favoriteSymbols)); }, [favoriteSymbols]);
 
+  const [priceRefreshing, setPriceRefreshing] = useState(false);
+
+  const handleRefresh = useCallback(async () => {
+    const dateParam = dateMode === 'today' ? todayStr : dateMode;
+    setPriceRefreshing(true);
+    try {
+      await window.fetch('/api/v1/prices/refresh', { method: 'POST' });
+    } finally {
+      setPriceRefreshing(false);
+    }
+    doFetch(dateParam, market === 'ETF' ? 'all' : market, true);
+  }, [dateMode, todayStr, market, doFetch]);
+
   const resetScroll = () => setVisibleCount(PAGE_SIZE);
   const handleDateChange = (mode: 'today' | 'signal_all' | 'all') => {
     setDateMode(mode);
@@ -817,8 +830,8 @@ export function UnifiedAnalysisSection({ initialDateMode = 'today', signalMap, f
           onCharacterChange={(c) => { setCharFilter(c); resetScroll(); }}
           noiseFilter={noiseFilter}
           onNoiseFilterChange={setNoiseFilter}
-          onRefresh={() => doFetch(dateMode === 'today' ? todayStr : dateMode, market === 'ETF' ? 'all' : market)}
-          refreshing={loading}
+          onRefresh={handleRefresh}
+          refreshing={loading || priceRefreshing}
           updating={snapshotStatus.updating}
           onWeightClick={() => setShowWeights(v => !v)}
           livePrices={livePrices}

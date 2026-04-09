@@ -392,7 +392,7 @@ export function RecommendationFilterBar({
             type="button"
             aria-label="새로고침"
             onClick={onRefresh}
-            disabled={refreshing}
+            disabled={refreshing || updating}
             className={`${iconBtnCls} disabled:opacity-50`}
           >
             <RefreshCw

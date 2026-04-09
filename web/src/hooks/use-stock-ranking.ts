@@ -27,12 +27,12 @@ export function useStockRanking() {
   const [data, setData] = useState<RankingResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const doFetch = useCallback(async (date: string, market: string) => {
+  const doFetch = useCallback(async (date: string, market: string, force?: boolean) => {
     const key = `${date}:${market}`;
 
-    // 캐시 히트 → 즉시 반환
+    // 캐시 히트 → 즉시 반환 (force=true이면 캐시 무시)
     const cached = cache.get(key);
-    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    if (!force && cached && Date.now() - cached.ts < CACHE_TTL) {
       setData(cached.data);
       return;
     }
