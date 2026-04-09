@@ -258,12 +258,19 @@ export function StockDetailPanel() {
           <div className="md:w-[55%] overflow-y-auto border-r border-[var(--border)] max-md:border-r-0">
             {data ? (
               <UnifiedScoreCard data={data} history={history} />
-            ) : (
+            ) : phase1Loading ? (
               // 로딩 스켈레톤
               <div className="p-4 space-y-4 animate-pulse">
                 <div className="h-20 bg-[var(--muted)]/20 rounded-xl" />
                 <div className="h-36 bg-[var(--muted)]/20 rounded-xl" />
                 <div className="h-48 bg-[var(--muted)]/20 rounded-xl" />
+              </div>
+            ) : (
+              // 스코어 데이터 없음
+              <div className="p-6 flex flex-col items-center justify-center gap-2 text-center text-[var(--muted)]">
+                <span className="text-3xl">—</span>
+                <p className="text-sm">스코어 데이터가 없습니다</p>
+                <p className="text-xs opacity-60">채점 배치가 아직 실행되지 않았거나<br/>해당 종목이 분석 대상에 포함되지 않습니다</p>
               </div>
             )}
           </div>

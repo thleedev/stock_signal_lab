@@ -90,6 +90,7 @@ const SORT_MAP: Record<string, string> = {
   market_cap: "market_cap",
   change: "price_change_pct",
   high90d: "high90d",
+  change_1m: "change_1m",
   volume: "volume",
   per: "per",
   gap: "gap",
@@ -627,7 +628,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         <th className="px-2 py-3 text-left w-[52px]"></th>
         <th className="px-2 py-3 text-left">종목명</th>
         <th className="px-2 py-3 text-right w-[88px]">현재가</th>
-        <th className="px-2 py-3 text-right w-[72px]">{sortBy === "high90d" ? "90일고점" : "등락률"}</th>
+        <th className="px-2 py-3 text-right w-[72px]">{sortBy === "high90d" || sortBy === "change_1m" ? "90일고점비" : "등락률"}</th>
         <th className="hidden sm:table-cell px-2 py-3 text-right w-[64px]">Gap</th>
         <th className="hidden md:table-cell px-2 py-3 text-left w-[72px]">코드</th>
         <th className="hidden md:table-cell px-2 py-3 text-right w-[88px]">거래량</th>
@@ -716,6 +717,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
               <option value="name">이름</option>
               <option value="market_cap">시가총액</option>
               <option value="change">등락률</option>
+              <option value="change_1m">1달등락</option>
               <option value="high90d">90일고점비</option>
               <option value="volume">거래량</option>
               <option value="per">PER</option>
@@ -792,7 +794,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                       isFav={favSet.has(stock.symbol)}
                       gapSource={gapSource}
                       isInPortfolio={portSet.has(stock.symbol)}
-                      showChange1m={sortBy === "change_1m"}
+                      showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
                       onToggleFavorite={(s) => handleStarClick(s)}
                       onRowClick={handleRowClick}
                     />
@@ -834,7 +836,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                       isFav={true}
                       gapSource={gapSource}
                       isInPortfolio={portSet.has(stock.symbol)}
-                      showChange1m={sortBy === "change_1m"}
+                      showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
                       onToggleFavorite={(s) => handleStarClick(s)}
                       onRowClick={handleRowClick}
                     />
