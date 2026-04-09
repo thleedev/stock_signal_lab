@@ -483,14 +483,23 @@ class KiwoomAccessibilityService : AccessibilityService() {
                         Log.w(TAG, "'$tabName' tab switch failed, retrying...")
                         processState()  // CLICKING_BUY 상태 유지, 재시도
                     } else {
-                        Log.e(TAG, "'$tabName' tab switch failed after $clickAttempt attempts, proceeding anyway")
-                        transitionTo(State.SCRAPING_BUY)
-                        processState()
+                        // 최대 재시도 초과: 현재 탭이 실제로 매수인지 재확인 후 진행
+                        // 매도 탭이 열려있는 상태에서 SCRAPING_BUY로 가면 매도 종목이 BUY로 레이블됨
+                        val confirmedTab = getActiveTab(freshRoot)
+                        if (confirmedTab == "매수") {
+                            Log.w(TAG, "'$tabName' switch unconfirmed but tab IS '매수', proceeding")
+                            transitionTo(State.SCRAPING_BUY)
+                            noNewCount = 0
+                            processState()
+                        } else {
+                            Log.e(TAG, "'$tabName' tab switch failed after $clickAttempt attempts, current='$confirmedTab'. Aborting to prevent wrong signals.")
+                            fail("매수 탭 전환 실패(현재: $confirmedTab) - 잘못된 신호 방지를 위해 중단")
+                        }
                     }
                     freshRoot.recycle()
                 } else {
-                    transitionTo(State.SCRAPING_BUY)
-                    processState()
+                    Log.e(TAG, "rootInActiveWindow is null after tab click, aborting")
+                    fail("매수 탭 전환 검증 불가(root null) - 잘못된 신호 방지를 위해 중단")
                 }
             }, 3000)
         } else if (clickAttempt < 5) {
@@ -498,8 +507,17 @@ class KiwoomAccessibilityService : AccessibilityService() {
             handler.postDelayed({ processState() }, 2000)
         } else {
             Log.e(TAG, "Failed to click '$tabName' after $clickAttempt attempts")
-            transitionTo(State.SCRAPING_BUY)
-            processState()
+            val freshR = rootInActiveWindow
+            val currentTab = if (freshR != null) getActiveTab(freshR).also { freshR.recycle() } else "unknown"
+            if (currentTab == "매수") {
+                Log.w(TAG, "Click failed but tab IS '매수', proceeding to scrape")
+                transitionTo(State.SCRAPING_BUY)
+                noNewCount = 0
+                processState()
+            } else {
+                Log.e(TAG, "Click failed and tab is '$currentTab', not '매수'. Aborting to prevent wrong signals.")
+                fail("매수 탭 클릭 실패(현재: $currentTab) - 잘못된 신호 방지를 위해 중단")
+            }
         }
     }
 

@@ -381,12 +381,16 @@ export function RecommendationFilterBar({
           <BarChart3 size={15} />
         </button>
 
-        {/* 새로고침 버튼 + 업데이트 시각 */}
+        {/* 새로고침 버튼 + 상태 텍스트 */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {updateLabel && (
-            <span className="text-[10px] text-[var(--muted)] whitespace-nowrap">
-              {updateLabel}
-            </span>
+          {refreshing && (
+            <span className="text-[10px] text-blue-400 animate-pulse whitespace-nowrap">가격 갱신 중...</span>
+          )}
+          {!refreshing && updating && (
+            <span className="text-[10px] text-blue-400 animate-pulse whitespace-nowrap">순위 업데이트 중...</span>
+          )}
+          {!refreshing && !updating && updateLabel && (
+            <span className="text-[10px] text-[var(--muted)] whitespace-nowrap">{updateLabel}</span>
           )}
           <button
             type="button"

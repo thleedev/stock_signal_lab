@@ -565,13 +565,16 @@ export function UnifiedAnalysisSection({ initialDateMode = 'today', signalMap, f
 
   const handleRefresh = useCallback(async () => {
     const dateParam = dateMode === 'today' ? todayStr : dateMode;
+    const mkt = market === 'ETF' ? 'all' : market;
     setPriceRefreshing(true);
     try {
       await window.fetch('/api/v1/prices/refresh', { method: 'POST' });
+    } catch {
+      // 실패해도 ranking 재조회는 진행
     } finally {
       setPriceRefreshing(false);
+      doFetch(dateParam, mkt, true);
     }
-    doFetch(dateParam, market === 'ETF' ? 'all' : market, true);
   }, [dateMode, todayStr, market, doFetch]);
 
   const resetScroll = () => setVisibleCount(PAGE_SIZE);
