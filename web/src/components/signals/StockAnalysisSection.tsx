@@ -293,6 +293,7 @@ export function StockAnalysisSection({
   // 데이터
   const { data, loading, doFetch } = useUnifiedRanking();
   const snapshotStatus = useSnapshotStatus();
+  const [priceRefreshing, setPriceRefreshing] = useState(false);
 
   // 필터 / 정렬 / 검색
   const [q, setQ] = useState('');
@@ -357,6 +358,17 @@ export function StockAnalysisSection({
     doFetch(styleId, getDateParam(initialDateMode ?? 'today'), market, styleWeights, styleDisabledConds);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── 새로고침: 현재가 갱신 → 랭킹 재조회 ─────────────────────────────────────
+  const handleRefresh = useCallback(async () => {
+    setPriceRefreshing(true);
+    try {
+      await window.fetch('/api/v1/prices/refresh', { method: 'POST' });
+    } finally {
+      setPriceRefreshing(false);
+    }
+    doFetch(styleId, getDateParam(dateMode), market, styleWeights, styleDisabledConds, true);
+  }, [styleId, dateMode, market, styleWeights, styleDisabledConds, doFetch, getDateParam]);
 
   // ── 핸들러 ───────────────────────────────────────────────────────────────────
   const resetScroll = () => setVisibleCount(PAGE_SIZE);
@@ -719,17 +731,19 @@ export function StockAnalysisSection({
           </button>
           {/* 새로고침 + 업데이트 시각 */}
           <div className="flex items-center gap-1">
-            {snapshotStatus.updating && (
-              <span className="hidden sm:inline text-[10px] text-[var(--accent)] animate-pulse whitespace-nowrap">업데이트 중...</span>
+            {(priceRefreshing || snapshotStatus.updating) && (
+              <span className="text-[10px] text-blue-400 animate-pulse whitespace-nowrap">
+                {snapshotStatus.updating ? '순위 업데이트 중...' : '가격 갱신 중...'}
+              </span>
             )}
-            {!snapshotStatus.updating && snapshotLabel && (
-              <span className="hidden sm:inline text-[10px] text-[var(--muted)] whitespace-nowrap">{snapshotLabel}</span>
+            {!priceRefreshing && !snapshotStatus.updating && snapshotLabel && (
+              <span className="text-[10px] text-[var(--muted)] whitespace-nowrap">{snapshotLabel}</span>
             )}
             <button
-              onClick={() => doFetch(styleId, getDateParam(dateMode), market, styleWeights, styleDisabledConds, true)}
-              disabled={loading || snapshotStatus.updating} title="새로고침" className={iconBtnCls}
+              onClick={handleRefresh}
+              disabled={loading || priceRefreshing || snapshotStatus.updating} title="새로고침" className={iconBtnCls}
             >
-              {loading || snapshotStatus.updating ? <Loader2 size={15} className="animate-spin" /> : <span className="text-sm leading-none">↺</span>}
+              {loading || priceRefreshing || snapshotStatus.updating ? <Loader2 size={15} className="animate-spin" /> : <span className="text-sm leading-none">↺</span>}
             </button>
           </div>
         </div>
