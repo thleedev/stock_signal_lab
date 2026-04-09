@@ -98,5 +98,11 @@ export async function runPricesOnly(): Promise<{ collected: number }> {
   }
 
   log('prices-only', `완료: ${allItems.length}종목 stock_cache 갱신`);
+
+  // 90일 최고가 대비 등락률 갱신
+  const { error: rpcError } = await supabase.rpc('refresh_high_90d_pct');
+  if (rpcError) log('prices-only', `high_90d_pct 갱신 오류: ${rpcError.message}`);
+  else log('prices-only', 'high_90d_pct 갱신 완료');
+
   return { collected: allItems.length };
 }

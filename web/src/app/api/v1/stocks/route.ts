@@ -198,7 +198,7 @@ export async function GET(request: NextRequest) {
     q = q.in('symbol', buySymbols);
   }
 
-  const dbColumn = sortBy === 'change_1m' ? 'change_1m_pct' : sortBy;
+  const dbColumn = sortBy === 'high90d' ? 'high_90d_pct' : sortBy;
   q = q.order(dbColumn, { ascending: !sortDir }).range(offset, offset + limit - 1);
   const { data, count, error } = await q;
   if (error) {

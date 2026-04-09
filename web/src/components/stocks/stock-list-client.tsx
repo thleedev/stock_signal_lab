@@ -89,7 +89,7 @@ const SORT_MAP: Record<string, string> = {
   name: "name",
   market_cap: "market_cap",
   change: "price_change_pct",
-  change_1m: "change_1m",
+  high90d: "high90d",
   volume: "volume",
   per: "per",
   gap: "gap",
@@ -353,9 +353,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         valA = a.market_cap ?? 0; valB = b.market_cap ?? 0; break;
       case "change":
         valA = a.price_change_pct ?? 0; valB = b.price_change_pct ?? 0; break;
-      case "change_1m":
-        valA = a.change_1m_pct ?? (sortDir === "asc" ? Infinity : -Infinity);
-        valB = b.change_1m_pct ?? (sortDir === "asc" ? Infinity : -Infinity);
+      case "high90d":
+        valA = a.high_90d_pct ?? (sortDir === "asc" ? Infinity : -Infinity);
+        valB = b.high_90d_pct ?? (sortDir === "asc" ? Infinity : -Infinity);
         break;
       case "volume":
         valA = a.volume ?? 0; valB = b.volume ?? 0; break;
@@ -627,7 +627,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         <th className="px-2 py-3 text-left w-[52px]"></th>
         <th className="px-2 py-3 text-left">종목명</th>
         <th className="px-2 py-3 text-right w-[88px]">현재가</th>
-        <th className="px-2 py-3 text-right w-[72px]">{sortBy === "change_1m" ? "1달등락" : "등락률"}</th>
+        <th className="px-2 py-3 text-right w-[72px]">{sortBy === "high90d" ? "90일고점" : "등락률"}</th>
         <th className="hidden sm:table-cell px-2 py-3 text-right w-[64px]">Gap</th>
         <th className="hidden md:table-cell px-2 py-3 text-left w-[72px]">코드</th>
         <th className="hidden md:table-cell px-2 py-3 text-right w-[88px]">거래량</th>
@@ -716,7 +716,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
               <option value="name">이름</option>
               <option value="market_cap">시가총액</option>
               <option value="change">등락률</option>
-              <option value="change_1m">1달등락</option>
+              <option value="high90d">90일고점비</option>
               <option value="volume">거래량</option>
               <option value="per">PER</option>
               <option value="gap">Gap</option>
@@ -766,7 +766,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                         isFav={true}
                         gapSource={gapSource}
                         isInPortfolio={portSet.has(stock.symbol)}
-                        showChange1m={sortBy === "change_1m"}
+                        showHigh90d={sortBy === "high90d"}
                         onToggleFavorite={(s) => handleStarClick(s)}
                         onRowClick={handleRowClick}
                       />
@@ -904,12 +904,12 @@ interface StockRowProps {
   isFav: boolean;
   gapSource: SourceKey | "all";
   isInPortfolio: boolean;
-  showChange1m: boolean;
+  showHigh90d: boolean;
   onToggleFavorite: (stock: StockCache) => void;
   onRowClick: (e: React.MouseEvent, stock: StockCache) => void;
 }
 
-const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio, showChange1m, onToggleFavorite, onRowClick }: StockRowProps) {
+const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio, showHigh90d, onToggleFavorite, onRowClick }: StockRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: stock.symbol });
   const gapResult = calcGap(stock, gapSource);
   const gap = gapResult?.gap ?? null;
@@ -963,8 +963,8 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
       <td className={`px-2 py-2.5 text-right font-medium tabular-nums w-[88px] ${priceColor(stock.price_change)}`}>
         {formatNumber(stock.current_price)}
       </td>
-      <td className={`px-2 py-2.5 text-right font-medium tabular-nums w-[72px] ${priceColor(showChange1m ? stock.change_1m_pct : stock.price_change_pct)}`}>
-        {formatPercent(showChange1m ? stock.change_1m_pct : stock.price_change_pct)}
+      <td className={`px-2 py-2.5 text-right font-medium tabular-nums w-[72px] ${priceColor(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}`}>
+        {formatPercent(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}
       </td>
       <td className="hidden sm:table-cell px-2 py-2.5 text-right tabular-nums w-[64px]">
         {gap != null ? (
