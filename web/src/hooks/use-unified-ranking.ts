@@ -19,13 +19,13 @@ export function useUnifiedRanking() {
   const [data, setData] = useState<UnifiedRankingResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const doFetch = useCallback(async (style: string, date: string, market: string, weights?: StyleWeights, disabledConditionIds?: string[]) => {
+  const doFetch = useCallback(async (style: string, date: string, market: string, weights?: StyleWeights, disabledConditionIds?: string[], force?: boolean) => {
     const weightsKey = weights ? `|${weights.signalTech},${weights.supply},${weights.valueGrowth},${weights.momentum},${weights.risk}` : '';
     const disabledKey = disabledConditionIds?.length ? `|dc:${disabledConditionIds.join(',')}` : '';
     const key = `${style}:${date}:${market}${weightsKey}${disabledKey}`;
 
     const cached = cache.get(key);
-    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+    if (!force && cached && Date.now() - cached.ts < CACHE_TTL) {
       setData(cached.data);
       return;
     }

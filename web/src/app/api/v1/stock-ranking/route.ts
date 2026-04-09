@@ -217,6 +217,7 @@ export async function GET(request: NextRequest) {
   const market = searchParams.get('market') ?? 'all';
   const dateParam = searchParams.get('date') ?? 'all'; // 'all' | 'signal_all' | 'YYYY-MM-DD'
   const style   = searchParams.get('style') ?? 'balanced';
+  const symbolParam = searchParams.get('symbol'); // 단일 종목 조회용
   const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
   const limit = Math.min(9999, Math.max(10, parseInt(searchParams.get('limit') ?? '50')));
   const offset = (page - 1) * limit;
@@ -230,6 +231,75 @@ export async function GET(request: NextRequest) {
   const hasCustomWeights = wST > 0 && wSU > 0 && wVG > 0 && wMO > 0 && wRI > 0;
 
   const supabase = createServiceClient();
+
+  // 단일 종목 조회: symbol 파라미터가 있으면 해당 종목만 반환
+  if (symbolParam) {
+    const { data, error } = await supabase
+      .from('stock_scores')
+      .select(SELECT_COLS)
+      .eq('symbol', symbolParam)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!data) {
+      return NextResponse.json({ items: [], total: 0, page: 1, limit: 1, scored_at: null });
+    }
+
+    const row = data as Record<string, unknown>;
+    const cache = row.stock_cache as unknown as Record<string, unknown>;
+    const item = {
+      symbol: row.symbol,
+      scored_at: row.scored_at,
+      score_total: row.score_total as number,
+      score_value: row.score_value as number,
+      score_growth: row.score_growth as number,
+      score_supply: row.score_supply as number,
+      score_momentum: row.score_momentum as number,
+      score_reversal: row.score_reversal as number,
+      score_risk: row.score_risk as number,
+      score_signal: row.score_signal as number,
+      name: cache?.name,
+      market: cache?.market,
+      current_price: cache?.current_price,
+      price_change_pct: cache?.price_change_pct,
+      per: cache?.per,
+      pbr: cache?.pbr,
+      roe: cache?.roe,
+      market_cap: cache?.market_cap,
+      dividend_yield: cache?.dividend_yield,
+      foreign_net_qty: cache?.foreign_net_qty,
+      institution_net_qty: cache?.institution_net_qty,
+      foreign_net_5d: cache?.foreign_net_5d,
+      institution_net_5d: cache?.institution_net_5d,
+      foreign_streak: cache?.foreign_streak,
+      institution_streak: cache?.institution_streak,
+      short_sell_ratio: cache?.short_sell_ratio,
+      high_52w: cache?.high_52w,
+      low_52w: cache?.low_52w,
+      forward_per: cache?.forward_per,
+      target_price: cache?.target_price,
+      invest_opinion: cache?.invest_opinion,
+      signal_count_30d: cache?.signal_count_30d,
+      latest_signal_type: cache?.latest_signal_type,
+      latest_signal_date: cache?.latest_signal_date,
+      latest_signal_price: cache?.latest_signal_price,
+      is_managed: cache?.is_managed,
+      volume: cache?.volume,
+      prices_updated_at: cache?.updated_at,
+      checklist_tech_pass:  row.checklist_tech_pass  as number | null,
+      checklist_tech_total: row.checklist_tech_total as number | null,
+      checklist_sup_pass:   row.checklist_sup_pass   as number | null,
+      checklist_sup_total:  row.checklist_sup_total  as number | null,
+      checklist_val_pass:   row.checklist_val_pass   as number | null,
+      checklist_val_total:  row.checklist_val_total  as number | null,
+      checklist_sig_pass:   row.checklist_sig_pass   as number | null,
+      checklist_sig_total:  row.checklist_sig_total  as number | null,
+    };
+    return NextResponse.json({ items: [item], total: 1, page: 1, limit: 1, scored_at: item.scored_at ?? null });
+  }
 
   // Supabase max_rows=1000 제한 우회: 전체 데이터를 페이지네이션으로 수집 후 API 레벨에서 정렬/슬라이스
   const allRows: Record<string, unknown>[] = [];

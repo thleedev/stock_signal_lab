@@ -6,6 +6,7 @@ import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { GradeTooltip } from '@/components/common/grade-tooltip';
 import { useUnifiedRanking } from '@/hooks/use-unified-ranking';
+import { useSnapshotStatus } from '@/hooks/use-snapshot-status';
 import { useScoreHistory } from '@/hooks/use-score-history';
 import { useStockModal } from '@/contexts/stock-modal-context';
 import { StyleSelector } from './StyleSelector';
@@ -291,6 +292,7 @@ export function StockAnalysisSection({
 
   // 데이터
   const { data, loading, doFetch } = useUnifiedRanking();
+  const snapshotStatus = useSnapshotStatus();
 
   // 필터 / 정렬 / 검색
   const [q, setQ] = useState('');
@@ -717,14 +719,17 @@ export function StockAnalysisSection({
           </button>
           {/* 새로고침 + 업데이트 시각 */}
           <div className="flex items-center gap-1">
-            {snapshotLabel && (
+            {snapshotStatus.updating && (
+              <span className="hidden sm:inline text-[10px] text-[var(--accent)] animate-pulse whitespace-nowrap">업데이트 중...</span>
+            )}
+            {!snapshotStatus.updating && snapshotLabel && (
               <span className="hidden sm:inline text-[10px] text-[var(--muted)] whitespace-nowrap">{snapshotLabel}</span>
             )}
             <button
-              onClick={() => doFetch(styleId, getDateParam(dateMode), market, styleWeights, styleDisabledConds)}
-              disabled={loading} title="새로고침" className={iconBtnCls}
+              onClick={() => doFetch(styleId, getDateParam(dateMode), market, styleWeights, styleDisabledConds, true)}
+              disabled={loading || snapshotStatus.updating} title="새로고침" className={iconBtnCls}
             >
-              {loading ? <Loader2 size={15} className="animate-spin" /> : <span className="text-sm leading-none">↺</span>}
+              {loading || snapshotStatus.updating ? <Loader2 size={15} className="animate-spin" /> : <span className="text-sm leading-none">↺</span>}
             </button>
           </div>
         </div>
