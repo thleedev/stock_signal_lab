@@ -59,7 +59,7 @@ export async function GET() {
   }
 
   // 90일 최고가 대비 등락률 갱신
-  await supabase.rpc('refresh_high_90d_pct').catch(() => {});
+  await supabase.rpc('refresh_high_90d_pct').then(() => {}, () => {});
 
   return NextResponse.json({ ok: true, total: prices.size, updated });
 }
