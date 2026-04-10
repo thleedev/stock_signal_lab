@@ -20,8 +20,12 @@ export async function POST() {
 
   const supabase = createServiceClient();
   const now = new Date().toISOString();
+
+  // name, market 포함해야 NOT NULL 제약 위반 없이 upsert 가능
   const rows = [...prices.values()].map((p) => ({
     symbol: p.symbol,
+    name: p.name,
+    market: p.market,
     current_price: p.current_price,
     price_change: p.price_change,
     price_change_pct: p.price_change_pct,
@@ -31,12 +35,22 @@ export async function POST() {
   }));
 
   let updated = 0;
+  const errors: string[] = [];
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const { error } = await supabase
       .from('stock_cache')
       .upsert(rows.slice(i, i + BATCH_SIZE), { onConflict: 'symbol' });
-    if (!error) updated += Math.min(BATCH_SIZE, rows.length - i);
+    if (!error) {
+      updated += Math.min(BATCH_SIZE, rows.length - i);
+    } else {
+      errors.push(error.message);
+    }
   }
 
-  return NextResponse.json({ ok: true, total: prices.size, updated });
+  return NextResponse.json({
+    ok: errors.length === 0,
+    total: prices.size,
+    updated,
+    ...(errors.length > 0 ? { errors } : {}),
+  });
 }
