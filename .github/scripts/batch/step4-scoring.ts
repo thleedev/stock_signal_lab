@@ -5,6 +5,35 @@ import { calcCompositeScore } from '../../../web/src/lib/scoring/composite-score
 const SCORE_CHUNK = 200; // 스코어 upsert 청크 크기
 const PRICE_PAGE = 1000; // Supabase max_rows 제한 (1000) — 초과 시 루프가 조기 종료됨
 
+// ─── 우선주 보정 헬퍼 ──────────────────────────────────────────────────────
+/**
+ * 한국 우선주 판별: 6자리 종목코드 마지막 자리가 '5' 또는 '7'
+ * 예) 005935(삼성전자우), 000155(두산우), 000257(삼성물산우)
+ *
+ * 네이버 API는 아래 지표를 본주와 동일하게 반환함 → 수정 필요:
+ *   - target_price (consensusInfo.priceTargetMean): 본주 애널리스트 목표주가 그대로
+ *   - invest_opinion (consensusInfo.recommMean): 본주 투자의견 그대로
+ *
+ * 아래 지표는 네이버가 이미 우선주 현재가 기준으로 계산해 반환함 → 수정 불필요:
+ *   - per (= 우선주 현재가 / EPS)  ✅
+ *   - pbr (= 우선주 현재가 / BPS)  ✅
+ *   - cnsPer (= 우선주 현재가 / cnsEps) ✅
+ *   - dividendYieldRatio           ✅
+ *   - highPriceOf52Weeks / lowPriceOf52Weeks (우선주 자체 52주 고저가) ✅
+ */
+function isPreferredStock(symbol: string): boolean {
+  const last = symbol[5];
+  return last === '5' || last === '7';
+}
+
+/**
+ * 우선주 코드에서 본주 코드 추출
+ * 예) 005935 → 005930, 000155 → 000150, 000257 → 000250
+ */
+function getParentSymbol(symbol: string): string {
+  return symbol.slice(0, 5) + '0';
+}
+
 /**
  * Step 4: 통합 점수 계산
  * stock_cache + daily_prices + stock_dart_info + signals 를 조합하여
@@ -37,6 +66,10 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
 
     if (cacheRows.length === 0) throw new Error('stock_cache 조회 결과 없음');
     log('step4', `${cacheRows.length}종목 기본 데이터 조회 완료`);
+
+    // O(1) 조회용 Map 빌드 (우선주 목표주가 보정 시 본주 데이터 참조에 사용)
+    const cacheMap = new Map<string, Record<string, unknown>>();
+    for (const r of cacheRows) cacheMap.set(r.symbol as string, r);
 
     // DART 재무/공시 데이터 전체 조회 후 Map 으로 변환
     const { data: dartRows } = await supabase
@@ -137,6 +170,31 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           ? (todayPrice.volume / floatShares) * 100
           : null;
 
+        // ── 우선주 지표 보정 ────────────────────────────────────────────────
+        // target_price: 본주 목표주가 × (우선주 현재가 / 본주 현재가) 로 환산
+        // invest_opinion: 우선주에 대한 별도 애널리스트 커버 없으므로 null 처리
+        let effectiveTargetPrice: number | null = (cache.target_price as number) ?? null;
+        let effectiveInvestOpinion: number | null = (cache.invest_opinion as number) ?? null;
+
+        if (isPreferredStock(symbol)) {
+          const parentSymbol = getParentSymbol(symbol);
+          const parentCache = cacheMap.get(parentSymbol);
+          const prefPrice = (cache.current_price as number) ?? null;
+          const commonPrice = (parentCache?.current_price as number) ?? null;
+          const commonTarget = (parentCache?.target_price as number) ?? null;
+
+          if (parentCache && prefPrice && commonPrice > 0 && commonTarget) {
+            // 비율 보정: 우선주 목표주가 = 본주 목표주가 × (우선주 가격 / 본주 가격)
+            effectiveTargetPrice = Math.round(commonTarget * (prefPrice / commonPrice));
+          } else {
+            // 본주 데이터 없으면 목표주가 제거 (잘못된 값 반영 방지)
+            effectiveTargetPrice = null;
+          }
+
+          // 우선주는 애널리스트 별도 커버 없음 → 투자의견 null
+          effectiveInvestOpinion = null;
+        }
+
         // 통합 점수 엔진 실행 (balanced 스타일)
         const result = calcCompositeScore({
           prices,
@@ -150,13 +208,13 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
           institutionNet5d: (cache.institution_net_5d as number) ?? null,
           shortSellRatio: (cache.short_sell_ratio as number) ?? null,
           currentPrice: (cache.current_price as number) ?? null,
-          targetPrice: (cache.target_price as number) ?? null,
+          targetPrice: effectiveTargetPrice,
           forwardPer: (cache.forward_per as number) ?? null,
           per: (cache.per as number) ?? null,
           pbr: (cache.pbr as number) ?? null,
           roe: (cache.roe as number) ?? null,
           dividendYield: (cache.dividend_yield as number) ?? null,
-          investOpinion: (cache.invest_opinion as number) ?? null,
+          investOpinion: effectiveInvestOpinion,
           todaySourceCount,
           daysSinceLastSignal: latestSignalDaysAgo,
           recentCount30d: (cache.signal_count_30d as number) ?? 0,
