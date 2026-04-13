@@ -51,6 +51,9 @@ export type StockRankItem = {
   latest_signal_type: string | null;
   latest_signal_date: string | null;
   latest_signal_price: number | null;
+  latest_sell_date: string | null;
+  latest_sell_price: number | null;
+  has_active_sell: boolean | null;
   is_managed: boolean | null;
   volume: number | null;
   prices_updated_at: string | null;
@@ -79,6 +82,7 @@ const SELECT_COLS = `
     foreign_streak, institution_streak, short_sell_ratio,
     high_52w, low_52w, forward_per, target_price, invest_opinion,
     signal_count_30d, latest_signal_type, latest_signal_date, latest_signal_price,
+    latest_sell_date, latest_sell_price, has_active_sell,
     is_managed, volume, updated_at
   )
 `;
@@ -286,6 +290,9 @@ export async function GET(request: NextRequest) {
       latest_signal_type: cache?.latest_signal_type,
       latest_signal_date: cache?.latest_signal_date,
       latest_signal_price: cache?.latest_signal_price,
+      latest_sell_date: cache?.latest_sell_date,
+      latest_sell_price: cache?.latest_sell_price,
+      has_active_sell: cache?.has_active_sell,
       is_managed: cache?.is_managed,
       volume: cache?.volume,
       prices_updated_at: cache?.updated_at,
@@ -309,16 +316,20 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('stock_scores')
       .select(SELECT_COLS)
-      .not('stock_cache.current_price', 'is', null)
-      // 최신 신호가 SELL인 종목 제외 (has_active_sell: generated column)
-      .eq('stock_cache.has_active_sell', false);
+      .not('stock_cache.current_price', 'is', null);
+
+    // signal_all 모드는 매도 완료 종목도 포함해 매도가 기준 gap 표시
+    // 그 외 모드는 최신 신호가 BUY인 종목만 (has_active_sell: generated column)
+    if (dateParam !== 'signal_all') {
+      query = query.eq('stock_cache.has_active_sell', false);
+    }
 
     if (market !== 'all') {
       query = query.eq('stock_cache.market', market);
     }
 
     if (dateParam === 'signal_all') {
-      // 기간 무관하게 BUY 신호가 존재하는 종목만 (has_active_sell 필터와 조합으로 현재 상태 = BUY)
+      // 기간 무관하게 BUY 신호가 존재한 이력이 있는 종목 (매도 완료 포함)
       query = query.not('stock_cache.latest_signal_date', 'is', null);
     } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
       query = query.gte('stock_cache.latest_signal_date', `${dateParam}T00:00:00Z`);
@@ -390,6 +401,9 @@ export async function GET(request: NextRequest) {
       latest_signal_type: cache.latest_signal_type,
       latest_signal_date: cache.latest_signal_date,
       latest_signal_price: cache.latest_signal_price,
+      latest_sell_date: cache.latest_sell_date,
+      latest_sell_price: cache.latest_sell_price,
+      has_active_sell: cache.has_active_sell,
       is_managed: cache.is_managed,
       volume: cache.volume,
       prices_updated_at: cache.updated_at,

@@ -147,17 +147,20 @@ export async function enrichSignalStocks(
       .gte('timestamp', `${thirtyDaysAgo}T00:00:00+09:00`),
     supabase
       .from('signals')
-      .select('symbol, timestamp')
+      .select('symbol, timestamp, raw_data')
       .in('symbol', unique)
       .in('signal_type', ['SELL', 'SELL_COMPLETE'])
       .order('timestamp', { ascending: false }),
   ]);
 
-  // 심볼별 최신 SELL 날짜 맵
-  const latestSellMap = new Map<string, string>();
+  // 심볼별 최신 SELL 날짜 + 매도가 맵
+  const latestSellMap = new Map<string, { ts: string; price: number | null }>();
   for (const row of sellRows ?? []) {
     if (!latestSellMap.has(row.symbol as string)) {
-      latestSellMap.set(row.symbol as string, row.timestamp as string);
+      latestSellMap.set(row.symbol as string, {
+        ts: row.timestamp as string,
+        price: extractSignalPrice(row.raw_data as Record<string, unknown> | null),
+      });
     }
   }
 
@@ -184,14 +187,18 @@ export async function enrichSignalStocks(
       }
     }
 
-    const signalUpdates = [...countMap.entries()].map(([symbol, info]) => ({
-      symbol,
-      signal_count_30d: info.count,
-      latest_signal_date: info.latestDate,
-      latest_signal_type: info.latestType,
-      latest_signal_price: info.latestPrice,
-      latest_sell_date: latestSellMap.get(symbol) ?? null,
-    }));
+    const signalUpdates = [...countMap.entries()].map(([symbol, info]) => {
+      const sell = latestSellMap.get(symbol);
+      return {
+        symbol,
+        signal_count_30d: info.count,
+        latest_signal_date: info.latestDate,
+        latest_signal_type: info.latestType,
+        latest_signal_price: info.latestPrice,
+        latest_sell_date: sell?.ts ?? null,
+        latest_sell_price: sell?.price ?? null,
+      };
+    });
 
     if (signalUpdates.length > 0) {
       await supabase
@@ -199,10 +206,11 @@ export async function enrichSignalStocks(
         .upsert(signalUpdates, { onConflict: 'symbol' });
     }
   } else if (latestSellMap.size > 0) {
-    // BUY는 없고 SELL만 있는 종목도 latest_sell_date 업데이트
-    const sellOnlyUpdates = [...latestSellMap.entries()].map(([symbol, ts]) => ({
+    // BUY는 없고 SELL만 있는 종목도 latest_sell_date/latest_sell_price 업데이트
+    const sellOnlyUpdates = [...latestSellMap.entries()].map(([symbol, sell]) => ({
       symbol,
-      latest_sell_date: ts,
+      latest_sell_date: sell.ts,
+      latest_sell_price: sell.price,
     }));
     await supabase
       .from('stock_cache')

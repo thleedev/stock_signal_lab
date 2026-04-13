@@ -141,16 +141,28 @@ function StockRow({
     ? 'text-blue-500'
     : 'text-[var(--muted)]';
 
-  // 매수신호 대비 Gap (30일 내 신호가 있는 종목에만 표시)
-  const signalGap = item.signal_count_30d && item.signal_count_30d > 0
+  const isSold = item.has_active_sell === true;
+
+  // 매수가 대비 Gap — 30일 제한 없이 latest_signal_price가 있으면 표시
+  const buyGap = !isSold
     && item.latest_signal_price && item.latest_signal_price > 0
     && item.current_price && item.current_price > 0
     ? ((item.current_price - item.latest_signal_price) / item.latest_signal_price) * 100
     : null;
 
-  // 신호 경과
+  // 매도가 대비 Gap — AI 매도 완료 종목
+  const sellGap = isSold
+    && item.latest_sell_price && item.latest_sell_price > 0
+    && item.current_price && item.current_price > 0
+    ? ((item.current_price - item.latest_sell_price) / item.latest_sell_price) * 100
+    : null;
+
+  const displayGap = isSold ? sellGap : buyGap;
+  const gapRefPrice = isSold ? item.latest_sell_price : item.latest_signal_price;
+
+  // 신호 경과 (매도 종목은 매도일 기준)
   const sigDateRaw = item.latest_signal_date ?? (item as unknown as Record<string, unknown>).signal_date as string | undefined;
-  const signalAge = getSignalAge(sigDateRaw);
+  const signalAge = getSignalAge(isSold ? item.latest_sell_date : sigDateRaw);
 
   const miniBars = [
     {
@@ -247,12 +259,16 @@ function StockRow({
         </span>
 
         {/* 신호경과(Gap) */}
-        {(signalAge || signalGap != null) && (
-          <span className="text-[11px] tabular-nums shrink-0 text-[var(--muted)]" title={signalGap != null ? `신호가 ${item.latest_signal_price?.toLocaleString()}원 대비` : undefined}>
+        {(signalAge || displayGap != null) && (
+          <span
+            className="text-[11px] tabular-nums shrink-0 text-[var(--muted)]"
+            title={displayGap != null ? `${isSold ? '매도가' : '매수가'} ${gapRefPrice?.toLocaleString()}원 대비` : undefined}
+          >
             {signalAge ?? ''}
-            {signalGap != null && (
-              <span className={`ml-0.5 font-semibold ${signalGap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
-                ({signalGap >= 0 ? '+' : ''}{signalGap.toFixed(1)}%)
+            {isSold && <span className="ml-0.5 text-gray-400 font-medium">매도</span>}
+            {displayGap != null && (
+              <span className={`ml-0.5 font-semibold ${displayGap >= 0 ? 'text-red-400' : 'text-blue-400'}`}>
+                ({displayGap >= 0 ? '+' : ''}{displayGap.toFixed(1)}%)
               </span>
             )}
           </span>
