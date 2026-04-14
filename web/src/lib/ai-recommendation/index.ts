@@ -417,11 +417,15 @@ export async function generateRecommendations(
     });
 
     // 테마 보너스 반영 (수급·추세 점수에 가산, 리스크에 추가 감점)
-    const boostedSupplyRaw = (supplyResult.normalizedScore ?? 0) + themeBonus.supply_bonus;
-    const boostedSupplyNorm = Math.min(boostedSupplyRaw, 100);
-    const boostedTrendRaw = (technicalResult.normalizedScore ?? 0) + themeBonus.trend_bonus;
-    const boostedTrendNorm = Math.min(boostedTrendRaw, 100);
-    const boostedRiskNorm = Math.min((riskResult.normalizedScore ?? 0) + themeBonus.risk_deduction, 100);
+    // 테마 보너스: 원점수에 가산 후 재정규화
+    // supply: 원점수 범위 -10~45 (span=55)
+    const boostedSupplyRaw = Math.min(supplyResult.score + themeBonus.supply_bonus, 45);
+    const boostedSupplyNorm = Math.round(((Math.max(boostedSupplyRaw, -10) - (-10)) / 55) * 100 * 10) / 10;
+    // trend: 원점수 범위 0~65
+    const boostedTrendRaw = Math.min(technicalResult.score + themeBonus.trend_bonus, 65);
+    const boostedTrendNorm = Math.round(((Math.max(boostedTrendRaw, 0)) / 65) * 100 * 10) / 10;
+    // risk: normalizedScore에 감점 추가
+    const boostedRiskNorm = Math.min(riskResult.normalizedScore + themeBonus.risk_deduction, 100);
 
     // 티어별 가중치 적용 총점 (테마 보너스 적용 후)
     const base =
