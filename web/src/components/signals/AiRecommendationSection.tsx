@@ -8,6 +8,7 @@ import {
   AiRecommendationResponse,
   DEFAULT_WEIGHTS,
 } from '@/types/ai-recommendation';
+import { ThemeBadges } from './ThemeBadges';
 
 const WEIGHT_STORAGE_KEY = 'ai-recommendation-weights';
 
@@ -143,6 +144,13 @@ function RecommendationCard({ item }: { item: AiRecommendation }) {
           <Badge label="수급 미집계" variant="gray" />
         )}
       </div>
+
+      {/* 테마 배지 */}
+      <ThemeBadges
+        theme_tags={item.theme_tags ?? null}
+        is_leader={item.is_leader ?? false}
+        is_hot_theme={item.is_hot_theme ?? false}
+      />
     </div>
   );
 }

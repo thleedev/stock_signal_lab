@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { StockRankItem } from '@/app/api/v1/stock-ranking/route';
+import { ThemeBadges } from './ThemeBadges';
+import type { ThemeTag } from '@/types/theme';
 import StockActionMenu from '@/components/common/stock-action-menu';
 import { getLastNWeekdays } from '@/lib/date-utils';
 import { FilterBar } from '@/components/common/filter-bar';
@@ -602,6 +604,18 @@ function RankCard({
           </div>
         ))}
       </div>
+
+      {/* 테마 배지 (테마 모멘텀 데이터가 있을 때만 표시) */}
+      {(() => {
+        const extItem = item as StockRankItem & { theme_tags?: ThemeTag[] | null; is_leader?: boolean; is_hot_theme?: boolean };
+        return (
+          <ThemeBadges
+            theme_tags={extItem.theme_tags ?? null}
+            is_leader={extItem.is_leader ?? false}
+            is_hot_theme={extItem.is_hot_theme ?? false}
+          />
+        );
+      })()}
     </div>
   );
 }

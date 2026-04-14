@@ -6,6 +6,7 @@ import SignalColumns from "./signal-columns";
 import { extractSignalPrice } from "@/lib/signal-constants";
 import { SignalFilterBar } from "./signal-filter-bar";
 import RecommendationView from "@/components/signals/RecommendationView";
+import { HotThemesBanner } from "@/components/signals/HotThemesBanner";
 import type { WatchlistGroup } from "@/types/stock";
 
 export const dynamic = 'force-dynamic';
@@ -13,11 +14,13 @@ export const dynamic = 'force-dynamic';
 export default async function SignalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ source?: string; date?: string; tab?: string }>;
+  searchParams: Promise<{ source?: string; date?: string; tab?: string; theme?: string; leader?: string }>;
 }) {
   const params = await searchParams;
   const activeSource = params.source || "all";
   const activeTab = params.tab === "stock-analysis" ? "stock-analysis" : "signals";
+  const activeTheme = params.theme || "all";
+  const leaderOnly = params.leader === "1";
   const supabase = createServiceClient();
 
   const last7 = getLastNWeekdays(7);
@@ -202,8 +205,31 @@ export default async function SignalsPage({
             }
           />
           <SignalFilterBar dates={last7} selectedDate={selectedDate} activeSource={activeSource} />
+
+          {/* 핫 테마 배너 */}
+          <HotThemesBanner />
+
+          {/* 테마 / 주도주 필터 (URL 파라미터 기반) */}
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            {/* 주도주 필터 토글 */}
+            <Link
+              href={`/signals?source=${activeSource}&date=${selectedDate}${leaderOnly ? "" : "&leader=1"}`}
+              className={`rounded px-2 py-1 text-sm border ${
+                leaderOnly
+                  ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
+                  : "bg-zinc-800 text-zinc-400 border-zinc-700"
+              }`}
+            >
+              👑 주도주만
+            </Link>
+          </div>
+
           <SignalColumns
-            buySignals={buySignals}
+            buySignals={
+              leaderOnly
+                ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true)
+                : buySignals
+            }
             sellSignals={sellSignals}
             favoriteSymbols={favoriteSymbols}
             watchlistSymbols={watchlistSymbols}
