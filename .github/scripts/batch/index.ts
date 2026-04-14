@@ -8,6 +8,9 @@ import { runStep5AiReport } from './step5-ai-report.js';
 import { runStep6MarketData } from './step6-market-data.js';
 import { runStep7Events } from './step7-events.js';
 import { runStep8Cleanup } from './step8-cleanup.js';
+import { crawlSectors } from './step9-crawl-sectors.js';
+import { crawlThemes } from './step10-crawl-themes.js';
+import { supabase } from '../shared/supabase.js';
 
 type BatchMode = 'full' | 'repair' | 'prices-only';
 
@@ -65,6 +68,15 @@ async function main() {
       });
 
       await runStep8Cleanup();
+
+      // 테마/섹터 크롤링 (full 모드에서만)
+      await crawlSectors(supabase).catch(e => {
+        summary.errors.push(`step9: ${(e as Error).message}`);
+      });
+
+      await crawlThemes(supabase).catch(e => {
+        summary.errors.push(`step10: ${(e as Error).message}`);
+      });
     }
 
     await finishBatchRun(runId, 'done', summary);
