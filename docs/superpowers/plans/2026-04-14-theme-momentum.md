@@ -866,7 +866,7 @@ git commit -m "feat: theme momentum - 네이버 테마 크롤러 + 주도주 판
 **Files:**
 - Modify: `.github/scripts/batch/index.ts`
 
-- [ ] **Step 1: 기존 index.ts 열어서 구조 확인 후 수정**
+- [x] **Step 1: 기존 index.ts 열어서 구조 확인 후 수정**
 
 ```typescript
 // .github/scripts/batch/index.ts 상단 import에 추가:
@@ -889,7 +889,7 @@ if (mode === 'full') {
 > const mode = process.env.BATCH_MODE ?? 'full';
 > ```
 
-- [ ] **Step 2: 로컬 타입 체크**
+- [x] **Step 2: 로컬 타입 체크**
 
 ```bash
 cd .github/scripts && npx tsc --noEmit
@@ -897,7 +897,7 @@ cd .github/scripts && npx tsc --noEmit
 
 Expected: 오류 없음
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add .github/scripts/batch/index.ts
