@@ -36,7 +36,7 @@
 **Files:**
 - Create: `supabase/migrations/069_theme_momentum.sql`
 
-- [ ] **Step 1: 마이그레이션 파일 작성**
+- [x] **Step 1: 마이그레이션 파일 작성**
 
 ```sql
 -- supabase/migrations/069_theme_momentum.sql
@@ -89,7 +89,7 @@ ALTER TABLE ai_recommendations
   ADD COLUMN IF NOT EXISTS is_hot_theme  BOOLEAN DEFAULT FALSE;
 ```
 
-- [ ] **Step 2: 마이그레이션 적용**
+- [x] **Step 2: 마이그레이션 적용**
 
 ```bash
 # Supabase MCP 또는 대시보드에서 실행
@@ -100,7 +100,7 @@ cat supabase/migrations/069_theme_momentum.sql
 
 Supabase MCP(`mcp__plugin_supabase_supabase__apply_migration`)로 적용하거나 대시보드 SQL 에디터에서 실행.
 
-- [ ] **Step 3: 커밋**
+- [x] **Step 3: 커밋**
 
 ```bash
 git add supabase/migrations/069_theme_momentum.sql
