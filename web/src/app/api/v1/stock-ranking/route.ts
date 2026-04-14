@@ -92,6 +92,10 @@ export type StockRankItem = {
   checklist_val_total: number | null;
   checklist_sig_pass: number | null;
   checklist_sig_total: number | null;
+  // 테마 모멘텀
+  is_leader?: boolean;
+  is_hot_theme?: boolean;
+  theme_tags?: { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[];
 };
 
 const SELECT_COLS = `
@@ -386,8 +390,34 @@ export async function GET(request: NextRequest) {
 
   const rawData = allRows.slice(offset, offset + limit);
 
+  // 오늘 날짜 (KST) — theme_stocks는 당일 기준
+  const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const rawSymbols = rawData.map(r => r.symbol as string).filter(Boolean);
+
+  // theme_stocks + stock_themes 배치 조회 (오늘 날짜 기준)
+  const [{ data: themeStocksRows }, { data: themeMetaRows }] = await Promise.all([
+    rawSymbols.length > 0
+      ? supabase.from('theme_stocks').select('symbol, theme_id, is_leader').eq('date', todayKst).in('symbol', rawSymbols)
+      : Promise.resolve({ data: [] }),
+    supabase.from('stock_themes').select('theme_id, theme_name, momentum_score, is_hot').eq('date', todayKst),
+  ]);
+
+  const themeMetaMap = new Map((themeMetaRows ?? []).map(t => [t.theme_id, t]));
+  const symbolThemeMap = new Map<string, { is_leader: boolean; themes: { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[] }>();
+  for (const r of themeStocksRows ?? []) {
+    if (!symbolThemeMap.has(r.symbol)) symbolThemeMap.set(r.symbol, { is_leader: false, themes: [] });
+    const entry = symbolThemeMap.get(r.symbol)!;
+    if (r.is_leader) entry.is_leader = true;
+    const meta = themeMetaMap.get(r.theme_id);
+    if (meta) entry.themes.push({ theme_id: r.theme_id, theme_name: meta.theme_name, momentum_score: meta.momentum_score ?? 0, is_hot: meta.is_hot ?? false });
+  }
+
   const items = (rawData ?? []).map(row => {
     const cache = row.stock_cache as unknown as Record<string, unknown>;
+    const themeInfo = symbolThemeMap.get(row.symbol as string);
+    const themeTags = themeInfo
+      ? [...themeInfo.themes].sort((a, b) => b.momentum_score - a.momentum_score).slice(0, 2)
+      : [];
 
     return {
       symbol: row.symbol,
@@ -441,6 +471,9 @@ export async function GET(request: NextRequest) {
       checklist_val_total:  row.checklist_val_total  as number | null,
       checklist_sig_pass:   row.checklist_sig_pass   as number | null,
       checklist_sig_total:  row.checklist_sig_total  as number | null,
+      is_leader:    themeInfo?.is_leader ?? false,
+      is_hot_theme: themeTags.some(t => t.is_hot),
+      theme_tags:   themeTags,
     };
   });
 

@@ -63,8 +63,8 @@ export default async function SignalsPage({
   }
 
   // ── AI 신호 탭 ──────────────────────────────────────────
-  let buySignals: Record<string, string>[] = [];
-  let sellSignals: Record<string, string>[] = [];
+  let buySignals: (Record<string, string> & { is_leader?: boolean })[] = [];
+  let sellSignals: (Record<string, string> & { is_leader?: boolean })[] = [];
 
   if (activeTab === "signals") {
     if (selectedDate === "all") {
@@ -136,11 +136,14 @@ export default async function SignalsPage({
       let nameMap: Record<string, string> = {};
       let marketMap: Record<string, string> = {};
       let sectorMap: Record<string, string> = {};
+      let leaderMap: Record<string, boolean> = {};
       let activeSellSymbols = new Set<string>();
       if (signalSymbols.length > 0) {
-        const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
+        const todayKst = last7[0];
+        const [{ data: stockNames }, { data: stockInfos }, { data: leaderRows }] = await Promise.all([
           supabase.from("stock_cache").select("symbol, name, market, has_active_sell").in("symbol", signalSymbols),
           supabase.from("stock_info").select("symbol, name, sector").in("symbol", signalSymbols),
+          supabase.from("theme_stocks").select("symbol, is_leader").eq("date", todayKst).eq("is_leader", true).in("symbol", signalSymbols),
         ]);
         if (stockNames) {
           nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
@@ -155,6 +158,9 @@ export default async function SignalsPage({
             if (!nameMap[s.symbol] && s.name) nameMap[s.symbol] = s.name;
           }
         }
+        if (leaderRows) {
+          leaderMap = Object.fromEntries(leaderRows.map((r) => [r.symbol, r.is_leader === true]));
+        }
       }
       const signals = (rawSignals || []).map((s: Record<string, unknown>) => {
         const rawData = s.raw_data as Record<string, unknown> | null;
@@ -164,19 +170,20 @@ export default async function SignalsPage({
           name: nameMap[s.symbol as string] || (s.name as string) || (s.symbol as string),
           market: marketMap[s.symbol as string] || "기타",
           sector: sectorMap[s.symbol as string] || "기타",
+          is_leader: leaderMap[s.symbol as string] ?? false,
           ...(signalPrice !== null ? { signal_price: String(signalPrice) } : {}),
-        } as Record<string, string>;
+        } as unknown as Record<string, string> & { is_leader?: boolean };
       });
 
       signals.sort((a, b) => {
-        const timeA = new Date(a.signal_time || a.timestamp).getTime();
-        const timeB = new Date(b.signal_time || b.timestamp).getTime();
+        const timeA = new Date((a.signal_time || a.timestamp) as string).getTime();
+        const timeB = new Date((b.signal_time || b.timestamp) as string).getTime();
         return timeB - timeA;
       });
 
       buySignals = signals.filter((s) =>
         (s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST") &&
-        !activeSellSymbols.has(s.symbol)
+        !activeSellSymbols.has(s.symbol as string)
       );
       sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
     } // end else (날짜 범위 모드)

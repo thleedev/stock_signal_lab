@@ -7,7 +7,7 @@ import StockActionMenu from "@/components/common/stock-action-menu";
 import type { WatchlistGroup } from "@/types/stock";
 import { SourceBadge, SignalBadge } from "@/components/ui";
 
-type Signal = Record<string, string>;
+type Signal = Record<string, string> & { is_leader?: boolean };
 
 function SignalCard({
   signal,

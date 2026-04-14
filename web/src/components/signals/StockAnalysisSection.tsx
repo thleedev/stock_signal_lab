@@ -12,6 +12,7 @@ import { useStockModal } from '@/contexts/stock-modal-context';
 import { StyleSelector } from './StyleSelector';
 import { AnalysisHoverCard } from './AnalysisHoverCard';
 import { SnapshotTracker } from './SnapshotTracker';
+import { ThemeBadges } from './ThemeBadges';
 import { formatTimeAgo, getLastNWeekdays } from '@/lib/date-utils';
 import type { WatchlistGroup } from '@/types/stock';
 import type { StyleWeights } from '@/lib/unified-scoring/types';
@@ -229,6 +230,13 @@ function StockRow({
             </div>
           ) : null;
         })()}
+
+        {/* 테마 배지 */}
+        <ThemeBadges
+          theme_tags={item.theme_tags ?? []}
+          is_leader={item.is_leader ?? false}
+          is_hot_theme={item.is_hot_theme ?? false}
+        />
 
 
         {/* 카테고리 게이지 + N/M 체크리스트 수 — 데스크탑만 */}
