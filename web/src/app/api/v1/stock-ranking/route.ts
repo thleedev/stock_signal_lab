@@ -57,6 +57,32 @@ export type StockRankItem = {
   is_managed: boolean | null;
   volume: number | null;
   prices_updated_at: string | null;
+  // 단기 추천 섹션에서 사용하는 당일 가격 행태 지표
+  volume_ratio: number | null;     // 당일 거래량 / 20일 평균 거래량
+  close_position: number | null;   // 당일 종가 위치 (0=저가, 1=고가)
+  gap_pct: number | null;          // 갭 등락률 (%)
+  trading_value: number | null;    // 거래대금 (원)
+  // 단기 추천 섹션 추가 필드 (optional — AI 추천 결합 시 존재)
+  score_valuation?: number | null; // 가치점수 (score_value alias)
+  cum_return_3d?: number;          // 3일 누적 수익률 (%)
+  sector?: string | null;          // 섹터 (stock_info 조인 시 존재)
+  ai?: {                           // AI 추천 데이터 (결합 시 존재)
+    golden_cross: boolean;
+    macd_cross: boolean;
+    phoenix_pattern: boolean;
+    bollinger_bottom: boolean;
+    volume_surge: boolean;
+    disparity_rebound: boolean;
+    volume_breakout: boolean;
+    consecutive_drop_rebound: boolean;
+    week52_low_near: boolean;
+    double_top: boolean;
+    rsi: number | null;
+    foreign_buying: boolean;
+    institution_buying: boolean;
+    volume_vs_sector: boolean;
+    low_short_sell: boolean;
+  } | null;
   // 카테고리별 체크리스트 충족/전체 조건 수 (step4-scoring 크론이 저장)
   checklist_tech_pass: number | null;
   checklist_tech_total: number | null;

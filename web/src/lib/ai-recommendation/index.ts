@@ -9,6 +9,7 @@ import { calcEarningsMomentumScore, EarningsMomentumInput } from './earnings-mom
 import { getMarketCapTier } from './market-cap-tier';
 import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators, BulkIndicatorData } from '@/lib/krx-api';
+import { calcThemeBonus } from './theme-bonus';
 
 // 오늘 날짜 KST (YYYY-MM-DD)
 export function getTodayKst(): string {
@@ -73,6 +74,8 @@ export async function generateRecommendations(
     { data: recentSignalRows },
     { data: priceRows },
     { data: dartRows },
+    { data: themeStockRows },   // NEW
+    { data: themeMetaRows },    // NEW
   ] = await Promise.all([
     // 종목별 재무/가격 캐시
     supabase
@@ -111,6 +114,17 @@ export async function generateRecommendations(
       .from('stock_dart_info')
       .select('symbol, revenue_growth_yoy, operating_profit_growth_yoy')
       .in('symbol', symbols),
+    // theme_stocks: 오늘 날짜 기준 해당 종목들
+    supabase
+      .from('theme_stocks')
+      .select('theme_id, symbol, is_leader')
+      .in('symbol', symbols)
+      .eq('date', todayKst),
+    // stock_themes: 오늘 날짜 기준 테마 메타
+    supabase
+      .from('stock_themes')
+      .select('theme_id, theme_name, momentum_score, is_hot')
+      .eq('date', todayKst),
   ]);
 
   // 조회 결과를 symbol 기준 Map으로 변환
@@ -121,6 +135,38 @@ export async function generateRecommendations(
   const dartMap = new Map(
     (dartRows ?? []).map((d) => [d.symbol as string, d as { symbol: string; revenue_growth_yoy: number | null; operating_profit_growth_yoy: number | null }])
   );
+
+  // theme_id → StockTheme 메타 Map
+  const themeMetaMap = new Map<string, { theme_name: string; momentum_score: number | null; is_hot: boolean }>(
+    (themeMetaRows ?? []).map((t) => [
+      t.theme_id as string,
+      {
+        theme_name: t.theme_name as string,
+        momentum_score: t.momentum_score as number | null,
+        is_hot: t.is_hot as boolean,
+      },
+    ])
+  );
+
+  // symbol → { is_leader, themes[] } Map
+  const symbolThemeMap = new Map<string, { is_leader: boolean; themes: Array<{ theme_id: string; theme_name: string; momentum_score: number | null; is_hot: boolean }> }>();
+  for (const row of themeStockRows ?? []) {
+    const sym = row.symbol as string;
+    const meta = themeMetaMap.get(row.theme_id as string);
+    if (!symbolThemeMap.has(sym)) {
+      symbolThemeMap.set(sym, { is_leader: false, themes: [] });
+    }
+    const entry = symbolThemeMap.get(sym)!;
+    if (row.is_leader) entry.is_leader = true;
+    if (meta) {
+      entry.themes.push({
+        theme_id: row.theme_id as string,
+        theme_name: meta.theme_name,
+        momentum_score: meta.momentum_score,
+        is_hot: meta.is_hot,
+      });
+    }
+  }
 
   // 섹터별 평균 거래대금 사전 집계
   const symbolSectorMap = new Map(
@@ -363,15 +409,29 @@ export async function generateRecommendations(
     };
     const earningsMomentumResult = calcEarningsMomentumScore(earningsMomentumInput);
 
-    // 티어별 가중치 적용 총점
+    // 테마 모멘텀 보너스 계산
+    const themeEntry = symbolThemeMap.get(symbol);
+    const themeBonus = calcThemeBonus({
+      themes: themeEntry?.themes ?? [],
+      is_leader: themeEntry?.is_leader ?? false,
+    });
+
+    // 테마 보너스 반영 (수급·추세 점수에 가산, 리스크에 추가 감점)
+    const boostedSupplyRaw = (supplyResult.normalizedScore ?? 0) + themeBonus.supply_bonus;
+    const boostedSupplyNorm = Math.min(boostedSupplyRaw, 100);
+    const boostedTrendRaw = (technicalResult.normalizedScore ?? 0) + themeBonus.trend_bonus;
+    const boostedTrendNorm = Math.min(boostedTrendRaw, 100);
+    const boostedRiskNorm = Math.min((riskResult.normalizedScore ?? 0) + themeBonus.risk_deduction, 100);
+
+    // 티어별 가중치 적용 총점 (테마 보너스 적용 후)
     const base =
       (signalResult.normalizedScore / 100) * weights.signal +
-      (technicalResult.normalizedScore / 100) * weights.trend +
+      (boostedTrendNorm / 100) * weights.trend +
       (valuationResult.normalizedScore / 100) * weights.valuation +
-      (supplyResult.normalizedScore / 100) * weights.supply +
+      (boostedSupplyNorm / 100) * weights.supply +
       (earningsMomentumResult.normalizedScore / 100) * weights.earnings_momentum;
 
-    const total_score = Math.max(0, Math.min(base - (riskResult.normalizedScore / 100) * weights.risk, 100));
+    const total_score = Math.max(0, Math.min(base - (boostedRiskNorm / 100) * weights.risk, 100));
 
     return {
       symbol,
@@ -421,6 +481,11 @@ export async function generateRecommendations(
       supply_reasons: supplyResult.reasons,
       earnings_momentum_reasons: earningsMomentumResult.reasons,
       risk_reasons: riskResult.reasons,
+
+      // 테마 모멘텀
+      theme_tags: themeBonus.theme_tags,
+      is_leader: themeBonus.is_leader,
+      is_hot_theme: themeBonus.is_hot_theme,
     };
   });
 

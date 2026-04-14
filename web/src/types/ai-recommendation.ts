@@ -1,4 +1,5 @@
 import type { ScoreReason } from './score-reason';
+import type { ThemeTag } from './theme';
 
 export interface AiRecommendation {
   id: string;
@@ -67,6 +68,11 @@ export interface AiRecommendation {
   supply_reasons: ScoreReason[];
   earnings_momentum_reasons: ScoreReason[];
   risk_reasons: ScoreReason[];
+
+  // 테마 모멘텀
+  theme_tags: ThemeTag[];
+  is_leader: boolean;
+  is_hot_theme: boolean;
 
   // 메타
   total_candidates: number | null;
