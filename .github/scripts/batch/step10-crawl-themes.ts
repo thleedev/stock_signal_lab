@@ -157,7 +157,8 @@ async function fetchThemeList(): Promise<NaverTheme[]> {
   const resp = await fetch('https://finance.naver.com/sise/theme.naver', {
     headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR' },
   });
-  const html = await resp.text();
+  const buffer = await resp.arrayBuffer();
+  const html = new TextDecoder('euc-kr').decode(buffer);
   const themes: NaverTheme[] = [];
 
   const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
@@ -191,7 +192,8 @@ async function fetchThemeStocks(theme_id: string): Promise<Omit<NaverThemeStock,
   const resp = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0', 'Accept-Language': 'ko-KR' },
   });
-  const html = await resp.text();
+  const buffer = await resp.arrayBuffer();
+  const html = new TextDecoder('euc-kr').decode(buffer);
   const stocks: Omit<NaverThemeStock, 'theme_id'>[] = [];
 
   const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g;
