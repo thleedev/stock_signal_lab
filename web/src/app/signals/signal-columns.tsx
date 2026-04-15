@@ -6,8 +6,10 @@ import { LayoutList, Grid3X3, Layers, Briefcase } from "lucide-react";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import type { WatchlistGroup } from "@/types/stock";
 import { SourceBadge, SignalBadge } from "@/components/ui";
+import { ThemeBadges } from "@/components/signals/ThemeBadges";
 
-type Signal = Record<string, string> & { is_leader?: boolean };
+type ThemeTag = { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean };
+type Signal = Record<string, string> & { is_leader?: boolean; is_hot_theme?: boolean; theme_tags?: ThemeTag[] };
 
 function SignalCard({
   signal,
@@ -42,6 +44,13 @@ function SignalCard({
       {/* 종목명 + 코드 */}
       <span className="font-medium">{signal.name}</span>
       <span className="text-xs text-[var(--muted)]">{signal.symbol}</span>
+
+      {/* 테마 배지 */}
+      <ThemeBadges
+        theme_tags={signal.theme_tags ?? []}
+        is_leader={signal.is_leader ?? false}
+        is_hot_theme={signal.is_hot_theme ?? false}
+      />
 
       {/* 매수가/매도가 */}
       {signal.signal_price && (

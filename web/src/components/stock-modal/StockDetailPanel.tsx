@@ -13,6 +13,7 @@ import { PortfolioGroupAccordion } from "./PortfolioGroupAccordion";
 import { ReturnTrendSection } from "./ReturnTrendSection";
 import { SupplyDemandSection } from "./SupplyDemandSection";
 import { TechnicalSignalSection } from "./TechnicalSignalSection";
+import { ThemeBadges } from "@/components/signals/ThemeBadges";
 import dynamic from "next/dynamic";
 import { useScoreHistory } from "@/hooks/use-score-history";
 
@@ -251,6 +252,17 @@ export function StockDetailPanel() {
           recommendation={data?.score_total != null ? (data.score_total >= 90 ? '적극매수' : data.score_total >= 80 ? '매수' : data.score_total >= 65 ? '관심' : data.score_total >= 50 ? '보통' : data.score_total >= 35 ? '관망' : '주의') : undefined}
           onClose={handleClose}
         />
+
+        {/* 테마/주도주 배지 */}
+        {(data?.theme_tags?.length || data?.is_leader || data?.is_hot_theme) && (
+          <div className="px-4 py-2 border-b border-[var(--border)]">
+            <ThemeBadges
+              theme_tags={data.theme_tags ?? []}
+              is_leader={data.is_leader ?? false}
+              is_hot_theme={data.is_hot_theme ?? false}
+            />
+          </div>
+        )}
 
         {/* 2컬럼 바디 */}
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">

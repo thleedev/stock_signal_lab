@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
 import { getLastNWeekdays, getKstDayRange, getLastNDaysRange } from "@/lib/date-utils";
+import { getEffectiveThemeDate, fetchThemeMap } from "@/lib/theme-utils";
 import SignalColumns from "./signal-columns";
 import { extractSignalPrice } from "@/lib/signal-constants";
 import { SignalFilterBar } from "./signal-filter-bar";
@@ -137,13 +138,13 @@ export default async function SignalsPage({
       let marketMap: Record<string, string> = {};
       let sectorMap: Record<string, string> = {};
       let leaderMap: Record<string, boolean> = {};
+      let themeTagsMap: Record<string, { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[]> = {};
       let activeSellSymbols = new Set<string>();
       if (signalSymbols.length > 0) {
         const todayKst = last7[0];
-        const [{ data: stockNames }, { data: stockInfos }, { data: leaderRows }] = await Promise.all([
+        const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
           supabase.from("stock_cache").select("symbol, name, market, has_active_sell").in("symbol", signalSymbols),
           supabase.from("stock_info").select("symbol, name, sector").in("symbol", signalSymbols),
-          supabase.from("theme_stocks").select("symbol, is_leader").eq("date", todayKst).eq("is_leader", true).in("symbol", signalSymbols),
         ]);
         if (stockNames) {
           nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
@@ -158,8 +159,12 @@ export default async function SignalsPage({
             if (!nameMap[s.symbol] && s.name) nameMap[s.symbol] = s.name;
           }
         }
-        if (leaderRows) {
-          leaderMap = Object.fromEntries(leaderRows.map((r) => [r.symbol, r.is_leader === true]));
+        // 테마 데이터 (오늘 없으면 최근 날짜 fallback)
+        const effectiveThemeDate = await getEffectiveThemeDate(supabase, todayKst);
+        const themeMap = await fetchThemeMap(supabase, signalSymbols, effectiveThemeDate);
+        for (const [sym, info] of themeMap) {
+          leaderMap[sym] = info.is_leader;
+          themeTagsMap[sym] = info.theme_tags;
         }
       }
       const signals = (rawSignals || []).map((s: Record<string, unknown>) => {
@@ -171,8 +176,10 @@ export default async function SignalsPage({
           market: marketMap[s.symbol as string] || "기타",
           sector: sectorMap[s.symbol as string] || "기타",
           is_leader: leaderMap[s.symbol as string] ?? false,
+          is_hot_theme: (themeTagsMap[s.symbol as string] ?? []).some(t => t.is_hot),
+          theme_tags: themeTagsMap[s.symbol as string] ?? [],
           ...(signalPrice !== null ? { signal_price: String(signalPrice) } : {}),
-        } as unknown as Record<string, string> & { is_leader?: boolean };
+        } as unknown as Record<string, string> & { is_leader?: boolean; is_hot_theme?: boolean; theme_tags?: { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[] };
       });
 
       signals.sort((a, b) => {
@@ -211,25 +218,23 @@ export default async function SignalsPage({
               </div>
             }
           />
-          <SignalFilterBar dates={last7} selectedDate={selectedDate} activeSource={activeSource} />
-
-          {/* 핫 테마 배너 */}
-          <HotThemesBanner />
-
-          {/* 테마 / 주도주 필터 (URL 파라미터 기반) */}
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            {/* 주도주 필터 토글 */}
+          {/* 필터 한 줄: 날짜·소스·주도주 */}
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <SignalFilterBar dates={last7} selectedDate={selectedDate} activeSource={activeSource} />
             <Link
               href={`/signals?source=${activeSource}&date=${selectedDate}${leaderOnly ? "" : "&leader=1"}`}
-              className={`rounded px-2 py-1 text-sm border ${
+              className={`rounded px-2.5 py-1.5 text-xs font-medium border whitespace-nowrap ${
                 leaderOnly
                   ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/40"
-                  : "bg-zinc-800 text-zinc-400 border-zinc-700"
+                  : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)]"
               }`}
             >
               👑 주도주만
             </Link>
           </div>
+
+          {/* 핫 테마 배너 */}
+          <HotThemesBanner />
 
           <SignalColumns
             buySignals={

@@ -1,6 +1,7 @@
 // web/src/app/api/v1/stock-ranking/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
+import { getEffectiveThemeDate, fetchThemeMap } from '@/lib/theme-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -284,6 +285,15 @@ export async function GET(request: NextRequest) {
 
     const row = data as Record<string, unknown>;
     const cache = row.stock_cache as unknown as Record<string, unknown>;
+
+    // 단일 종목 theme 조회 (오늘 없으면 최근 날짜 fallback)
+    const todayKstSingle = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const effectiveDateSingle = await getEffectiveThemeDate(supabase, todayKstSingle);
+    const singleThemeMap = await fetchThemeMap(supabase, [symbolParam], effectiveDateSingle);
+    const singleEntry = singleThemeMap.get(symbolParam) ?? { is_leader: false, theme_tags: [] };
+    const singleIsLeader = singleEntry.is_leader;
+    const singleTags = singleEntry.theme_tags;
+
     const item = {
       symbol: row.symbol,
       scored_at: row.scored_at,
@@ -334,6 +344,9 @@ export async function GET(request: NextRequest) {
       checklist_val_total:  row.checklist_val_total  as number | null,
       checklist_sig_pass:   row.checklist_sig_pass   as number | null,
       checklist_sig_total:  row.checklist_sig_total  as number | null,
+      is_leader:    singleIsLeader,
+      is_hot_theme: singleTags.some(t => t.is_hot),
+      theme_tags:   singleTags,
     };
     return NextResponse.json({ items: [item], total: 1, page: 1, limit: 1, scored_at: item.scored_at ?? null });
   }
@@ -390,34 +403,16 @@ export async function GET(request: NextRequest) {
 
   const rawData = allRows.slice(offset, offset + limit);
 
-  // 오늘 날짜 (KST) — theme_stocks는 당일 기준
+  // theme 데이터 배치 조회 (오늘 없으면 최근 날짜 fallback)
   const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const rawSymbols = rawData.map(r => r.symbol as string).filter(Boolean);
-
-  // theme_stocks + stock_themes 배치 조회 (오늘 날짜 기준)
-  const [{ data: themeStocksRows }, { data: themeMetaRows }] = await Promise.all([
-    rawSymbols.length > 0
-      ? supabase.from('theme_stocks').select('symbol, theme_id, is_leader').eq('date', todayKst).in('symbol', rawSymbols)
-      : Promise.resolve({ data: [] }),
-    supabase.from('stock_themes').select('theme_id, theme_name, momentum_score, is_hot').eq('date', todayKst),
-  ]);
-
-  const themeMetaMap = new Map((themeMetaRows ?? []).map(t => [t.theme_id, t]));
-  const symbolThemeMap = new Map<string, { is_leader: boolean; themes: { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[] }>();
-  for (const r of themeStocksRows ?? []) {
-    if (!symbolThemeMap.has(r.symbol)) symbolThemeMap.set(r.symbol, { is_leader: false, themes: [] });
-    const entry = symbolThemeMap.get(r.symbol)!;
-    if (r.is_leader) entry.is_leader = true;
-    const meta = themeMetaMap.get(r.theme_id);
-    if (meta) entry.themes.push({ theme_id: r.theme_id, theme_name: meta.theme_name, momentum_score: meta.momentum_score ?? 0, is_hot: meta.is_hot ?? false });
-  }
+  const effectiveThemeDate = await getEffectiveThemeDate(supabase, todayKst);
+  const symbolThemeMap = await fetchThemeMap(supabase, rawSymbols, effectiveThemeDate);
 
   const items = (rawData ?? []).map(row => {
     const cache = row.stock_cache as unknown as Record<string, unknown>;
     const themeInfo = symbolThemeMap.get(row.symbol as string);
-    const themeTags = themeInfo
-      ? [...themeInfo.themes].sort((a, b) => b.momentum_score - a.momentum_score).slice(0, 2)
-      : [];
+    const themeTags = themeInfo?.theme_tags ?? [];
 
     return {
       symbol: row.symbol,

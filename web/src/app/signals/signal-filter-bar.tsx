@@ -93,7 +93,7 @@ export function SignalFilterBar({ dates, selectedDate, activeSource }: SignalFil
   const activeDateKey = toDateKey(selectedDate);
 
   return (
-    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+    <div className="flex items-center gap-2 flex-nowrap">
       <ButtonGroup
         options={DATE_OPTIONS}
         active={activeDateKey}
