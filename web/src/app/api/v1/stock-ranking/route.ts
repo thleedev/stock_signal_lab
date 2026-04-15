@@ -361,18 +361,15 @@ export async function GET(request: NextRequest) {
       .select(SELECT_COLS)
       .not('stock_cache.current_price', 'is', null);
 
-    // signal_all 모드는 매도 완료 종목도 포함해 매도가 기준 gap 표시
-    // 그 외 모드는 최신 신호가 BUY인 종목만 (has_active_sell: generated column)
-    if (dateParam !== 'signal_all') {
-      query = query.eq('stock_cache.has_active_sell', false);
-    }
+    // 모든 모드에서 현재 BUY 상태 종목만 표시 (has_active_sell = false)
+    query = query.eq('stock_cache.has_active_sell', false);
 
     if (market !== 'all') {
       query = query.eq('stock_cache.market', market);
     }
 
     if (dateParam === 'signal_all') {
-      // 기간 무관하게 BUY 신호가 존재한 이력이 있는 종목 (매도 완료 포함)
+      // 기간 무관하게 BUY 신호가 존재하는 종목 (현재 BUY 상태)
       query = query.not('stock_cache.latest_signal_date', 'is', null);
     } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
       query = query.gte('stock_cache.latest_signal_date', `${dateParam}T00:00:00Z`);
