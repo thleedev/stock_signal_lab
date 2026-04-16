@@ -38,7 +38,7 @@ export function HotThemesBanner() {
             return (
               <span key={t.theme_id} className="text-sm whitespace-nowrap">
                 <span className="text-zinc-400">{i + 1}위</span>{' '}
-                <span className="text-zinc-200">{t.theme_name}</span>{' '}
+                <span className="text-zinc-200 inline-block max-w-[6rem] truncate align-bottom">{t.theme_name}</span>{' '}
                 <span className={isPos ? 'text-red-400' : 'text-blue-400'}>
                   {isPos ? '+' : ''}{pct.toFixed(2)}%
                 </span>
