@@ -97,14 +97,14 @@ function RecommendationCard({ item }: { item: AiRecommendation }) {
 
       <ScoreBar score={item.total_score} />
 
-      <div className="grid grid-cols-4 gap-1 mt-3 text-center">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-3 text-center">
         {[
           { label: '신호강도', score: item.signal_score, max: 30 },
           { label: '추세', score: item.trend_score, max: 58 },
           { label: '밸류', score: item.valuation_score, max: 20 },
           { label: '수급', score: item.supply_score, max: 20 },
         ].map(({ label, score, max }) => (
-          <div key={label} className="bg-gray-50 dark:bg-gray-700/50 rounded p-1">
+          <div key={label} className="bg-gray-50 dark:bg-gray-700/50 rounded p-1.5">
             <div className="text-xs text-gray-500">{label}</div>
             <div className="text-sm font-semibold">
               {score !== null ? score.toFixed(1) : '-'}
