@@ -16,6 +16,7 @@ import { ThemeBadges } from './ThemeBadges';
 import { formatTimeAgo, getLastNWeekdays } from '@/lib/date-utils';
 import type { WatchlistGroup } from '@/types/stock';
 import type { StyleWeights } from '@/lib/unified-scoring/types';
+import { getPreset } from '@/lib/unified-scoring/presets';
 
 // ── 투자 성격 배지 ────────────────────────────────────────────────────────────
 const CHAR_BADGE_CLS: Record<string, string> = {
@@ -311,7 +312,7 @@ export function StockAnalysisSection({
 
   // 스타일
   const [styleId, setStyleId] = useState('balanced');
-  const [styleWeights, setStyleWeights] = useState<StyleWeights | undefined>(undefined);
+  const [styleWeights, setStyleWeights] = useState<StyleWeights | undefined>(getPreset('balanced').weights);
   const [styleDisabledConds, setStyleDisabledConds] = useState<string[] | undefined>(undefined);
 
   // 데이터
