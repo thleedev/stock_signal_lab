@@ -337,14 +337,14 @@ function RankCard({
       }`}
     >
       {/* ── 줄 1: 순위 · 종목명 · 등급 · [데스크탑: 가격정보 전부] ── */}
-      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
         {/* 순위 */}
         <span className="text-sm font-bold tabular-nums w-6 shrink-0 text-right text-[var(--muted)]">
           {rank}
         </span>
 
         {/* 종목명 + 즐겨찾기 */}
-        <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[6rem] sm:max-w-[10rem]">{item.name}</span>
+        <span className="font-semibold text-sm sm:text-[15px] truncate max-w-[8rem] sm:max-w-[12rem]">{item.name}</span>
         {favs.has(item.symbol) && <span className="text-yellow-400 text-xs shrink-0">★</span>}
 
         {/* 등급 뱃지 — ETF 모드에서는 간단한 점수 뱃지 */}
