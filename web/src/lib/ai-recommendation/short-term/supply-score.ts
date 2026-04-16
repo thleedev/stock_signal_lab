@@ -87,11 +87,11 @@ function calcDailyBuyingScore(
 /**
  * 연속 순매수 점수를 계산한다.
  *
- * 핵심 변경: streak=1 (매수 전환 첫날)에 높은 보너스 → 초기진입 유도
- * - 외국인 매수 전환 첫날 (streak === 1): +7
- * - 외국인 2일 연속 순매수 (streak >= 2): +5
- * - 기관 매수 전환 첫날 (streak === 1): +7
- * - 기관 2일 연속 순매수 (streak >= 2): +5
+ * v2 (short_term 전환 포착 우선): 전환 첫날 최고, 지속은 감소
+ * - 외국인/기관 매수 전환 첫날 (streak === 1): +10
+ * - 2일 연속: +7
+ * - 3~4일: +4
+ * - 5일+: +3
  * - 프로그램 2일 연속 (streak >= 2): +5 (v1: null -> 0점)
  */
 function calcStreakBonusScore(
@@ -101,12 +101,16 @@ function calcStreakBonusScore(
 ): number {
   let score = 0;
 
-  // 매수 전환 첫날에 보너스, 확인 매수(2일+)도 동급 유지
-  if (foreignStreak === 1) score += 6;
-  else if (foreignStreak >= 2) score += 5;
+  // 전환 포착 우선: 첫날 최고, 지속은 점차 감소
+  if (foreignStreak === 1) score += 10;
+  else if (foreignStreak === 2) score += 7;
+  else if (foreignStreak >= 3 && foreignStreak <= 4) score += 4;
+  else if (foreignStreak >= 5) score += 3;
 
-  if (institutionStreak === 1) score += 6;
-  else if (institutionStreak >= 2) score += 5;
+  if (institutionStreak === 1) score += 10;
+  else if (institutionStreak === 2) score += 7;
+  else if (institutionStreak >= 3 && institutionStreak <= 4) score += 4;
+  else if (institutionStreak >= 5) score += 3;
 
   if (programStreak >= 2) score += 5;
 

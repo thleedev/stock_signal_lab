@@ -6,10 +6,12 @@ import { calcRiskScore, RiskScoreInput } from './risk-score';
 import { calcValuationScore, ForwardData } from './valuation-score';
 import { calcSupplyScore } from './supply-score';
 import { calcEarningsMomentumScore, EarningsMomentumInput } from './earnings-momentum-score';
+import { calcCatalystScore, type CatalystScoreInput } from './catalyst-score';
 import { getMarketCapTier } from './market-cap-tier';
 import { fetchBulkInvestorData, fetchNaverDailyPrices } from '@/lib/naver-stock-api';
 import { fetchBulkIndicators, BulkIndicatorData } from '@/lib/krx-api';
 import { calcThemeBonus } from './theme-bonus';
+import { extractSignalPrice } from '@/lib/signal-constants';
 
 // 오늘 날짜 KST (YYYY-MM-DD)
 export function getTodayKst(): string {
@@ -76,6 +78,7 @@ export async function generateRecommendations(
     { data: dartRows },
     { data: themeStockRows },   // NEW
     { data: themeMetaRows },    // NEW
+    { data: kospiRow },         // v2: 시장 상태 멀티플라이어
   ] = await Promise.all([
     // 종목별 재무/가격 캐시
     supabase
@@ -125,7 +128,26 @@ export async function generateRecommendations(
       .from('stock_themes')
       .select('theme_id, theme_name, momentum_score, is_hot')
       .eq('date', todayKst),
+    // v2: KOSPI 등락률 → 시장 상태 멀티플라이어
+    supabase
+      .from('market_indicators')
+      .select('change_pct')
+      .eq('indicator_type', 'KOSPI')
+      .order('date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
+
+  // v2: 시장 상태 멀티플라이어 (KOSPI 등락률 기반)
+  // +2% 이상 → 1.15, +1% → 1.08, 0~+1% → 1.0, -1~0% → 0.95, -2% 이하 → 0.85
+  const kospiChangePct = (kospiRow?.change_pct as number | null) ?? 0;
+  const marketMultiplier = (() => {
+    if (kospiChangePct >= 2) return 1.15;
+    if (kospiChangePct >= 1) return 1.08;
+    if (kospiChangePct >= 0) return 1.0;
+    if (kospiChangePct >= -1) return 0.95;
+    return 0.85;
+  })();
 
   // 조회 결과를 symbol 기준 Map으로 변환
   const cacheMap = new Map((cacheData ?? []).map((c) => [c.symbol, c]));
@@ -400,14 +422,33 @@ export async function generateRecommendations(
     const earningsMomentumInput: EarningsMomentumInput = {
       forwardPer: fwdPer,
       trailingPer: perVal,
-      targetPrice: fwdTarget,
-      currentPrice: cache?.current_price ?? null,
-      investOpinion: fwdOpinion,
       roe: roeVal,
       revenueGrowthYoy: dart?.revenue_growth_yoy ?? null,
       operatingProfitGrowthYoy: dart?.operating_profit_growth_yoy ?? null,
     };
     const earningsMomentumResult = calcEarningsMomentumScore(earningsMomentumInput);
+
+    // v2: Catalyst 점수 (재료/촉매 레이어)
+    const signalPrice = todaySignals.length > 0
+      ? extractSignalPrice(todaySignals[0].raw_data as Record<string, unknown> | null)
+      : null;
+    const signalPriceGapPct = signalPrice && (cache?.current_price ?? null)
+      ? (((cache!.current_price as number) - signalPrice) / signalPrice) * 100
+      : null;
+
+    const catalystInput: CatalystScoreInput = {
+      targetPrice: fwdTarget,
+      currentPrice: cache?.current_price ?? null,
+      investOpinion: fwdOpinion,
+      todaySourceCount: signalResult.signal_count,
+      daysSinceLastSignal: todaySignals.length > 0 ? 0 : null,
+      signalPriceGapPct,
+      sectorRank: null,       // 섹터 순위 (standard 모델은 간이 처리)
+      sectorTotalCount: 0,
+      sectorAvgChangePct: null,
+      stockChangePct: null,
+    };
+    const catalystResult = calcCatalystScore(catalystInput);
 
     // 테마 모멘텀 보너스 계산
     const themeEntry = symbolThemeMap.get(symbol);
@@ -427,15 +468,39 @@ export async function generateRecommendations(
     // risk: normalizedScore에 감점 추가
     const boostedRiskNorm = Math.min(riskResult.normalizedScore + themeBonus.risk_deduction, 100);
 
-    // 티어별 가중치 적용 총점 (테마 보너스 적용 후)
+    // v2: 수급 데이터 신선도 기반 자동 감쇄
+    const supplyFreshness = (() => {
+      if (!cache?.investor_updated_at) return 0.1;
+      const updatedDate = (cache.investor_updated_at as string).slice(0, 10);
+      if (updatedDate === todayKst) return 1.0;
+      const yesterdayKst = new Date(new Date().getTime() + 9 * 60 * 60 * 1000 - 86400000).toISOString().slice(0, 10);
+      if (updatedDate === yesterdayKst) return 0.4;
+      return 0.1;
+    })();
+    const effectiveSupplyWeight = weights.supply * supplyFreshness;
+    const effectiveTrendWeight = weights.trend + (weights.supply - effectiveSupplyWeight);
+
+    // v2: 비선형 콤보 보너스
+    const supplyTurnToday = (foreignStreak === 1) || (institutionStreak === 1);
+    let comboBonus = 0;
+    if (technicalResult.week52_low_near && technicalResult.volume_surge && supplyTurnToday) comboBonus = 12;
+    else if (technicalResult.golden_cross && technicalResult.weekly_trend_up && technicalResult.volume_surge) comboBonus = 10;
+    else if (technicalResult.bollinger_bottom && technicalResult.volume_surge) comboBonus = 6;
+    comboBonus = Math.min(comboBonus, 15); // 최대 15점 clamp
+
+    // 티어별 가중치 적용 총점 (테마 보너스 + supply freshness 적용)
     const base =
       (signalResult.normalizedScore / 100) * weights.signal +
-      (boostedTrendNorm / 100) * weights.trend +
+      (boostedTrendNorm / 100) * effectiveTrendWeight +
       (valuationResult.normalizedScore / 100) * weights.valuation +
-      (boostedSupplyNorm / 100) * weights.supply +
-      (earningsMomentumResult.normalizedScore / 100) * weights.earnings_momentum;
+      (boostedSupplyNorm / 100) * effectiveSupplyWeight +
+      (earningsMomentumResult.normalizedScore / 100) * weights.earnings_momentum +
+      (catalystResult.normalizedScore / 100) * weights.catalyst +
+      comboBonus;
 
-    const total_score = Math.max(0, Math.min(base - (boostedRiskNorm / 100) * weights.risk, 100));
+    const rawTotal = Math.max(0, Math.min(base - (boostedRiskNorm / 100) * weights.risk, 100));
+    // v2: 시장 상태 멀티플라이어 적용 (0~100 클램프)
+    const total_score = Math.max(0, Math.min(rawTotal * marketMultiplier, 100));
 
     return {
       symbol,
@@ -447,6 +512,7 @@ export async function generateRecommendations(
       supply_score: supplyResult.score,
       risk_score: riskResult.score,
       earnings_momentum_score: earningsMomentumResult.score,
+      catalyst_score: catalystResult.score,
       market_cap_tier: tier,
       trend_days: technicalResult.trend_days,
       signal_count: signalResult.signal_count,
@@ -470,26 +536,31 @@ export async function generateRecommendations(
       volume_vs_sector: supplyResult.volume_vs_sector,
       low_short_sell: supplyResult.low_short_sell,
 
-      // 정규화 점수 (신규)
+      // 정규화 점수
       signal_norm: signalResult.normalizedScore,
       trend_norm: technicalResult.normalizedScore,
       valuation_norm: valuationResult.normalizedScore,
       supply_norm: supplyResult.normalizedScore,
       earnings_momentum_norm: earningsMomentumResult.normalizedScore,
+      catalyst_norm: catalystResult.normalizedScore,
       risk_norm: riskResult.normalizedScore,
 
-      // 근거 목록 (신규)
+      // 근거 목록
       signal_reasons: signalResult.reasons,
       trend_reasons: technicalResult.reasons,
       valuation_reasons: valuationResult.reasons,
       supply_reasons: supplyResult.reasons,
       earnings_momentum_reasons: earningsMomentumResult.reasons,
+      catalyst_reasons: catalystResult.reasons,
       risk_reasons: riskResult.reasons,
 
       // 테마 모멘텀
       theme_tags: themeBonus.theme_tags,
       is_leader: themeBonus.is_leader,
       is_hot_theme: themeBonus.is_hot_theme,
+
+      // v2: 시장 상태 멀티플라이어 (KOSPI 등락률 기반)
+      market_multiplier: marketMultiplier,
     };
   });
 
@@ -508,6 +579,7 @@ export async function generateRecommendations(
       weight_valuation: itemWeights.valuation,
       weight_supply: itemWeights.supply,
       weight_earnings_momentum: itemWeights.earnings_momentum,
+      weight_catalyst: itemWeights.catalyst,
       weight_risk: itemWeights.risk,
       total_candidates,
       created_at: new Date().toISOString(),

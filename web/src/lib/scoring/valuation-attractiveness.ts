@@ -196,6 +196,17 @@ export function calcValuationAttractiveness(
     });
   }
 
+  // ── v2 감점: Value Trap (저PBR + 저ROE) ──────────────────────────────
+  if (pbr !== null && pbr > 0 && pbr < 0.8 && roe !== null && roe < 5) {
+    rawScore -= 10;
+    reasons.push({
+      label: 'Value Trap',
+      points: -Math.round((10 / MAX_RAW) * 100),
+      detail: `PBR ${pbr.toFixed(2)} + ROE ${roe.toFixed(1)}% (저PBR-저ROE 함정)`,
+      met: false,
+    });
+  }
+
   // ── 데이터 없음 중립 베이스: 정보 없음 ≠ 저평가 아님 ──────────────────
   const hasAnyData = targetPrice !== null || per !== null || pbr !== null;
   if (!hasAnyData) rawScore = Math.max(rawScore, 20);

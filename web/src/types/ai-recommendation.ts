@@ -15,8 +15,10 @@ export interface AiRecommendation {
   weight_valuation: number;
   weight_supply: number;
   weight_earnings_momentum: number; // 이익모멘텀 가중치
+  weight_catalyst: number; // 재료/촉매 가중치
   weight_risk: number; // 리스크 감산 가중치
   market_cap_tier: 'large' | 'mid' | 'small'; // 시총 티어
+  market_multiplier: number; // 시장 국면 배율
 
   // 항목별 점수 (원점수)
   signal_score: number | null;
@@ -25,6 +27,7 @@ export interface AiRecommendation {
   supply_score: number | null;
   risk_score: number | null; // 리스크 점수
   earnings_momentum_score: number | null; // 이익모멘텀 점수
+  catalyst_score: number | null; // 재료/촉매 점수
   trend_days: number | null; // 추세 지속 일수
 
   // 기술적 지표
@@ -59,6 +62,7 @@ export interface AiRecommendation {
   valuation_norm: number;
   supply_norm: number;
   earnings_momentum_norm: number;
+  catalyst_norm: number;
   risk_norm: number;
 
   // 근거 목록 — 신규
@@ -67,6 +71,7 @@ export interface AiRecommendation {
   valuation_reasons: ScoreReason[];
   supply_reasons: ScoreReason[];
   earnings_momentum_reasons: ScoreReason[];
+  catalyst_reasons: ScoreReason[];
   risk_reasons: ScoreReason[];
 
   // 테마 모멘텀
@@ -85,15 +90,17 @@ export interface AiRecommendationWeights {
   valuation: number; // 0~100
   supply: number; // 0~100
   earnings_momentum: number; // 이익모멘텀 (대형주 핵심)
+  catalyst: number; // 재료/촉매 레이어
   risk: number; // 감산 가중치
 }
 
 // 시총 티어별 가중치 — 양의 가중치 합 = 100으로 정규화
 // risk는 별도 감산 가중치 (base에서 차감)
+// v2: supply 8%로 축소 (지연 데이터), catalyst(재료) 신설, trend 축소
 export const WEIGHTS_BY_TIER: Record<'large' | 'mid' | 'small', AiRecommendationWeights> = {
-  large: { signal: 5, trend: 28, valuation: 15, supply: 22, earnings_momentum: 30, risk: 15 },
-  mid:   { signal: 8, trend: 35, valuation: 20, supply: 18, earnings_momentum: 19, risk: 15 },
-  small: { signal: 10, trend: 45, valuation: 22, supply: 23, earnings_momentum: 0, risk: 15 },
+  large: { signal: 4, trend: 20, valuation: 15, supply: 8, earnings_momentum: 22, catalyst: 31, risk: 15 },
+  mid:   { signal: 6, trend: 25, valuation: 22, supply: 8, earnings_momentum: 16, catalyst: 23, risk: 15 },
+  small: { signal: 8, trend: 35, valuation: 28, supply: 8, earnings_momentum: 0,  catalyst: 21, risk: 15 },
 };
 
 // 기본 가중치 (소형주 기준, 하위 호환)
@@ -125,9 +132,9 @@ export interface ShortTermWeights {
 //   valuation: 목표가 괴리율 반영 강화
 export const DEFAULT_SHORT_TERM_WEIGHTS: ShortTermWeights = {
   momentum: 20,
-  supply: 23,
-  catalyst: 45,
-  valuation: 12,
+  supply: 12,
+  catalyst: 51,
+  valuation: 17,
   risk: 18,
 };
 

@@ -29,6 +29,7 @@ describe('calcSupplyStrength', () => {
   });
 
   it('외국인 1일 전환 → 가산점', () => {
+    // v2 단조증가: 전환 첫날=8, 기관 -1일=-3 → rawScore=5, norm≈7.7
     const result = calcSupplyStrength({
       foreignStreak: 1,
       institutionStreak: -1,
@@ -38,7 +39,7 @@ describe('calcSupplyStrength', () => {
       institutionNet5d: -50000,
       shortSellRatio: null,
     });
-    expect(result.normalizedScore).toBeGreaterThan(25);
+    expect(result.normalizedScore).toBeGreaterThan(0);
   });
 
   it('모든 데이터 null → 0점', () => {

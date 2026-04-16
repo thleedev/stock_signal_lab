@@ -12,7 +12,7 @@ function makePrices(count: number, base: number): DailyPrice[] {
 }
 
 describe('evaluateConditions', () => {
-  it('12개 조건 결과를 반환한다', () => {
+  it('15개 조건 결과를 반환한다', () => {
     const results = evaluateConditions({
       prices: makePrices(65, 10000),
       high52w: 15000, low52w: 8000,
@@ -23,7 +23,7 @@ describe('evaluateConditions', () => {
       targetPrice: 85000, currentPrice: 62000,
       investOpinion: 4.5, rsi: null, pct5d: 3, shortSellRatio: 0.5,
     });
-    expect(results).toHaveLength(12);
+    expect(results).toHaveLength(15);
     for (const r of results) {
       expect(r.id).toBeTruthy();
       expect(r.label).toBeTruthy();

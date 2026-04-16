@@ -7,7 +7,7 @@ function makePrice(close: number, volume = 500000): DailyPrice {
 }
 
 describe('calcCompositeScore', () => {
-  it('삼성전자 시뮬 — 모멘텀 상승 추세 + 가치우량 + 수급강세 → B+ (60점+)', () => {
+  it('삼성전자 시뮬 — 모멘텀 상승 추세 + 가치우량 + 수급강세 → 55점+', () => {
     // 65일치: 꾸준한 상승 추세 (MA 정배열 + 60일 수익률 +15%+)
     const prices: DailyPrice[] = [];
     for (let i = 0; i < 65; i++) prices.push(makePrice(160000 + i * 600));
@@ -40,7 +40,8 @@ describe('calcCompositeScore', () => {
       hasRecentCbw: false,
       auditOpinion: null,
     });
-    expect(result.score_total).toBeGreaterThanOrEqual(60);
+    // v2: 수급 가중치 축소로 점수 하향 (supply 25→8)
+    expect(result.score_total).toBeGreaterThanOrEqual(55);
     expect(result.score_technical).toBeGreaterThan(30);
   });
 
@@ -80,6 +81,7 @@ describe('calcCompositeScore', () => {
       marketCap: 5000,
       isManaged: false, hasRecentCbw: false, auditOpinion: null,
     });
-    expect(result.score_total).toBeGreaterThanOrEqual(65);
+    // v2: 신호(재료) 가중치 22%로 증가, 신호=0이면 해당 축 기여 0 → 하향
+    expect(result.score_total).toBeGreaterThanOrEqual(45);
   });
 });

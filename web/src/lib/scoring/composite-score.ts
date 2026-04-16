@@ -1,11 +1,12 @@
 /**
  * composite-score.ts
- * 4축(기술전환 + 수급강도 + 가치매력 + 신호보너스) 가중 합산 + 리스크 감산
+ * 4축(모멘텀 + 수급강도 + 가치/성장 + 재료) 가중 합산 + 리스크 감산
  *
+ * v2: 수급 가중치 대폭 축소 (무료 API 30분+ 지연 반영)
  * 티어별 가중치:
- *   large: tech=30, supply=25, val=35, signal=10
- *   mid:   tech=35, supply=25, val=30, signal=10
- *   small: tech=38, supply=28, val=24, signal=10
+ *   large: tech=35, supply=8, val=35, signal=22
+ *   mid:   tech=40, supply=8, val=30, signal=22
+ *   small: tech=42, supply=8, val=28, signal=22
  */
 
 import { calcTechnicalReversal } from './technical-reversal';
@@ -122,19 +123,19 @@ export interface CompositeScoreResult {
 /** 투자 스타일 ID */
 export type StyleId = 'balanced' | 'value' | 'supply' | 'momentum' | 'contrarian';
 
-/** 티어별 가중치 설정 (균형형 기본값) */
+/** 티어별 가중치 설정 (균형형 기본값) — v2: 수급 8%로 축소 */
 const TIER_WEIGHTS = {
-  large: { tech: 30, supply: 25, val: 35, signal: 10 },
-  mid:   { tech: 35, supply: 25, val: 30, signal: 10 },
-  small: { tech: 38, supply: 28, val: 24, signal: 10 },
+  large: { tech: 35, supply: 8, val: 35, signal: 22 },
+  mid:   { tech: 40, supply: 8, val: 30, signal: 22 },
+  small: { tech: 42, supply: 8, val: 28, signal: 22 },
 } as const;
 
-/** 스타일별 고정 가중치 (균형형 제외 — 균형형은 티어 가중치 사용) */
+/** 스타일별 고정 가중치 (균형형 제외 — 균형형은 티어 가중치 사용) — v2: 수급 축소 */
 const STYLE_WEIGHTS: Record<Exclude<StyleId, 'balanced'>, { tech: number; supply: number; val: number; signal: number }> = {
-  value:      { tech: 15, supply: 15, val: 60, signal: 10 },
-  supply:     { tech: 20, supply: 45, val: 20, signal: 15 },
-  momentum:   { tech: 50, supply: 25, val: 10, signal: 15 },
-  contrarian: { tech: 48, supply: 18, val: 24, signal: 10 },
+  value:      { tech: 15, supply: 8, val: 55, signal: 22 },
+  supply:     { tech: 20, supply: 30, val: 20, signal: 30 },
+  momentum:   { tech: 50, supply: 8, val: 15, signal: 27 },
+  contrarian: { tech: 48, supply: 8, val: 24, signal: 20 },
 };
 
 /**

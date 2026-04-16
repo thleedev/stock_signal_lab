@@ -240,18 +240,18 @@ export function calcSupplyScore(
   }
 
   // ── 연속 매수/매도 (매집 의지 or 이탈 경고) — 전 티어 공통 ──
-  // 매수 전환 첫날에 보너스를 주되, 장기 streak과의 역전 폭은 억제
+  // v2: 단조증가 (지속성 우선) — 1일=3, 2~3일=5, 4~5일=7, 6일+=9
   const fStreak = foreignStreak ?? 0;
   let fStreakRawPts = 0;
   let fStreakDetail = '';
   let fStreakMet = false;
 
-  if (fStreak === 1) { fStreakRawPts = 6; fStreakDetail = `외국인 ${fStreak}일 연속 매수`; fStreakMet = true; score += 6; }
-  else if (fStreak >= 5) { fStreakRawPts = 5; fStreakDetail = `외국인 ${fStreak}일 연속 매수`; fStreakMet = true; score += 5; }
-  else if (fStreak >= 3) { fStreakRawPts = 4; fStreakDetail = `외국인 ${fStreak}일 연속 매수`; fStreakMet = true; score += 4; }
-  else if (fStreak >= 2) { fStreakRawPts = 6; fStreakDetail = `외국인 ${fStreak}일 연속 매수`; fStreakMet = true; score += 6; }
-  else if (fStreak <= -3) { fStreakRawPts = -5; fStreakDetail = `외국인 ${Math.abs(fStreak)}일 연속 매도 ⚠️`; fStreakMet = false; score -= 5; }
-  else { fStreakDetail = fStreak < 0 ? `외국인 ${Math.abs(fStreak)}일 연속 매도 ⚠️` : '외국인 연속매수 없음'; }
+  if (fStreak >= 6) { fStreakRawPts = 9; fStreakDetail = `외국인 ${fStreak}일 연속 매수 (장기 매집)`; fStreakMet = true; score += 9; }
+  else if (fStreak >= 4) { fStreakRawPts = 7; fStreakDetail = `외국인 ${fStreak}일 연속 매수`; fStreakMet = true; score += 7; }
+  else if (fStreak >= 2) { fStreakRawPts = 5; fStreakDetail = `외국인 ${fStreak}일 연속 매수`; fStreakMet = true; score += 5; }
+  else if (fStreak === 1) { fStreakRawPts = 3; fStreakDetail = `외국인 매수 전환 ${fStreak}일`; fStreakMet = true; score += 3; }
+  else if (fStreak <= -3) { fStreakRawPts = -5; fStreakDetail = `외국인 ${Math.abs(fStreak)}일 연속 매도`; fStreakMet = false; score -= 5; }
+  else { fStreakDetail = fStreak < 0 ? `외국인 ${Math.abs(fStreak)}일 연속 매도` : '외국인 연속매수 없음'; }
 
   reasons.push({
     label: '외국인 연속매수',
@@ -265,12 +265,12 @@ export function calcSupplyScore(
   let iStreakDetail = '';
   let iStreakMet = false;
 
-  if (iStreak === 1) { iStreakRawPts = 6; iStreakDetail = `기관 ${iStreak}일 연속 매수`; iStreakMet = true; score += 6; }
-  else if (iStreak >= 5) { iStreakRawPts = 5; iStreakDetail = `기관 ${iStreak}일 연속 매수`; iStreakMet = true; score += 5; }
-  else if (iStreak >= 3) { iStreakRawPts = 4; iStreakDetail = `기관 ${iStreak}일 연속 매수`; iStreakMet = true; score += 4; }
-  else if (iStreak >= 2) { iStreakRawPts = 6; iStreakDetail = `기관 ${iStreak}일 연속 매수`; iStreakMet = true; score += 6; }
-  else if (iStreak <= -3) { iStreakRawPts = -5; iStreakDetail = `기관 ${Math.abs(iStreak)}일 연속 매도 ⚠️`; iStreakMet = false; score -= 5; }
-  else { iStreakDetail = iStreak < 0 ? `기관 ${Math.abs(iStreak)}일 연속 매도 ⚠️` : '기관 연속매수 없음'; }
+  if (iStreak >= 6) { iStreakRawPts = 9; iStreakDetail = `기관 ${iStreak}일 연속 매수 (장기 매집)`; iStreakMet = true; score += 9; }
+  else if (iStreak >= 4) { iStreakRawPts = 7; iStreakDetail = `기관 ${iStreak}일 연속 매수`; iStreakMet = true; score += 7; }
+  else if (iStreak >= 2) { iStreakRawPts = 5; iStreakDetail = `기관 ${iStreak}일 연속 매수`; iStreakMet = true; score += 5; }
+  else if (iStreak === 1) { iStreakRawPts = 3; iStreakDetail = `기관 매수 전환 ${iStreak}일`; iStreakMet = true; score += 3; }
+  else if (iStreak <= -3) { iStreakRawPts = -5; iStreakDetail = `기관 ${Math.abs(iStreak)}일 연속 매도`; iStreakMet = false; score -= 5; }
+  else { iStreakDetail = iStreak < 0 ? `기관 ${Math.abs(iStreak)}일 연속 매도` : '기관 연속매수 없음'; }
 
   reasons.push({
     label: '기관 연속매수',

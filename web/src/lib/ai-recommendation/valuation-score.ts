@@ -15,10 +15,6 @@ export interface ForwardData {
   currentPrice: number | null;  // 현재가 (상승여력 계산용)
 }
 
-function fmt(n: number): string {
-  return Math.round(n).toLocaleString('ko-KR');
-}
-
 /**
  * PEG 기반 점수 (대형주/중형주용)
  * PEG = PER / EPS성장률
@@ -43,7 +39,8 @@ function calcPegScore(
   return 0;
 }
 
-const MAX_RAW = 25;
+// v2: 목표주가/투자의견 제거 → catalyst로 이관, MAX 20으로 조정
+const MAX_RAW = 20;
 
 export function calcValuationScore(
   per: number | null,
@@ -110,39 +107,7 @@ export function calcValuationScore(
       }
     }
 
-    // 목표주가 상승여력 (0~8) — 핵심 forward 지표
-    if (forward.targetPrice && forward.currentPrice && forward.currentPrice > 0) {
-      const upside = ((forward.targetPrice - forward.currentPrice) / forward.currentPrice) * 100;
-      let upsidePoints = 0;
-      if (upside >= 50) upsidePoints = 8;
-      else if (upside >= 30) upsidePoints = 6;
-      else if (upside >= 15) upsidePoints = 4;
-      else if (upside >= 5) upsidePoints = 2;
-      score += upsidePoints;
-      const normalizedPoints = Math.round((upsidePoints / MAX_RAW) * 100 * 10) / 10;
-      reasons.push({
-        label: '목표주가 상승여력',
-        points: normalizedPoints,
-        detail: `목표 ${fmt(forward.targetPrice)} vs 현재 ${fmt(forward.currentPrice)} (상승여력 ${Math.round(upside * 10) / 10}%)`,
-        met: upsidePoints > 0,
-      });
-    }
-
-    // 투자의견 (0~4) — 애널리스트 합의
-    if (forward.investOpinion !== null && forward.investOpinion > 0) {
-      let opinionPoints = 0;
-      if (forward.investOpinion >= 4.5) opinionPoints = 4;
-      else if (forward.investOpinion >= 3.5) opinionPoints = 3;
-      else if (forward.investOpinion >= 2.5) opinionPoints = 1;
-      score += opinionPoints;
-      const normalizedPoints = Math.round((opinionPoints / MAX_RAW) * 100 * 10) / 10;
-      reasons.push({
-        label: '투자의견',
-        points: normalizedPoints,
-        detail: `애널리스트 합의 ${Math.round(forward.investOpinion * 10) / 10}/5`,
-        met: opinionPoints > 0,
-      });
-    }
+    // v2: 목표주가 상승여력, 투자의견 → catalyst 모듈로 이관 (여기서 제거)
   } else {
     // ── Forward 없으면 trailing 기준 (기존 로직) ──
     if (pbr !== null && pbr > 0) {
@@ -207,6 +172,31 @@ export function calcValuationScore(
       detail: `배당수익률 ${Math.round(dividendYield * 10) / 10}%`,
       met: divPoints > 0,
     });
+  }
+
+  // ── v2: Value Trap 감지 (저PBR + 저ROE = 가치 함정 위험) ──
+  if (pbr !== null && pbr > 0 && pbr < 0.8 && roe !== null && roe < 5) {
+    const trapPenalty = -4;
+    score += trapPenalty;
+    reasons.push({
+      label: 'Value Trap 위험',
+      points: Math.round((trapPenalty / MAX_RAW) * 100),
+      detail: `저PBR(${Math.round(pbr * 100) / 100}) + 저ROE(${Math.round(roe * 10) / 10}%) -- 가치 함정 가능`,
+      met: true,
+    });
+  }
+
+  // ── v2: 소형주 복합 저평가 보너스 (forward 없을 때) ──
+  if (marketCapTier === 'small' && !forward && per !== null && pbr !== null && roe !== null) {
+    if (per > 0 && per < 10 && pbr > 0 && pbr < 1.0 && roe > 10) {
+      score += 5;
+      reasons.push({
+        label: '복합 저평가',
+        points: Math.round((5 / MAX_RAW) * 100),
+        detail: `PER ${Math.round(per * 10) / 10} + PBR ${Math.round(pbr * 100) / 100} + ROE ${Math.round(roe * 10) / 10}%`,
+        met: true,
+      });
+    }
   }
 
   const rawScore = Math.min(score, MAX_RAW);

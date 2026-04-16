@@ -149,19 +149,19 @@ describe('calcShortTermSupplyScore', () => {
       foreignNet: 5000, institutionNet: 3000, programNet: null,
       foreignStreak: 2, institutionStreak: 2, programStreak: null,
     });
-    // 외국인10 + 기관10 + 동반12 + 외연속5 + 기연속5 = 42
-    expect(result.raw).toBe(42);
+    // 외국인10 + 기관10 + 동반12 + 외연속7(v2) + 기연속7(v2) = 46
+    expect(result.raw).toBe(46);
     expect(result.foreignBuying).toBe(true);
     expect(result.institutionBuying).toBe(true);
   });
 
-  it('외국인만 순매수 + 매수 전환 첫날 → 16점', () => {
+  it('외국인만 순매수 + 매수 전환 첫날 → 20점', () => {
     const result = calcShortTermSupplyScore({
       foreignNet: 1000, institutionNet: -500, programNet: null,
       foreignStreak: 1, institutionStreak: -1, programStreak: null,
     });
-    // 외국인10 + 매수전환첫날보너스6 = 16
-    expect(result.raw).toBe(16);
+    // 외국인10 + 매수전환첫날10(v2) = 20
+    expect(result.raw).toBe(20);
   });
 
   it('외국인/기관 둘 다 매도 → -15', () => {
@@ -189,12 +189,13 @@ describe('calcShortTermSupplyScore', () => {
     expect(min.normalized).toBe(0);
   });
 
-  it('null 값 → 0 처리', () => {
+  it('null 값 → 중립 처리', () => {
     const result = calcShortTermSupplyScore({
       foreignNet: null, institutionNet: null, programNet: null,
       foreignStreak: null, institutionStreak: null, programStreak: null,
     });
-    expect(result.raw).toBe(-15); // 둘 다 <= 0 이므로 동반매도
+    // 수급 데이터 자체가 없으면 중립(raw=0) 처리
+    expect(result.raw).toBe(0);
   });
 });
 
@@ -212,8 +213,8 @@ describe('calcCatalystScore', () => {
       stockRankInSector: 3, sectorStockCount: 30,
       signalPriceGapPct: -1.0,
     });
-    // 신호2소스(+20) + 섹터상위3(+20) + 신호가이내(+10) = 50
-    expect(result.raw).toBe(50);
+    // 신호2소스(+20) + 섹터상위3(+20) + 신호가≤0%(+15) = 55
+    expect(result.raw).toBe(55);
   });
 
   it('5일 이상 지난 신호 + 섹터 약세 → 저점수', () => {
@@ -224,8 +225,8 @@ describe('calcCatalystScore', () => {
       stockRankInSector: 20, sectorStockCount: 30,
       signalPriceGapPct: null,
     });
-    // 신호0 + 섹터약세(-10) + 신호가null(0) = -10
-    expect(result.raw).toBe(-10);
+    // 신호0 + 섹터약세(-10) + 신호가null(+5) = -5
+    expect(result.raw).toBe(-5);
   });
 
   it('오늘 BUY 3소스 → 25점', () => {
@@ -248,8 +249,8 @@ describe('calcCatalystScore', () => {
       stockRankInSector: 1, sectorStockCount: 30,
       signalPriceGapPct: null,
     });
-    // 1소스(+15) + 섹터약세but종목상승(+3) + 0 = 18
-    expect(result.raw).toBe(18);
+    // 1소스(+15) + 섹터약세but종목상승(+3) + null(+5) = 23
+    expect(result.raw).toBe(23);
   });
 
   it('정규화: raw -10 → norm 0', () => {
@@ -258,8 +259,9 @@ describe('calcCatalystScore', () => {
       sectorRank: 18, sectorCount: 20,
       sectorAvgChangePct: -2.0, stockChangePct: -1.0,
       stockRankInSector: 25, sectorStockCount: 30,
-      signalPriceGapPct: null,
+      signalPriceGapPct: 10.0, // 이미 상승 → 0점
     });
+    // 신호0 + 섹터약세(-10) + 신호가+10%(0) = -10 → norm 0
     expect(result.normalized).toBe(0);
   });
 });

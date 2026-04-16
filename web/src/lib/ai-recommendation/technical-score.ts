@@ -10,6 +10,8 @@ export interface TechnicalScoreResult extends NormalizedScoreBase {
   phoenix_pattern: boolean;
   double_top: boolean;
   volume_surge: boolean;
+  volume_overheat: boolean;     // v2: 거래량 5배 이상 과열
+  weekly_trend_up: boolean;     // v2: 주봉 추세 상승
   week52_low_near: boolean;
   week52_high_near: boolean;
   ma_aligned: boolean;
@@ -108,6 +110,8 @@ export function calcTechnicalScore(
     phoenix_pattern: false,
     double_top: false,
     volume_surge: false,
+    volume_overheat: false,
+    weekly_trend_up: false,
     week52_low_near: false,
     week52_high_near: false,
     ma_aligned: false,
@@ -169,6 +173,7 @@ export function calcTechnicalScore(
   }
 
   // 볼린저 밴드 하단 이탈 후 복귀 (최근 5일 내) — 저점매수 핵심 시그널
+  // v2: 이격도 반등과 중복 시 max만 취함 (아래 이격도 섹션에서 처리)
   let bollingerBottom = false;
   if (closes.length >= 25) {
     for (let i = closes.length - 5; i < closes.length - 1; i++) {
@@ -179,7 +184,8 @@ export function calcTechnicalScore(
       }
     }
   }
-  if (bollingerBottom) score += 6;
+  const bollingerPoints = bollingerBottom ? 6 : 0;
+  // 볼린저 점수는 이격도 반등과 중복 제거 후 아래에서 합산
   if (bollingerBottom) {
     reasons.push({ label: '볼린저 하단', points: norm(6), detail: '볼린저 하단 이탈 후 복귀', met: true });
   } else {
@@ -243,21 +249,35 @@ export function calcTechnicalScore(
     reasons.push({ label: '불새패턴', points: 0, detail: '불새패턴 미발생', met: false });
   }
 
-  // 거래량 급증: 20일 평균 대비 2배 이상
+  // 거래량 급증: 20일 평균 대비 — v2: 3단계 분리 + 과열 감지
   let volumeSurge = false;
+  let volumeOverheat = false;
   let volumeSurgeRatio = 0;
   let todayVolumeVal = 0;
+  let volumeRawPts = 0;
   if (volumes.length >= 21) {
     const avgVol = volumes.slice(-21, -1).reduce((a, b) => a + b, 0) / 20;
     todayVolumeVal = volumes[volumes.length - 1];
     volumeSurgeRatio = avgVol > 0 ? todayVolumeVal / avgVol : 0;
-    if (avgVol > 0 && todayVolumeVal >= avgVol * 2) {
+    if (volumeSurgeRatio >= 5) {
+      // 과열 거래량: 리스크로 처리, trend에는 안전한 급증 점수만
+      volumeRawPts = 4;
+      volumeOverheat = true;
       volumeSurge = true;
+    } else if (volumeSurgeRatio >= 3) {
+      volumeRawPts = 8; // 강한 돌파 신호
+      volumeSurge = true;
+    } else if (volumeSurgeRatio >= 2) {
+      volumeRawPts = 4; // 기존과 동일
+      volumeSurge = true;
+    } else if (volumeSurgeRatio >= 1.5) {
+      volumeRawPts = 2; // 관심 증가
     }
   }
-  if (volumeSurge) score += 4;
-  if (volumeSurge) {
-    reasons.push({ label: '거래량 급증', points: norm(4), detail: `거래량 ${fmt(todayVolumeVal)}주 (20일 평균 대비 ${Math.round(volumeSurgeRatio * 10) / 10}배)`, met: true });
+  score += volumeRawPts;
+  if (volumeRawPts > 0) {
+    const overHeatSuffix = volumeOverheat ? ' (과열 주의)' : '';
+    reasons.push({ label: '거래량 급증', points: norm(volumeRawPts), detail: `거래량 ${fmt(todayVolumeVal)}주 (20일 평균 대비 ${Math.round(volumeSurgeRatio * 10) / 10}배)${overHeatSuffix}`, met: true });
   } else {
     reasons.push({ label: '거래량 급증', points: 0, detail: '거래량 평균 범위', met: false });
   }
@@ -324,13 +344,21 @@ export function calcTechnicalScore(
       else if (position52 <= 0.30) { week52RawPoints = 4; week52LowNear = true; }
       else if (position52 >= 0.85) week52RawPoints = 3;
     } else {
-      // 소형주: 저점 가점 + 거래량 반등 동반 시에만 높은 점수 (떨어지는 칼날 방지)
+      // 소형주: 저점 가점 + 거래량/양봉 콤보 강화 (떨어지는 칼날 방지)
+      const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
+      const pctGain = closes.length >= 2
+        ? ((closes[closes.length - 1] - closes[closes.length - 2]) / closes[closes.length - 2]) * 100
+        : 0;
       if (position52 <= 0.15) {
         week52LowNear = true;
-        week52RawPoints = volumeSurge ? 5 : 3;   // 거래량 반등 동반 시 +5, 미동반 +3
+        if (volumeSurge && todayBullish && pctGain >= 1.5) week52RawPoints = 12;
+        else if (volumeSurge) week52RawPoints = 7;
+        else week52RawPoints = 2; // 거래량 없으면 최소 (칼날 방지)
       } else if (position52 <= 0.30) {
         week52LowNear = true;
-        week52RawPoints = volumeSurge ? 4 : 2;   // 거래량 반등 동반 시 +4, 미동반 +2
+        if (volumeSurge && todayBullish && pctGain >= 1.5) week52RawPoints = 8;
+        else if (volumeSurge) week52RawPoints = 5;
+        else week52RawPoints = 2;
       }
     }
     score += week52RawPoints;
@@ -351,6 +379,7 @@ export function calcTechnicalScore(
   // ── 단기 상승 임박 지표 ──
 
   // 이격도 반등: 현재가가 20일선 대비 저이격 + 오늘 양봉 — 저점매수 핵심 시그널
+  // v2: 볼린저 하단과 중복 시 max만 취함
   let disparityRebound = false;
   let disparityRawPoints = 0;
   let disparityDetail = '';
@@ -361,23 +390,31 @@ export function calcTechnicalScore(
       const disparityPct = Math.round(disparity * 1000) / 10;
       const todayBullish = closes[closes.length - 1] > opens[opens.length - 1];
       if (disparity >= 0.88 && disparity <= 0.95 && todayBullish) {
-        // 깊은 이격 (88~95%) + 양봉: 강한 저점매수 신호
         disparityRebound = true;
         disparityRawPoints = 7;
-        score += 7;
         disparityDetail = `이격도 ${disparityPct}% + 양봉 (20일선 ${fmt(latestSma20)})`;
       } else if (disparity >= 0.92 && disparity <= 0.98 && todayBullish) {
-        // 기존 범위 (92~98%)
         disparityRebound = true;
         disparityRawPoints = 5;
-        score += 5;
         disparityDetail = `이격도 ${disparityPct}% + 양봉 (20일선 ${fmt(latestSma20)})`;
       } else {
         disparityDetail = `이격도 ${disparityPct}% (반등 미발생, 20일선 ${fmt(latestSma20)})`;
       }
     }
   }
-  reasons.push({ label: '이격도 반등', points: norm(disparityRawPoints), detail: disparityDetail || '이격도 데이터 부족', met: disparityRebound });
+  // 볼린저 하단 + 이격도 반등 중복 제거: 두 조건 중 max만 취함
+  const overlappingBonus = Math.max(bollingerPoints, disparityRawPoints);
+  score += overlappingBonus;
+  // 두 항목 모두 표시하되, 둘 다 met이면 낮은 쪽 points=0으로 표시
+  if (bollingerBottom && disparityRebound) {
+    // 둘 다 충족: 높은 쪽만 실제 점수 반영
+    if (bollingerPoints < disparityRawPoints) {
+      // 볼린저 reason을 points=0으로 재조정 (이미 push됨 → 마지막 항목 교체)
+      const bIdx = reasons.findIndex(r => r.label === '볼린저 하단');
+      if (bIdx >= 0) reasons[bIdx] = { ...reasons[bIdx], points: 0 };
+    }
+  }
+  reasons.push({ label: '이격도 반등', points: norm(bollingerPoints >= disparityRawPoints && bollingerBottom && disparityRebound ? 0 : disparityRawPoints), detail: disparityDetail || '이격도 데이터 부족', met: disparityRebound });
 
   // 거래량 바닥 탈출: 최근 10일 평균 거래량이 20일 평균의 50% 이하 → 오늘 20일 평균 2배 이상
   let volumeBreakout = false;
@@ -497,6 +534,56 @@ export function calcTechnicalScore(
   }
   reasons.push({ label: '추세지속', points: norm(trendRawPoints), detail: trendDetail, met: trendRawPoints > 0 });
 
+  // ── 주봉 추세 일치 보너스 (v2) ──
+  // daily_prices 기반으로 주봉 계산 (별도 DB 조회 없음)
+  function getWeeklyCloses(priceCloses: number[]): number[] {
+    const result: number[] = [];
+    for (let i = priceCloses.length - 1; i >= 4; i -= 5) {
+      result.unshift(priceCloses[i]);
+    }
+    return result;
+  }
+
+  const weeklyCloses = getWeeklyCloses(closes);
+  const weeklySma5 = calcSMA(weeklyCloses, 5);
+  const weeklyTrendUp = weeklySma5.length > 0 &&
+    weeklyCloses[weeklyCloses.length - 1] > weeklySma5[weeklySma5.length - 1];
+
+  // 일봉 신호 + 주봉 추세 일치 보너스
+  if (weeklyTrendUp && (goldenCross || volumeBreakout || bollingerBottom)) {
+    score += 8;
+    reasons.push({ label: '주봉 추세 일치', points: norm(8), detail: '일봉 신호 + 주봉 상승 추세 일치', met: true });
+  } else if (!weeklyTrendUp && weeklyCloses.length >= 5) {
+    // 주봉 하락 중 일봉 신호 → 역추세 패널티
+    score -= 4;
+    reasons.push({ label: '주봉 역추세', points: norm(-4), detail: '주봉 하락 추세 중 신호 (신뢰도 낮음)', met: false });
+  }
+
+  // ── 낙폭 과대 반등 보너스 (v2) ──
+  const peak20d = closes.length >= 20 ? Math.max(...closes.slice(-20)) : 0;
+  const drawdownPct = peak20d > 0 ? (peak20d - currentPrice) / peak20d * 100 : 0;
+  let drawdownBonusRaw = 0;
+
+  if (drawdownPct >= 20 && (goldenCross || volumeBreakout)) {
+    drawdownBonusRaw = 10;
+    score += 10;
+  } else if (drawdownPct >= 10 && volumeSurge) {
+    drawdownBonusRaw = 5;
+    score += 5;
+  } else if (drawdownPct >= 30 && !goldenCross && !bollingerBottom && !disparityRebound) {
+    // 낙폭 과대 + 반등 신호 없음 = 떨어지는 칼날 패널티
+    drawdownBonusRaw = -6;
+    score -= 6;
+  }
+  if (drawdownPct >= 5 || drawdownBonusRaw !== 0) {
+    reasons.push({
+      label: '낙폭 반등',
+      points: norm(drawdownBonusRaw),
+      detail: `20일 고점 대비 낙폭 ${Math.round(drawdownPct * 10) / 10}%`,
+      met: drawdownBonusRaw > 0,
+    });
+  }
+
   const rawScore = Math.max(0, Math.min(score, 65));
 
   return {
@@ -512,6 +599,8 @@ export function calcTechnicalScore(
     phoenix_pattern: phoenixPattern,
     double_top: doubleTop,
     volume_surge: volumeSurge,
+    volume_overheat: volumeOverheat,
+    weekly_trend_up: weeklyTrendUp,
     week52_low_near: week52LowNear,
     week52_high_near: week52HighNear ?? false,
     ma_aligned: maAligned,

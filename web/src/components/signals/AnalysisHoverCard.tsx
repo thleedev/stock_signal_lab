@@ -16,12 +16,12 @@ interface Props {
   style?: string;
 }
 
-// score_momentum은 DB 컬럼명이지만 실제로는 기술전환(Technical Reversal) 점수입니다.
+// v2: 신호→재료, 기술→모멘텀, 가치→가치/성장
 const SCORE_BARS: { label: string; field: 'score_signal' | 'score_supply' | 'score_value' | 'score_momentum'; color: string }[] = [
-  { label: '신호', field: 'score_signal',   color: 'bg-amber-500' },
+  { label: '재료', field: 'score_signal',   color: 'bg-amber-500' },
   { label: '수급', field: 'score_supply',   color: 'bg-sky-500' },
-  { label: '가치', field: 'score_value',    color: 'bg-violet-500' },
-  { label: '기술', field: 'score_momentum', color: 'bg-emerald-500' },
+  { label: '가치/성장', field: 'score_value',    color: 'bg-violet-500' },
+  { label: '모멘텀', field: 'score_momentum', color: 'bg-emerald-500' },
 ];
 
 const CATEGORY_COLOR: Record<string, string> = {

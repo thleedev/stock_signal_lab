@@ -7,19 +7,19 @@ describe('calcRiskScore', () => {
     expect(result).toBe(-100)
   })
 
-  it('감사의견 비적정이면 -80 반환', () => {
+  it('감사의견 비적정이면 -75 반환', () => {
     const result = calcRiskScore({ audit_opinion: '한정' })
-    expect(result).toBe(-80)
+    expect(result).toBe(-75)
   })
 
-  it('CB/BW 최근 발행이면 -30 반환 (standard)', () => {
+  it('CB/BW 최근 발행이면 -50 반환 (standard)', () => {
     const result = calcRiskScore({ has_recent_cbw: true }, 'standard')
-    expect(result).toBe(-30)
+    expect(result).toBe(-50)
   })
 
-  it('CB/BW 최근 발행이면 -20 반환 (short_term)', () => {
+  it('CB/BW 최근 발행이면 -30 반환 (short_term)', () => {
     const result = calcRiskScore({ has_recent_cbw: true }, 'short_term')
-    expect(result).toBe(-20)
+    expect(result).toBe(-30)
   })
 
   it('소형주(3000억 미만) 지분율 5%이면 -20 (standard)', () => {
@@ -74,8 +74,8 @@ describe('calcRiskScore', () => {
       market_cap: 500, // 500억원
       daily_trading_value: 500_000_000,
     }, 'standard')
-    // -30 (CB/BW) + -20 (지분율<10%) + -20 (거래대금<10억) = -70
-    expect(result).toBe(-70)
+    // -50 (CB/BW) + -20 (지분율<10%) + -20 (거래대금<10억) = -90
+    expect(result).toBe(-90)
   })
 
   it('리스크 없으면 0 반환', () => {

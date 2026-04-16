@@ -226,8 +226,8 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
           </>
         ) : (
           <>
-        {/* 1. 신호 신뢰도 */}
-        <ScoreBar label="신호 신뢰도" score={score_signal}>
+        {/* 1. 재료/촉매 (v2: 신호 신뢰도에서 변경) */}
+        <ScoreBar label="재료/촉매" score={score_signal}>
           <p>30일간 매수신호 {data.signal_count_30d ?? 0}회</p>
           {data.latest_signal_type && (
             <p>
@@ -239,8 +239,8 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
           )}
         </ScoreBar>
 
-        {/* 2. 기술적 모멘텀 */}
-        <ScoreBar label="기술적 모멘텀" score={score_momentum}>
+        {/* 2. 모멘텀 (v2: 기술적 모멘텀에서 변경) */}
+        <ScoreBar label="모멘텀" score={score_momentum}>
           {data.price_change_pct != null && (
             <p>
               당일 등락률{" "}
@@ -270,8 +270,8 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
           )}
         </ScoreBar>
 
-        {/* 3. 밸류에이션 */}
-        <ScoreBar label="밸류에이션" score={score_valuation}>
+        {/* 3. 가치/성장 (v2: 밸류에이션에서 변경) */}
+        <ScoreBar label="가치/성장" score={score_valuation}>
           <p>
             PER {data.per?.toFixed(1) ?? "—"} / PBR{" "}
             {data.pbr?.toFixed(2) ?? "—"} / ROE{" "}
@@ -422,13 +422,13 @@ function StandardReport({ data }: { data: StockRankItem }) {
   const rawRisk = normRisk;
 
   // 기여도 계산
-  const contSignal = (normSignal / 100) * w.signal;
+  const contCatalyst = (normSignal / 100) * w.catalyst;
   const contTrend = (normTrend / 100) * w.trend;
   const contVal = (normValuation / 100) * w.valuation;
   const contSupply = (normSupply / 100) * w.supply;
   const contEarn = 0;
   const contRisk = (normRisk / 100) * w.risk;
-  const base = contSignal + contTrend + contVal + contSupply + contEarn;
+  const base = contCatalyst + contTrend + contVal + contSupply + contEarn;
 
   // 기술 패턴 — ai 필드 제거 후 표시하지 않음
   const patterns: string[] = [];
@@ -459,18 +459,18 @@ function StandardReport({ data }: { data: StockRankItem }) {
 
       {/* 가중치 기여도 막대 */}
       <div className="space-y-1.5">
-        <WeightBar label="신호" raw={rawSignal} maxRaw={30} weight={w.signal} normalized={normSignal} />
-        <WeightBar label="기술(추세)" raw={rawTrend} maxRaw={65} weight={w.trend} normalized={normTrend} />
-        <WeightBar label="밸류에이션" raw={rawValuation} maxRaw={25} weight={w.valuation} normalized={normValuation} />
+        <WeightBar label="재료/촉매" raw={rawSignal} maxRaw={30} weight={w.catalyst} normalized={normSignal} />
+        <WeightBar label="모멘텀" raw={rawTrend} maxRaw={65} weight={w.trend} normalized={normTrend} />
+        <WeightBar label="가치/성장" raw={rawValuation} maxRaw={20} weight={w.valuation} normalized={normValuation} />
         <WeightBar label="수급" raw={rawSupply} maxRaw={45} weight={w.supply} normalized={normSupply} />
         {w.earnings_momentum > 0 && (
-          <WeightBar label="이익모멘텀" raw={0} maxRaw={100} weight={w.earnings_momentum} normalized={0} />
+          <WeightBar label="이익모멘텀" raw={0} maxRaw={80} weight={w.earnings_momentum} normalized={0} />
         )}
       </div>
 
       {/* 총점 공식 */}
       <div className="p-2 rounded bg-[var(--background)] text-[10px] font-mono leading-relaxed">
-        <p>base = {contSignal.toFixed(1)} + {contTrend.toFixed(1)} + {contVal.toFixed(1)} + {contSupply.toFixed(1)} = <span className="font-bold">{base.toFixed(1)}</span></p>
+        <p>base = {contCatalyst.toFixed(1)} + {contTrend.toFixed(1)} + {contVal.toFixed(1)} + {contSupply.toFixed(1)} = <span className="font-bold">{base.toFixed(1)}</span></p>
         <p>risk 감산 = {contRisk.toFixed(1)} (원점수 {rawRisk.toFixed(0)} × {w.risk}%)</p>
         <p>total = {base.toFixed(1)} − {contRisk.toFixed(1)} = <span className="font-bold text-[var(--foreground)]">{Math.max(0, base - contRisk).toFixed(1)}</span></p>
       </div>

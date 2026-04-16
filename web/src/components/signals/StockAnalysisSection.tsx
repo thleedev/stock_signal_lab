@@ -91,14 +91,14 @@ function getGrade(score: number): { grade: string; label: string; cls: string } 
 }
 
 // ── 카테고리 미니바 정규화 ──────────────────────────────────────────────────
-// score_momentum은 DB 컬럼명이지만 실제로는 기술전환(Technical Reversal) 점수입니다.
+// v2: signal→catalyst(재료), technical→momentum(모멘텀)
 function getCategoryScores(item: StockRankItem) {
   const clamp = (v: number) => Math.round(Math.min(100, Math.max(0, v)));
   return {
-    signal:    clamp(item.score_signal ?? 0),
+    catalyst:  clamp(item.score_signal ?? 0),
     supply:    clamp(item.score_supply ?? 0),
     valuation: clamp(item.score_value ?? 0),
-    technical: clamp(item.score_momentum ?? 0),
+    momentum:  clamp(item.score_momentum ?? 0),
   };
 }
 
@@ -167,7 +167,7 @@ function StockRow({
 
   const miniBars = [
     {
-      label: '신호', value: scores.signal,    color: 'bg-amber-500',
+      label: '재료', value: scores.catalyst,  color: 'bg-amber-500',
       pass: item.checklist_sig_pass, total: item.checklist_sig_total,
     },
     {
@@ -179,7 +179,7 @@ function StockRow({
       pass: item.checklist_val_pass, total: item.checklist_val_total,
     },
     {
-      label: '기술', value: scores.technical, color: 'bg-emerald-500',
+      label: '모멘텀', value: scores.momentum, color: 'bg-emerald-500',
       pass: item.checklist_tech_pass, total: item.checklist_tech_total,
     },
   ];

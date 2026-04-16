@@ -16,19 +16,19 @@ interface Props {
 
 // ── 카테고리 메타 ──────────────────────────────────────────────────────────────
 const CATEGORY_META: Record<AnalysisCategory['id'], { color: string; hex: string; bar: string; text: string }> = {
-  technical:  { color: 'text-emerald-400', hex: '#34d399', bar: 'bg-emerald-500', text: '기술전환' },
+  technical:  { color: 'text-emerald-400', hex: '#34d399', bar: 'bg-emerald-500', text: '모멘텀'   },
   supply:     { color: 'text-sky-400',     hex: '#38bdf8', bar: 'bg-sky-500',     text: '수급강도' },
-  valuation:  { color: 'text-violet-400',  hex: '#a78bfa', bar: 'bg-violet-500',  text: '가치매력' },
-  signal:     { color: 'text-amber-400',   hex: '#fbbf24', bar: 'bg-amber-500',   text: '신호보너스' },
+  valuation:  { color: 'text-violet-400',  hex: '#a78bfa', bar: 'bg-violet-500',  text: '가치/성장' },
+  signal:     { color: 'text-amber-400',   hex: '#fbbf24', bar: 'bg-amber-500',   text: '재료'     },
   risk:       { color: 'text-red-400',     hex: '#f87171', bar: 'bg-red-500',     text: '리스크'   },
 };
 
-// ── 레이더 축 정의 (4축 only) ─────────────────────────────────────────────────
+// ── 레이더 축 정의 (4축 only) — v2: 신호→재료, 라벨 변경 ──────────────────────
 const RADAR_AXES = [
-  { id: 'technical' as const, label: '기술', scoreKey: 'score_momentum' as keyof StockRankItem, angle: -90 },
-  { id: 'supply'    as const, label: '수급', scoreKey: 'score_supply'   as keyof StockRankItem, angle:   0 },
-  { id: 'valuation' as const, label: '가치', scoreKey: 'score_value'    as keyof StockRankItem, angle:  90 },
-  { id: 'signal'    as const, label: '신호', scoreKey: 'score_signal'   as keyof StockRankItem, angle: 180 },
+  { id: 'technical' as const, label: '모멘텀',   scoreKey: 'score_momentum' as keyof StockRankItem, angle: -90 },
+  { id: 'supply'    as const, label: '수급',     scoreKey: 'score_supply'   as keyof StockRankItem, angle:   0 },
+  { id: 'valuation' as const, label: '가치/성장', scoreKey: 'score_value'    as keyof StockRankItem, angle:  90 },
+  { id: 'signal'    as const, label: '재료',     scoreKey: 'score_signal'   as keyof StockRankItem, angle: 180 },
 ];
 
 function toRad(deg: number) { return (deg * Math.PI) / 180; }
