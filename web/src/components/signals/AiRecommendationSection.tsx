@@ -230,16 +230,18 @@ export function AiRecommendationSection({ initialData }: Props) {
   // localStorage는 SSR에서 접근 불가 → useEffect에서 초기화
   const [weights, setWeights] = useState<AiRecommendationWeights>(DEFAULT_WEIGHTS);
 
+  // 항상 충분한 데이터를 가져온다 (limit 변경은 클라이언트 슬라이싱으로 처리)
+  const FETCH_LIMIT = 30;
+
   const refresh = useCallback(
-    async (newWeights?: AiRecommendationWeights, newLimit?: number) => {
+    async (newWeights?: AiRecommendationWeights) => {
       setLoading(true);
       try {
         const w = newWeights ?? weights;
-        const l = newLimit ?? limit;
         const res = await fetch('/api/v1/ai-recommendations/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ limit: l, weights: w }),
+          body: JSON.stringify({ limit: FETCH_LIMIT, weights: w }),
         });
         if (res.ok) {
           const json = (await res.json()) as AiRecommendationResponse;
@@ -249,7 +251,7 @@ export function AiRecommendationSection({ initialData }: Props) {
         setLoading(false);
       }
     },
-    [weights, limit]
+    [weights]
   );
 
   useEffect(() => {
@@ -268,15 +270,16 @@ export function AiRecommendationSection({ initialData }: Props) {
   };
 
   const handleWeightsApply = () => {
-    const total = weights.signal + weights.trend + weights.valuation + weights.supply;
+    // v2: signal + trend + valuation + supply + catalyst 합계 검증
+    const total = weights.signal + weights.trend + weights.valuation + weights.supply + (weights.catalyst ?? 0);
     if (Math.abs(total - 100) <= 0.01) {
       refresh(weights);
     }
   };
 
+  // limit 변경은 클라이언트 슬라이싱만 — API 재호출 없음
   const handleLimitChange = (newLimit: number) => {
     setLimit(newLimit);
-    refresh(weights, newLimit);
   };
 
   const displayed = data?.recommendations?.slice(0, limit) ?? [];
