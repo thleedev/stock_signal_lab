@@ -690,7 +690,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             />
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1 py-1">
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
             <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">시장</span>
             {["전체", "KOSPI", "KOSDAQ", "ETF"].map((m) => (
               <button
@@ -707,7 +707,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             ))}
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1 py-1">
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
             <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">정렬</span>
             <select
               value={sortBy}
@@ -732,7 +732,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             </button>
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1 py-1">
+          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
             <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">신호</span>
             {([["all", "전체"], ["signal", "신호"]] as const).map(([value, label]) => (
               <button
