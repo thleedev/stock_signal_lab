@@ -247,6 +247,10 @@ function computeCustomScore(
   return Math.min(100, Math.max(0, Math.round(base * (1 - riskPenalty))));
 }
 
+// ── 서버 측 인메모리 캐시 (동일 인스턴스 내 중복 요청 제거) ──────────────────
+const SERVER_CACHE = new Map<string, { data: unknown; ts: number }>();
+const SERVER_CACHE_TTL = 20_000; // 20초
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const market = searchParams.get('market') ?? 'all';
@@ -264,6 +268,17 @@ export async function GET(request: NextRequest) {
   const wMO = parseFloat(searchParams.get('w_mo') ?? '0');
   const wRI = parseFloat(searchParams.get('w_ri') ?? '0');
   const hasCustomWeights = wST > 0 && wSU > 0 && wVG > 0 && wMO > 0 && wRI > 0;
+
+  // 서버 캐시 키 (단일 종목 조회는 캐시 제외)
+  const disabledConds = searchParams.get('disabled_conds') ?? '';
+  const cacheKey = `${market}:${dateParam}:${style}:${wST},${wSU},${wVG},${wMO},${wRI}:${disabledConds}:${page}:${limit}`;
+
+  if (!symbolParam) {
+    const cached = SERVER_CACHE.get(cacheKey);
+    if (cached && Date.now() - cached.ts < SERVER_CACHE_TTL) {
+      return NextResponse.json(cached.data);
+    }
+  }
 
   const supabase = createServiceClient();
 
@@ -351,6 +366,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ items: [item], total: 1, page: 1, limit: 1, scored_at: item.scored_at ?? null });
   }
 
+  // getEffectiveThemeDate를 메인 쿼리와 병렬 실행 (순차 대기 제거)
+  const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const effectiveThemeDatePromise = getEffectiveThemeDate(supabase, todayKst);
+
   // Supabase max_rows=1000 제한 우회: 전체 데이터를 페이지네이션으로 수집 후 API 레벨에서 정렬/슬라이스
   const allRows: Record<string, unknown>[] = [];
   let from = 0;
@@ -400,10 +419,9 @@ export async function GET(request: NextRequest) {
 
   const rawData = allRows.slice(offset, offset + limit);
 
-  // theme 데이터 배치 조회 (오늘 없으면 최근 날짜 fallback)
-  const todayKst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  // theme 데이터 배치 조회 — effectiveThemeDate는 while 루프와 병렬 실행됐으므로 이미 완료 상태
   const rawSymbols = rawData.map(r => r.symbol as string).filter(Boolean);
-  const effectiveThemeDate = await getEffectiveThemeDate(supabase, todayKst);
+  const effectiveThemeDate = await effectiveThemeDatePromise;
   const symbolThemeMap = await fetchThemeMap(supabase, rawSymbols, effectiveThemeDate);
 
   const items = (rawData ?? []).map(row => {
@@ -469,11 +487,16 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  return NextResponse.json({
+  const responseData = {
     items,
     total: allRows.length,
     page,
     limit,
     scored_at: items[0]?.scored_at ?? null,
-  });
+  };
+
+  // 서버 캐시 저장 (동일 인스턴스 내 중복 요청 제거)
+  SERVER_CACHE.set(cacheKey, { data: responseData, ts: Date.now() });
+
+  return NextResponse.json(responseData);
 }
