@@ -291,7 +291,7 @@ export function RecommendationFilterBar({
 
           {/* 팝업 메뉴 */}
           {moreOpen && (
-            <div className="absolute top-full mt-1 left-0 z-50 w-56 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg p-3 space-y-3">
+            <div className="absolute top-full mt-1 left-0 z-50 w-56 max-w-[calc(100vw-2rem)] rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg p-3 space-y-3">
               {/* 정렬 */}
               <div>
                 <p className="text-xs text-[var(--muted)] mb-1.5">정렬</p>
