@@ -312,6 +312,24 @@ describe('applyPreFilter — 거래량 폭증 완화', () => {
     expect(result.passed).toBe(false);
     expect(result.reasons).toContain('종가위치 미달');
   });
+
+  it('volumeRatio 미제공(undefined) — 거래대금 미달 시 탈락', () => {
+    const result = applyPreFilter({
+      ...smallCap,
+      tradingValue: 10_0000_0000,
+      volumeRatio: undefined,
+    });
+    expect(result.reasons).toContain('거래대금 미달');
+  });
+
+  it('volumeRatio: 0 — 거래대금 미달 시 탈락', () => {
+    const result = applyPreFilter({
+      ...smallCap,
+      tradingValue: 10_0000_0000,
+      volumeRatio: 0,
+    });
+    expect(result.reasons).toContain('거래대금 미달');
+  });
 });
 
 // ---------------------------------------------------------------------------
