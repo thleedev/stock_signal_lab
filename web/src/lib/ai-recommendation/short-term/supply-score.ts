@@ -161,10 +161,13 @@ export function calcShortTermSupplyScore(input: ShortTermSupplyInput): ShortTerm
   // 수급 데이터 자체가 없으면 중립 처리 (null → 0 변환 후 "동반 매도" 패널티 방지)
   const supplyDataAvailable = input.foreignNet !== null || input.institutionNet !== null;
   if (!supplyDataAvailable) {
-    const neutralRaw = 0; // -25 ~ 55 범위에서 중립 위치
+    // 수급 데이터 없음 = "모름(중립)"으로 처리
+    // raw=15 → normalized = (15+25)/80*100 = 50
+    // (기존 raw=0 → normalized=31 은 "모름을 약세로 처리"하는 구조적 편향)
+    const neutralRaw = 15;
     return {
       raw: neutralRaw,
-      normalized: Math.round(((neutralRaw + 25) / 80) * 100), // 31
+      normalized: Math.round(((neutralRaw + 25) / 80) * 100), // 50
       foreignBuying: false,
       institutionBuying: false,
     };

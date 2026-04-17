@@ -189,13 +189,41 @@ describe('calcShortTermSupplyScore', () => {
     expect(min.normalized).toBe(0);
   });
 
-  it('null 값 → 중립 처리', () => {
+  it('null 값 → 중립 처리 (raw=15, normalized=50)', () => {
     const result = calcShortTermSupplyScore({
       foreignNet: null, institutionNet: null, programNet: null,
       foreignStreak: null, institutionStreak: null, programStreak: null,
     });
-    // 수급 데이터 자체가 없으면 중립(raw=0) 처리
-    expect(result.raw).toBe(0);
+    // 수급 데이터 자체가 없으면 중립(raw=15, normalized=50) 처리
+    expect(result.raw).toBe(15);
+    expect(result.normalized).toBe(50);
+  });
+});
+
+describe('calcShortTermSupplyScore — 수급 없음 중립화', () => {
+  it('외국인/기관 데이터 모두 null → normalized=50', () => {
+    const result = calcShortTermSupplyScore({
+      foreignNet: null,
+      institutionNet: null,
+      programNet: null,
+      foreignStreak: null,
+      institutionStreak: null,
+      programStreak: null,
+    });
+    expect(result.normalized).toBe(50);
+    expect(result.raw).toBe(15);
+  });
+
+  it('데이터 있으면 기존 로직 그대로 — 외국인+기관 동반매수 시 높은 점수', () => {
+    const result = calcShortTermSupplyScore({
+      foreignNet: 1000,
+      institutionNet: 500,
+      programNet: null,
+      foreignStreak: 1,
+      institutionStreak: 1,
+      programStreak: null,
+    });
+    expect(result.normalized).toBeGreaterThan(50);
   });
 });
 
