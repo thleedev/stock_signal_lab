@@ -1,12 +1,13 @@
 /**
  * 초단기 촉매 스코어
  *
- * 원점수 범위: -10 ~ 70 -> 정규화: (raw + 10) / 80 * 100
+ * 원점수 범위: -10 ~ 100 -> 정규화: (raw + 10) / 110 * 100
  *
  * 구성 요소:
  *   A. 신호 신선도 (최대 25점, 하나만 적용)
  *   B. 섹터/테마 모멘텀 (최대 25점, 하나만 적용)
  *   C. 신호가 대비 현재 위치 (최대 20점) — 아직 안 오른 종목을 강하게 우대
+ *   D. 거래량 폭증 (최대 55점) — 신호 없는 소형주 거래량 폭증 포착
  */
 
 // ---------------------------------------------------------------------------
@@ -32,10 +33,14 @@ export interface CatalystInput {
   sectorStockCount: number;
   /** (현재가-신호가)/신호가 * 100, null이면 신호가 없음 */
   signalPriceGapPct: number | null;
+  /** 당일 거래량 / 20일 평균 거래량 (1.0=평균, 9.21=921%) */
+  volRatioToday: number;
+  /** 전일 거래량 / 20일 평균 거래량 */
+  volRatioT1: number;
 }
 
 export interface CatalystResult {
-  /** 원점수 (-10 ~ 60) */
+  /** 원점수 (-10 ~ 100) */
   raw: number;
   /** 정규화 점수 (0 ~ 100) */
   normalized: number;
@@ -146,14 +151,38 @@ function calcSignalPricePositionScore(
 }
 
 // ---------------------------------------------------------------------------
+// D. 거래량 폭증 (최대 55점)
+// ---------------------------------------------------------------------------
+
+/**
+ * 거래량 폭증 패턴 점수를 계산한다.
+ *
+ * 근거: DB 분석 결과, 최근 3개월 15%+ 급등 종목 30건 전체에서
+ *       전날·전전날 거래량이 20일 평균의 3배 이상이었음.
+ *
+ * - 양일 연속 500%+ (today >= 5.0 AND T-1 >= 5.0): 55점
+ * - 오늘 700%+ + 전날 200%+ (today >= 7.0 AND T-1 >= 2.0): 45점
+ * - 오늘 500%+ 단일 (today >= 5.0): 35점
+ * - 오늘 300%+ (today >= 3.0): 20점
+ * - 기준 미달: 0점
+ */
+function calcVolumeSurgeScore(volRatioToday: number, volRatioT1: number): number {
+  if (volRatioToday >= 5.0 && volRatioT1 >= 5.0) return 55;
+  if (volRatioToday >= 7.0 && volRatioT1 >= 2.0) return 45;
+  if (volRatioToday >= 5.0) return 35;
+  if (volRatioToday >= 3.0) return 20;
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
 // 메인 함수
 // ---------------------------------------------------------------------------
 
 /**
  * 초단기 촉매 스코어를 계산한다.
  *
- * 원점수 범위: -10 ~ 70
- * 정규화: (raw + 10) / 80 * 100 -> 0 ~ 100
+ * 원점수 범위: -10 ~ 100
+ * 정규화: (raw + 10) / 110 * 100 -> 0 ~ 100
  */
 export function calcCatalystScore(input: CatalystInput): CatalystResult {
   const a = calcSignalFreshnessScore(input.todayBuySources, input.daysSinceLastBuy);
@@ -166,13 +195,14 @@ export function calcCatalystScore(input: CatalystInput): CatalystResult {
     input.sectorStockCount,
   );
   const c = calcSignalPricePositionScore(input.signalPriceGapPct);
+  const d = calcVolumeSurgeScore(input.volRatioToday, input.volRatioT1);
 
   // 원점수 합산 후 범위 clamp
-  const rawUnclamped = a + b + c;
-  const raw = Math.max(-10, Math.min(70, rawUnclamped));
+  const rawUnclamped = a + b + c + d;
+  const raw = Math.max(-10, Math.min(100, rawUnclamped));
 
-  // 정규화: (raw + 10) / 80 * 100
-  const normalized = Math.max(0, Math.min(100, ((raw + 10) / 80) * 100));
+  // 정규화: (raw + 10) / 110 * 100
+  const normalized = Math.max(0, Math.min(100, ((raw + 10) / 110) * 100));
 
   return { raw, normalized };
 }

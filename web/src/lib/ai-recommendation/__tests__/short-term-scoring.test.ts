@@ -240,6 +240,7 @@ describe('calcCatalystScore', () => {
       sectorAvgChangePct: 1.5, stockChangePct: 3.0,
       stockRankInSector: 3, sectorStockCount: 30,
       signalPriceGapPct: -1.0,
+      volRatioToday: 0, volRatioT1: 0,
     });
     // 신호2소스(+20) + 섹터상위3(+20) + 신호가≤0%(+15) = 55
     expect(result.raw).toBe(55);
@@ -252,6 +253,7 @@ describe('calcCatalystScore', () => {
       sectorAvgChangePct: -2.0, stockChangePct: -1.0,
       stockRankInSector: 20, sectorStockCount: 30,
       signalPriceGapPct: null,
+      volRatioToday: 0, volRatioT1: 0,
     });
     // 신호0 + 섹터약세(-10) + 신호가null(+5) = -5
     expect(result.raw).toBe(-5);
@@ -264,6 +266,7 @@ describe('calcCatalystScore', () => {
       sectorAvgChangePct: 0.5, stockChangePct: 2.0,
       stockRankInSector: 5, sectorStockCount: 30,
       signalPriceGapPct: 2.0,
+      volRatioToday: 0, volRatioT1: 0,
     });
     // 3소스(+25) + 섹터상위30%(+15 if rank/count <= 0.3) + 신호가+2%(+5)
     expect(result.raw).toBeGreaterThanOrEqual(30);
@@ -276,6 +279,7 @@ describe('calcCatalystScore', () => {
       sectorAvgChangePct: -0.5, stockChangePct: 2.0,
       stockRankInSector: 1, sectorStockCount: 30,
       signalPriceGapPct: null,
+      volRatioToday: 0, volRatioT1: 0,
     });
     // 1소스(+15) + 섹터약세but종목상승(+3) + null(+5) = 23
     expect(result.raw).toBe(23);
@@ -288,6 +292,7 @@ describe('calcCatalystScore', () => {
       sectorAvgChangePct: -2.0, stockChangePct: -1.0,
       stockRankInSector: 25, sectorStockCount: 30,
       signalPriceGapPct: 10.0, // 이미 상승 → 0점
+      volRatioToday: 0, volRatioT1: 0,
     });
     // 신호0 + 섹터약세(-10) + 신호가+10%(0) = -10 → norm 0
     expect(result.normalized).toBe(0);
@@ -452,5 +457,51 @@ describe('calcRiskPenalty', () => {
     // +12%(-20) + 3d누적(-20) + +10%+vol감소(-15) + 윗꼬리(-12) + 음봉전환(-10) + 급락(-12) + 신호가+12%(-20) + 유동성(-10) + 2일양봉(-15) = 134 → clamp 100
     expect(result.raw).toBe(100);
     expect(result.normalized).toBe(100);
+  });
+});
+
+describe('calcCatalystScore — 거래량 폭증', () => {
+  const noSignalBase = {
+    todayBuySources: 0,
+    daysSinceLastBuy: 999,
+    sectorRank: null,
+    sectorCount: 20,
+    sectorAvgChangePct: 0,
+    stockChangePct: 4.0,
+    stockRankInSector: null,
+    sectorStockCount: 30,
+    signalPriceGapPct: null,
+    volRatioToday: 0,
+    volRatioT1: 0,
+  };
+
+  it('신호 없음 + 거래량 0 → normalized 낮음 (<30)', () => {
+    const result = calcCatalystScore(noSignalBase);
+    expect(result.normalized).toBeLessThan(30);
+  });
+
+  it('오늘 거래량 921% (단일, T-1=170%) → normalized >= 50', () => {
+    const result = calcCatalystScore({ ...noSignalBase, volRatioToday: 9.21, volRatioT1: 1.7 });
+    // d=45 (today>=7.0 AND T-1>=2.0), b=8 (섹터평균이상), c=5 (신호없음)
+    // raw = 0+8+5+45 = 58, normalized = (58+10)/110*100 ≈ 61.8
+    expect(result.normalized).toBeGreaterThanOrEqual(50);
+  });
+
+  it('오늘 661% + 전날 868% (양일 연속 500%+) → normalized >= 55', () => {
+    const result = calcCatalystScore({ ...noSignalBase, volRatioToday: 6.61, volRatioT1: 8.68 });
+    // d=55, raw = 0+8+5+55 = 68, normalized = (68+10)/110*100 ≈ 70.9
+    expect(result.normalized).toBeGreaterThanOrEqual(55);
+  });
+
+  it('거래량 200% — 폭증 보너스 없음 (0점)', () => {
+    const low = calcCatalystScore({ ...noSignalBase, volRatioToday: 2.0 });
+    const high = calcCatalystScore({ ...noSignalBase, volRatioToday: 5.0 });
+    expect(high.normalized).toBeGreaterThan(low.normalized);
+  });
+
+  it('거래량 300% → normalized >= 30', () => {
+    const result = calcCatalystScore({ ...noSignalBase, volRatioToday: 3.0 });
+    // d=20, raw = 0+8+5+20 = 33, normalized = (33+10)/110*100 ≈ 39.1
+    expect(result.normalized).toBeGreaterThanOrEqual(30);
   });
 });
