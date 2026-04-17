@@ -388,6 +388,9 @@ export async function generateShortTermRecommendations(
         ? volSlice.reduce((sum: number, p: { volume: number }) => sum + p.volume, 0) / volSlice.length
         : 0;
     const volumeRatio = avgVol > 0 ? todayVolume / avgVol : 1;
+    // 전일 거래량 비율 (20일 평균 대비) — 거래량 폭증 연속성 감지용
+    const yesterdayVolume = (yesterday?.volume as number) ?? 0;
+    const volRatioT1 = avgVol > 0 ? yesterdayVolume / avgVol : 0;
 
     // 3일 누적 수익률
     const cumReturn3d = threeDaysAgoPrice
@@ -469,6 +472,7 @@ export async function generateShortTermRecommendations(
       cumReturn3d,
       hasTodayCandle: isLatestToday,
       todayBuySources,
+      volumeRatio,
     };
 
     const preFilterResult = applyPreFilter(preFilterInput);
@@ -517,6 +521,8 @@ export async function generateShortTermRecommendations(
       stockRankInSector,
       sectorStockCount,
       signalPriceGapPct,
+      volRatioToday: volumeRatio,
+      volRatioT1,
     };
     const catalyst = calcCatalystScore(catalystInput);
 
