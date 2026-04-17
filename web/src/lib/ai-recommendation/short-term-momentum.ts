@@ -84,7 +84,11 @@ interface BadgeInput {
 function generateBadges(input: BadgeInput): string[] {
   const badges: string[] = [];
 
-  if (input.volumeRatio >= 2) badges.push('🔥 거래량 폭발');
+  // 거래량 수준별 배지 (3배+ = 폭증 매집 신호, 2배 = 단순 폭발)
+  if (input.volumeRatio >= 7) badges.push('🔥🔥 거래량 초폭증');
+  else if (input.volumeRatio >= 5) badges.push('🔥 거래량 대폭증');
+  else if (input.volumeRatio >= 3) badges.push('🔥 거래량 폭증');
+  else if (input.volumeRatio >= 2) badges.push('🔥 거래량 폭발');
   if (input.sectorRank !== null && input.sectorRank <= 3) badges.push('📈 섹터 강세');
 
   const foreignBuy = (input.foreignNet ?? 0) > 0;

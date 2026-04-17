@@ -290,7 +290,11 @@ function getShortTermBadges(item: StockRankItem): { label: string; variant: Badg
   const in_ = item.institution_net_qty ?? 0;
   const pct = item.price_change_pct ?? 0;
 
-  if (vr >= 2) badges.push({ label: `거래량${vr.toFixed(1)}배`, variant: 'red' });
+  // 거래량 수준별 배지 (3배+ = 폭증 매집, 2배 = 단순 폭발)
+  if (vr >= 7) badges.push({ label: `거래량${vr.toFixed(0)}배↑↑`, variant: 'red' });
+  else if (vr >= 5) badges.push({ label: `거래량${vr.toFixed(1)}배↑↑`, variant: 'red' });
+  else if (vr >= 3) badges.push({ label: `거래량${vr.toFixed(1)}배↑`, variant: 'red' });
+  else if (vr >= 2) badges.push({ label: `거래량${vr.toFixed(1)}배`, variant: 'red' });
   if (fn > 0 && in_ > 0) {
     badges.push({ label: '동반매수', variant: 'orange' });
   } else {
@@ -323,6 +327,15 @@ function getShortTermBadges(item: StockRankItem): { label: string; variant: Badg
 function getRecommendReason(item: StockRankItem): string {
   const reasons: string[] = [];
   const pct = item.price_change_pct ?? 0;
+
+  // ── 거래량 폭증 매집 신호 (AI 신호 없이 거래량으로 추천된 종목) ──
+  const vr = item.volume_ratio ?? 0;
+  const hasAiSignal = (item.signal_count_30d ?? 0) > 0;
+  if (vr >= 5 && !hasAiSignal) {
+    reasons.push(`거래량 ${vr.toFixed(0)}배 폭증 — 매집 신호`);
+  } else if (vr >= 3 && !hasAiSignal) {
+    reasons.push(`거래량 ${vr.toFixed(1)}배 폭증`);
+  }
 
   // ── 차트 패턴 (타이밍 정보 포함) ──
   if (item.ai) {
@@ -407,7 +420,10 @@ function getRecommendReason(item: StockRankItem): string {
 
   // ── 부정적 근거 (단기 점수 기반 투명화) ──
   const stScoresForReason = computeShortTermScores(item);
-  if (stScoresForReason.supply <= 10 && !item.ai?.foreign_buying && !item.ai?.institution_buying) {
+  // 거래량 폭증이 추천 근거인 경우 수급 부재를 표시하지 않음
+  // (소형주는 수급 데이터가 구조적으로 없지만 거래량 폭증이 매집 신호임)
+  const isVolumeSurgeDriven = vr >= 3 && !hasAiSignal;
+  if (stScoresForReason.supply <= 10 && !item.ai?.foreign_buying && !item.ai?.institution_buying && !isVolumeSurgeDriven) {
     reasons.push('📉 수급 부재');
   }
   if (stScoresForReason.momentum <= 10) {
