@@ -266,6 +266,54 @@ describe('calcCatalystScore', () => {
   });
 });
 
+describe('applyPreFilter — 거래량 폭증 완화', () => {
+  const smallCap: PreFilterInput = {
+    priceChangePct: 4.0,
+    tradingValue: 10_0000_0000,   // 10억 (200억 미달)
+    closePosition: 0.35,
+    highPrice: 8500,
+    lowPrice: 8000,
+    foreignNet: null,
+    institutionNet: null,
+    daysSinceLastBuy: 999,        // 신호 없음
+    sectorStrong: false,
+    cumReturn3d: 7,
+    volumeRatio: 9.21,            // 921%
+  };
+
+  it('거래량 921% — 거래대금 미달이어도 통과', () => {
+    const result = applyPreFilter(smallCap);
+    expect(result.reasons).not.toContain('거래대금 미달');
+  });
+
+  it('거래량 921% — 종가위치 0.35여도 통과', () => {
+    const result = applyPreFilter(smallCap);
+    expect(result.reasons).not.toContain('종가위치 미달');
+  });
+
+  it('거래량 921% — 신호 없어도 촉매 통과', () => {
+    const result = applyPreFilter(smallCap);
+    expect(result.reasons).not.toContain('촉매 미달');
+  });
+
+  it('거래량 921% — 최종 통과', () => {
+    const result = applyPreFilter(smallCap);
+    expect(result.passed).toBe(true);
+  });
+
+  it('거래량 200% + 거래대금 미달 — 여전히 탈락', () => {
+    const result = applyPreFilter({ ...smallCap, volumeRatio: 2.0 });
+    expect(result.passed).toBe(false);
+    expect(result.reasons).toContain('거래대금 미달');
+  });
+
+  it('거래량 600% + 종가위치 0.28 — 탈락 (0.3 미만)', () => {
+    const result = applyPreFilter({ ...smallCap, volumeRatio: 6.0, closePosition: 0.28 });
+    expect(result.passed).toBe(false);
+    expect(result.reasons).toContain('종가위치 미달');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 밸류에이션 스코어 테스트
 // ---------------------------------------------------------------------------

@@ -36,6 +36,8 @@ export interface PreFilterInput {
   hasTodayCandle?: boolean;
   /** 오늘 BUY 소스 수 (0~3, 촉매 강도 판단용) */
   todayBuySources?: number;
+  /** 당일 거래량 / 20일 평균 거래량 (1.0 = 평균, 3.0 = 3배) */
+  volumeRatio?: number;
 }
 
 export interface PreFilterResult {
@@ -47,6 +49,12 @@ export interface PreFilterResult {
 
 /** 최소 거래대금 기준: 200억 원 */
 const TRADING_VALUE_MIN = 200_0000_0000;
+/** 거래량 폭증 시 거래대금 면제 기준 (300% 이상) */
+const VOL_RATIO_TRADING_VALUE_EXEMPT = 3.0;
+/** 거래량 대폭증 시 종가위치 완화 기준 (500% 이상) */
+const VOL_RATIO_CLOSE_POS_RELAX = 5.0;
+/** 거래량 폭증을 촉매로 인정하는 기준 (300% 이상) */
+const VOL_RATIO_CATALYST = 3.0;
 
 /**
  * 1차 필터를 적용하여 종목의 초단기 모멘텀 후보 자격을 판정한다.
@@ -62,6 +70,11 @@ export function applyPreFilter(input: PreFilterInput): PreFilterResult {
     input.highPrice === input.lowPrice ? 1.0 : input.closePosition;
 
   const hasCandle = input.hasTodayCandle !== false;
+
+  // 거래량 폭증 여부 판단
+  const volRatio = input.volumeRatio ?? 0;
+  const isVolSurge = volRatio >= VOL_RATIO_TRADING_VALUE_EXEMPT;
+  const isVolLargeSurge = volRatio >= VOL_RATIO_CLOSE_POS_RELAX;
 
   // 촉매 강도 판단: BUY 소스 2개 이상 또는 섹터 강세이면 "강한 촉매"
   const strongCatalyst = (input.todayBuySources ?? 0) >= 2 || input.sectorStrong;
@@ -80,12 +93,13 @@ export function applyPreFilter(input: PreFilterInput): PreFilterResult {
   }
 
   // 2. 거래대금 검증 (200억 고정 — 유동성 리스크 방지)
-  if (hasCandle && input.tradingValue < TRADING_VALUE_MIN) {
+  //    거래량 300%+ 폭증 시 면제 (거래량 자체가 유동성을 보증)
+  if (hasCandle && input.tradingValue < TRADING_VALUE_MIN && !isVolSurge) {
     reasons.push('거래대금 미달');
   }
 
-  // 3. 종가 위치 검증 — 강한 촉매 시 0.4로 완화 (0.3은 음봉전환 리스크)
-  const closePosMin = strongCatalyst ? 0.4 : 0.5;
+  // 3. 종가 위치 검증 — 강한 촉매 시 0.4로 완화, 거래량 500%+ 시 0.3으로 완화
+  const closePosMin = isVolLargeSurge ? 0.3 : strongCatalyst ? 0.4 : 0.5;
   if (hasCandle && closePos < closePosMin) {
     reasons.push('종가위치 미달');
   }
@@ -104,8 +118,8 @@ export function applyPreFilter(input: PreFilterInput): PreFilterResult {
     reasons.push('과열');
   }
 
-  // 6. 촉매 검증 (최근 3일 내 BUY 신호 또는 섹터 강세)
-  const hasCatalyst = input.daysSinceLastBuy <= 3 || input.sectorStrong;
+  // 6. 촉매 검증 (최근 3일 내 BUY 신호 또는 섹터 강세 또는 거래량 300%+ 폭증)
+  const hasCatalyst = input.daysSinceLastBuy <= 3 || input.sectorStrong || isVolSurge;
   if (!hasCatalyst) {
     reasons.push('촉매 미달');
   }
