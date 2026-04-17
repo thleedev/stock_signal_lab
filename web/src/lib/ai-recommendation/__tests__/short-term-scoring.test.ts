@@ -482,7 +482,7 @@ describe('calcCatalystScore — 거래량 폭증', () => {
 
   it('오늘 거래량 921% (단일, T-1=170%) → normalized >= 50', () => {
     const result = calcCatalystScore({ ...noSignalBase, volRatioToday: 9.21, volRatioT1: 1.7 });
-    // d=45 (today>=7.0 AND T-1>=2.0), b=8 (섹터평균이상), c=5 (신호없음)
+    // d=45 (today=9.21>=7.0 AND T-1=1.7>=1.5), b=8 (섹터평균이상), c=5 (신호없음)
     // raw = 0+8+5+45 = 58, normalized = (58+10)/110*100 ≈ 61.8
     expect(result.normalized).toBeGreaterThanOrEqual(50);
   });

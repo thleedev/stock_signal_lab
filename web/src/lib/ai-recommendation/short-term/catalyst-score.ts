@@ -161,14 +161,14 @@ function calcSignalPricePositionScore(
  *       전날·전전날 거래량이 20일 평균의 3배 이상이었음.
  *
  * - 양일 연속 500%+ (today >= 5.0 AND T-1 >= 5.0): 55점
- * - 오늘 700%+ + 전날 200%+ (today >= 7.0 AND T-1 >= 2.0): 45점
+ * - 오늘 700%+ + 전날 150%+ (today >= 7.0 AND T-1 >= 1.5): 45점
  * - 오늘 500%+ 단일 (today >= 5.0): 35점
  * - 오늘 300%+ (today >= 3.0): 20점
  * - 기준 미달: 0점
  */
 function calcVolumeSurgeScore(volRatioToday: number, volRatioT1: number): number {
   if (volRatioToday >= 5.0 && volRatioT1 >= 5.0) return 55;
-  if (volRatioToday >= 7.0 && volRatioT1 >= 2.0) return 45;
+  if (volRatioToday >= 7.0 && volRatioT1 >= 1.5) return 45;
   if (volRatioToday >= 5.0) return 35;
   if (volRatioToday >= 3.0) return 20;
   return 0;
