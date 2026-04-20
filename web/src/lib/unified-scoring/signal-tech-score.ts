@@ -68,6 +68,21 @@ export function calcSignalTechScore(input: ScoringInput, styleId: string): Categ
     }
   }
 
+  // 신호 후 모멘텀 확인 보너스 (0~15)
+  // 신호 발생 7일 이내에 실제 가격이 상승 중이면 신호 적중 확인으로 가점
+  if (sigCount >= 1 && input.latestSignalDaysAgo !== null && input.latestSignalDaysAgo <= 7) {
+    if (input.latestSignalPrice && input.currentPrice && input.latestSignalPrice > 0) {
+      const signalGap = ((input.currentPrice - input.latestSignalPrice) / input.latestSignalPrice) * 100;
+      if (signalGap >= 3 && signalGap <= 15) {
+        raw += 15;
+        reasons.push({ label: '신호 후 모멘텀 확인', points: 15, detail: `신호 대비 +${signalGap.toFixed(1)}% (${input.latestSignalDaysAgo}일)`, met: true });
+      } else if (signalGap > 0 && signalGap < 3) {
+        raw += 8;
+        reasons.push({ label: '신호 후 소폭 상승', points: 8, detail: `신호 대비 +${signalGap.toFixed(1)}%`, met: true });
+      }
+    }
+  }
+
   // ── 기술 트렌드 파트 (0~60) ──
   // daily_prices 기반 기술적 지표 계산
   const prices = input.dailyPrices;
@@ -118,6 +133,10 @@ export function calcSignalTechScore(input: ScoringInput, styleId: string): Categ
       } else if (rsi > 50 && rsi <= 70) {
         raw += 5;
         reasons.push({ label: 'RSI 중립', points: 5, detail: `RSI ${rsi.toFixed(1)}`, met: true });
+      } else if (rsi > 70 && rsi <= 80) {
+        // RSI 70~80: 과매수이지만 강한 추세 구간 — 완전 0점 대신 소폭 가점
+        raw += 3;
+        reasons.push({ label: 'RSI 강세 추세', points: 3, detail: `RSI ${rsi.toFixed(1)}`, met: true });
       } else {
         reasons.push({ label: 'RSI 매수구간', points: 0, detail: `RSI ${rsi?.toFixed(1) ?? 'N/A'}`, met: false });
       }

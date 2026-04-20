@@ -7,7 +7,7 @@ import type { MarketCapTier } from '@/lib/ai-recommendation/market-cap-tier';
 export type CategoryKey = 'signalTech' | 'supply' | 'valueGrowth' | 'momentum' | 'risk';
 
 /** 트레이딩 스타일 ID */
-export type StyleId = 'balanced' | 'supply' | 'value' | 'momentum' | 'contrarian';
+export type StyleId = 'balanced' | 'supply' | 'value' | 'momentum' | 'contrarian' | 'signal';
 
 /** 종목 등급 */
 export type Grade = 'A+' | 'A' | 'B+' | 'B' | 'C' | 'D';

@@ -18,13 +18,18 @@ export function calcRiskScore(input: ScoringInput, styleId = 'balanced'): Catego
   const prices = input.dailyPrices;
   const closes = prices.map(p => p.close);
 
+  // AI 신호 활성 여부: 최근 3일 이내 다중소스(2+) BUY 신호
+  const hasActiveSignal = (input.latestSignalDaysAgo ?? 999) <= 3
+    && (input.signalSources?.length ?? 0) >= 2;
+
   // ── 기술적 과열 (최대 40) ──
+  let technicalOverheat = 0;
 
   // RSI > 70: -15
   if (closes.length >= 15) {
     const rsi = calcRSI14(closes);
     if (rsi !== null && rsi > 70) {
-      raw += 15;
+      technicalOverheat += 15;
       reasons.push({ label: '과매수 (RSI>70)', points: -15, detail: `RSI ${rsi.toFixed(1)}`, met: false });
     } else {
       reasons.push({ label: '과매수 없음', points: 0, detail: `RSI ${rsi?.toFixed(1) ?? 'N/A'}`, met: true });
@@ -35,7 +40,7 @@ export function calcRiskScore(input: ScoringInput, styleId = 'balanced'): Catego
   if (closes.length >= 6) {
     const return5d = ((closes[0] - closes[5]) / closes[5]) * 100;
     if (return5d > 15) {
-      raw += 15;
+      technicalOverheat += 15;
       reasons.push({ label: '급등 (5일 >15%)', points: -15, detail: `${return5d.toFixed(1)}%`, met: false });
     } else {
       reasons.push({ label: '급등 없음', points: 0, detail: `5일 ${return5d.toFixed(1)}%`, met: true });
@@ -48,7 +53,7 @@ export function calcRiskScore(input: ScoringInput, styleId = 'balanced'): Catego
     if (sma20 > 0) {
       const disparity = ((closes[0] - sma20) / sma20) * 100;
       if (disparity > 10) {
-        raw += 10;
+        technicalOverheat += 10;
         reasons.push({ label: '이격도 과열', points: -10, detail: `${disparity.toFixed(1)}%`, met: false });
       }
     }
@@ -61,10 +66,20 @@ export function calcRiskScore(input: ScoringInput, styleId = 'balanced'): Catego
     const variance = slice.reduce((sum, v) => sum + (v - mean) ** 2, 0) / 20;
     const upper = mean + 2 * Math.sqrt(variance);
     if (closes[0] > upper) {
-      raw += 5;
+      technicalOverheat += 5;
       reasons.push({ label: '볼린저 상단 이탈', points: -5, detail: `종가 ${closes[0]} > 상단 ${upper.toFixed(0)}`, met: false });
     }
   }
+
+  // AI 신호 활성 시 기술적 과열 감점 50% 감면
+  // 다중 소스 신호 직후의 급등/RSI 과매수는 과열이 아닌 모멘텀 확인일 가능성
+  if (hasActiveSignal && technicalOverheat > 0) {
+    const discount = Math.floor(technicalOverheat * 0.5);
+    technicalOverheat -= discount;
+    reasons.push({ label: 'AI신호 활성 감면', points: discount, detail: `최근 다중소스 신호 → 과열 감점 50% 감면 (-${discount}점)`, met: true });
+  }
+
+  raw += technicalOverheat;
 
   // ── 수급 이탈 (최대 25) ──
   // 역발상 과매도형: 외국인+기관 매도는 바닥 포착 기회 → 패널티 없음

@@ -32,6 +32,12 @@ export const STYLE_PRESETS: StylePreset[] = [
     description: '바닥 포착 + 수급 전환',
     weights: { signalTech: 35, supply: 25, valueGrowth: 15, momentum: 10, risk: 15 },
   },
+  {
+    id: 'signal',
+    name: 'AI 신호 추종형',
+    description: 'AI 매수신호 + 단기 모멘텀 중심',
+    weights: { signalTech: 35, supply: 10, valueGrowth: 5, momentum: 35, risk: 15 },
+  },
 ];
 
 export function getPreset(id: StyleId): StylePreset {
@@ -41,6 +47,11 @@ export function getPreset(id: StyleId): StylePreset {
 /** 역발상 과매도형인지 확인 */
 export function isContrarianStyle(styleId: string): boolean {
   return styleId === 'contrarian';
+}
+
+/** AI 신호 추종형인지 확인 */
+export function isSignalStyle(styleId: string): boolean {
+  return styleId === 'signal';
 }
 
 /** 가중치 유효성 검증 */

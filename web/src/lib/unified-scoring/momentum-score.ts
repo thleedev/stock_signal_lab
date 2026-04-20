@@ -110,6 +110,15 @@ export function calcMomentumScore(input: ScoringInput, styleId = 'balanced'): Ca
     }
   }
 
+  // 거래량·가격 동시 급등 시너지 (0~10)
+  // 거래량 폭증과 가격 급등이 동시에 발생 = 매집 후 폭발 패턴
+  if (input.volumeRatio !== null && input.priceChangePct !== null) {
+    if (input.volumeRatio > 2.0 && input.priceChangePct >= 3) {
+      raw += 10;
+      reasons.push({ label: '거래량·가격 동시 급등', points: 10, detail: `거래량 ${input.volumeRatio.toFixed(1)}배 × 등락 +${input.priceChangePct.toFixed(1)}%`, met: true });
+    }
+  }
+
   // 연속 상승 (0~5): 2일 연속 양봉 (실제 최대 합계 90→100 보정)
   if (prices.length >= 3) {
     const isConsecutiveUp = prices[0].close > prices[1].close && prices[1].close > prices[2].close;
