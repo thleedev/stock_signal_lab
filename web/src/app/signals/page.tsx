@@ -8,6 +8,7 @@ import { extractSignalPrice } from "@/lib/signal-constants";
 import { SignalFilterBar } from "./signal-filter-bar";
 import RecommendationView from "@/components/signals/RecommendationView";
 import { HotThemesBanner } from "@/components/signals/HotThemesBanner";
+import { CollectingBanner } from "@/components/signals/CollectingBanner";
 import type { WatchlistGroup } from "@/types/stock";
 
 export const dynamic = 'force-dynamic';
@@ -218,6 +219,8 @@ export default async function SignalsPage({
               </div>
             }
           />
+          <CollectingBanner />
+
           {/* 필터 한 줄: 날짜·소스·주도주 */}
           <div className="flex items-center gap-2 flex-wrap mb-2">
             <SignalFilterBar dates={last7} selectedDate={selectedDate} activeSource={activeSource} />

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { PageHeader } from '@/components/ui';
 import { StockAnalysisSection } from './StockAnalysisSection';
+import { CollectingBanner } from './CollectingBanner';
 import type { WatchlistGroup } from '@/types/stock';
 
 interface Props {
@@ -38,6 +39,8 @@ export default function RecommendationView({
           </div>
         }
       />
+
+      <CollectingBanner />
 
       <StockAnalysisSection
         initialDateMode={initialDateMode}
