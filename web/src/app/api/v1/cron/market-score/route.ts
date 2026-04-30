@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
     valueMap[row.indicator_type] = Number(row.value);
   }
 
-  const { riskIndex, dangerCount, validCount } = calculateRiskIndex(valueMap);
+  const { riskIndex, breakdown, dangerCount, validCount } = calculateRiskIndex(valueMap);
 
   // 2) 향후 30일 이벤트 → event_risk_score
   const { data: events, error: evError } = await supabase
@@ -61,23 +61,25 @@ export async function GET(request: NextRequest) {
 
   const eventRiskScore = calculateEventRiskScore((events ?? []) as MarketEvent[]);
 
-  // 3) 오늘자 market_score_history 행 (total_score 기존값 활용)
+  // 3) 오늘자 market_score_history 행 (total_score/breakdown 기존값 활용)
   const { data: existing } = await supabase
     .from('market_score_history')
-    .select('date, total_score')
+    .select('date, total_score, breakdown, weights_snapshot')
     .eq('date', today)
     .maybeSingle();
 
   const totalScore = existing?.total_score ?? 50;
   const combinedScore = calculateCombinedScore(Number(totalScore), eventRiskScore);
 
-  // 4) Upsert
+  // 4) Upsert (breakdown / weights_snapshot 은 NOT NULL — 기존값 또는 risk_index breakdown으로 채움)
   const { error: upsertError } = await supabase
     .from('market_score_history')
     .upsert(
       {
         date: today,
         total_score: totalScore,
+        breakdown: existing?.breakdown ?? breakdown,
+        weights_snapshot: existing?.weights_snapshot ?? {},
         event_risk_score: eventRiskScore,
         combined_score: combinedScore,
         risk_index: riskIndex,

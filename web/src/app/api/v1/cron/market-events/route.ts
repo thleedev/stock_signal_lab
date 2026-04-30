@@ -76,15 +76,25 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // 5) Upsert (event_date, event_type, title 유니크)
+  // 5) Dedupe — Postgres upsert는 한 statement 내 conflict key 중복을 허용하지 않음
+  const seen = new Map<string, EventRow>();
+  for (const r of rows) {
+    const key = `${r.event_date}|${r.event_type}|${r.title}`;
+    if (!seen.has(key)) seen.set(key, r);
+  }
+  const deduped = [...seen.values()];
+
+  // 6) Upsert (event_date, event_type, title 유니크)
   let inserted = 0;
+  const errors: string[] = [];
   const BATCH = 200;
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const batch = rows.slice(i, i + BATCH);
+  for (let i = 0; i < deduped.length; i += BATCH) {
+    const batch = deduped.slice(i, i + BATCH);
     const { error } = await supabase
       .from('market_events')
       .upsert(batch, { onConflict: 'event_date,event_type,title' });
     if (error) {
+      errors.push(error.message);
       console.error('[cron/market-events] upsert error:', error.message);
     } else {
       inserted += batch.length;
@@ -92,14 +102,16 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    success: true,
+    success: errors.length === 0,
     total: rows.length,
+    deduped: deduped.length,
     inserted,
+    errors,
     breakdown: {
       kr_holidays: krHolidaysSet.size,
       expiries: expiries.length,
       fomc: fomcDates.size,
       fallback: fallback.length,
     },
-  });
+  }, { status: errors.length ? 500 : 200 });
 }
