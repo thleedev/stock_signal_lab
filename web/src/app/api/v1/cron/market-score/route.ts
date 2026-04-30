@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
-import { calculateEventRiskScore, calculateCombinedScore } from '@/lib/market-score';
+import {
+  calculateEventRiskScore,
+  calculateCombinedScore,
+  calculateMarketScore,
+} from '@/lib/market-score';
 import { calculateRiskIndex } from '@/lib/market-thresholds';
 import type { MarketEvent } from '@/types/market-event';
+import type { IndicatorWeight } from '@/types/market';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -28,10 +33,15 @@ export async function GET(request: NextRequest) {
   in30.setDate(in30.getDate() + 30);
   const in30Str = in30.toISOString().slice(0, 10);
 
-  // 1) 최신 지표 값 (각 indicator_type 의 가장 최근 값)
+  // 1) 90일 윈도우 지표 (현재값 + min/max 산정)
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+  const sinceStr = since.toISOString().slice(0, 10);
+
   const { data: rawIndicators, error: indError } = await supabase
     .from('market_indicators')
     .select('indicator_type, value, date')
+    .gte('date', sinceStr)
     .order('date', { ascending: false });
 
   if (indError) {
@@ -39,14 +49,34 @@ export async function GET(request: NextRequest) {
   }
 
   const valueMap: Record<string, number> = {};
-  const seen = new Set<string>();
+  const minMaxMap: Record<string, { current: number; min90d: number; max90d: number }> = {};
   for (const row of rawIndicators ?? []) {
-    if (seen.has(row.indicator_type)) continue;
-    seen.add(row.indicator_type);
-    valueMap[row.indicator_type] = Number(row.value);
+    const t = row.indicator_type as string;
+    const v = Number(row.value);
+    if (!Number.isFinite(v)) continue;
+    if (!(t in valueMap)) valueMap[t] = v; // 첫 행이 가장 최근(desc 정렬)
+    const cur = minMaxMap[t];
+    if (!cur) {
+      minMaxMap[t] = { current: v, min90d: v, max90d: v };
+    } else {
+      cur.min90d = Math.min(cur.min90d, v);
+      cur.max90d = Math.max(cur.max90d, v);
+    }
+  }
+  // current 보정: 첫 row가 desc 첫 행이므로 valueMap[t] 가 곧 current
+  for (const t of Object.keys(minMaxMap)) {
+    minMaxMap[t].current = valueMap[t];
   }
 
-  const { riskIndex, breakdown, dangerCount, validCount } = calculateRiskIndex(valueMap);
+  const { riskIndex, breakdown: riskBreakdown, dangerCount, validCount } = calculateRiskIndex(valueMap);
+
+  // 1-1) total_score 계산 (가중치 + 90일 정규화)
+  const { data: weightRows } = await supabase.from('indicator_weights').select('*');
+  const weights = ((weightRows ?? []) as IndicatorWeight[]);
+  const { totalScore: computedTotal, breakdown: scoreBreakdown } =
+    calculateMarketScore(minMaxMap, weights);
+  const weightsSnapshot: Record<string, number> = {};
+  for (const w of weights) weightsSnapshot[w.indicator_type] = w.weight;
 
   // 2) 향후 30일 이벤트 → event_risk_score
   const { data: events, error: evError } = await supabase
@@ -61,25 +91,20 @@ export async function GET(request: NextRequest) {
 
   const eventRiskScore = calculateEventRiskScore((events ?? []) as MarketEvent[]);
 
-  // 3) 오늘자 market_score_history 행 (total_score/breakdown 기존값 활용)
-  const { data: existing } = await supabase
-    .from('market_score_history')
-    .select('date, total_score, breakdown, weights_snapshot')
-    .eq('date', today)
-    .maybeSingle();
-
-  const totalScore = existing?.total_score ?? 50;
+  // 3) 오늘자 행: 항상 새로 계산한 total_score / breakdown 사용
+  const totalScore = weights.length > 0 ? computedTotal : 50;
+  const finalBreakdown = weights.length > 0 ? scoreBreakdown : riskBreakdown;
   const combinedScore = calculateCombinedScore(Number(totalScore), eventRiskScore);
 
-  // 4) Upsert (breakdown / weights_snapshot 은 NOT NULL — 기존값 또는 risk_index breakdown으로 채움)
+  // 4) Upsert (breakdown / weights_snapshot NOT NULL)
   const { error: upsertError } = await supabase
     .from('market_score_history')
     .upsert(
       {
         date: today,
         total_score: totalScore,
-        breakdown: existing?.breakdown ?? breakdown,
-        weights_snapshot: existing?.weights_snapshot ?? {},
+        breakdown: finalBreakdown,
+        weights_snapshot: weightsSnapshot,
         event_risk_score: eventRiskScore,
         combined_score: combinedScore,
         risk_index: riskIndex,
