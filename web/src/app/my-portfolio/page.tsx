@@ -348,30 +348,30 @@ export default function MyPortfolioPage() {
         title="포트 종목"
         subtitle="포트폴리오 관리"
         action={
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-2 sm:gap-5 flex-wrap">
             <div className="text-right">
               <div className="text-[10px] text-[var(--muted)]">현재수익률</div>
-              <div className={`text-lg font-bold tabular-nums ${isCurrentPositive ? "text-red-400" : "text-blue-400"}`}>
+              <div className={`text-sm sm:text-lg font-bold tabular-nums ${isCurrentPositive ? "text-red-400" : "text-blue-400"}`}>
                 {isCurrentPositive ? "+" : ""}{summary.current_return_pct.toFixed(1)}%
               </div>
             </div>
             <div className="text-right">
               <div className="text-[10px] text-[var(--muted)]">총수익률</div>
-              <div className={`text-lg font-bold tabular-nums ${isTotalPositive ? "text-red-400" : "text-blue-400"}`}>
+              <div className={`text-sm sm:text-lg font-bold tabular-nums ${isTotalPositive ? "text-red-400" : "text-blue-400"}`}>
                 {isTotalPositive ? "+" : ""}{summary.total_return_pct.toFixed(1)}%
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[10px] text-[var(--muted)]">보유 종목</div>
-              <div className="text-lg font-bold">{summary.holding_count}</div>
+              <div className="text-[10px] text-[var(--muted)]">보유</div>
+              <div className="text-sm sm:text-lg font-bold tabular-nums">{summary.holding_count}</div>
             </div>
             <div className="text-right">
-              <div className="text-[10px] text-[var(--muted)]">완료 거래</div>
-              <div className="text-lg font-bold">{summary.completed_trade_count}</div>
+              <div className="text-[10px] text-[var(--muted)]">거래</div>
+              <div className="text-sm sm:text-lg font-bold tabular-nums">{summary.completed_trade_count}</div>
             </div>
             <button
               onClick={() => setShowPerformance(true)}
-              className="p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg bg-[var(--card)] border border-[var(--border)] hover:border-[var(--accent)] transition-colors"
               title="포트 성과 비교"
             >
               <BarChart3 className="w-4 h-4 text-[var(--muted)]" />
@@ -392,7 +392,7 @@ export default function MyPortfolioPage() {
       </div>
 
       {/* 검색 바 */}
-      <div className="card p-4" ref={dropdownRef}>
+      <div className="card p-3 sm:p-4" ref={dropdownRef}>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]" />
           <input
@@ -498,7 +498,7 @@ export default function MyPortfolioPage() {
                           <div className="text-[10px] text-amber-400">AI 매도신호</div>
                         )}
                       </td>
-                      <td className="hidden md:table-cell px-3 py-2.5 text-[var(--muted)] text-xs">
+                      <td className="hidden md:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-[var(--muted)] text-xs">
                         {h.symbol}
                       </td>
                       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(live?.price_change ?? null)}`}>
@@ -507,10 +507,10 @@ export default function MyPortfolioPage() {
                       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(change)}`}>
                         {formatPercent(change)}
                       </td>
-                      <td className="hidden sm:table-cell px-3 py-2.5 text-right tabular-nums">
+                      <td className="hidden sm:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-right tabular-nums">
                         {formatNumber(h.buy_price)}
                       </td>
-                      <td className="hidden md:table-cell px-3 py-2.5 text-right text-sm">
+                      <td className="hidden md:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-right text-sm">
                         {renderEditablePrice(
                           h,
                           "stop_price",
@@ -518,7 +518,7 @@ export default function MyPortfolioPage() {
                           nearStopLoss ? "text-blue-400 font-semibold" : "text-[var(--muted)]"
                         )}
                       </td>
-                      <td className="hidden md:table-cell px-3 py-2.5 text-right text-sm">
+                      <td className="hidden md:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-right text-sm">
                         {renderEditablePrice(
                           h,
                           "target_price",
@@ -555,7 +555,7 @@ export default function MyPortfolioPage() {
       {/* 종목 제거 확인 모달 */}
       {removeTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-xs mx-4 p-5">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-xs mx-4 p-4 sm:p-5">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-base font-bold">{removeTarget.name}</h3>
               <button onClick={() => setRemoveTarget(null)} className="p-1 rounded hover:bg-[var(--card-hover)]">

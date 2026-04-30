@@ -152,13 +152,13 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
   if (data.is_managed) riskItems.push("관리종목");
 
   return (
-    <div className="p-4 space-y-4">
-      <h3 className="text-lg font-semibold">AI 투자의견</h3>
+    <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
+      <h3 className="text-base sm:text-lg font-semibold">AI 투자의견</h3>
 
       {/* 총점 + 등급 + 추천 + 캐릭터 태그 */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 sm:gap-4">
         <div className="text-center">
-          <p className={`text-4xl font-bold tabular-nums ${gaugeColor}`}>
+          <p className={`text-3xl sm:text-4xl font-bold tabular-nums ${gaugeColor}`}>
             {score_total.toFixed(0)}
           </p>
           <p className="text-xs text-[var(--muted)]">/ 100</p>

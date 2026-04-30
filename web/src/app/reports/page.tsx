@@ -85,19 +85,19 @@ export default async function ReportsPage({
       <DateSelector basePath="/reports" selectedDate={selectedDate} />
 
       {/* 소스별 요약 카드 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         {(["lassi", "stockbot", "quant"] as const).map((src) => {
           const c = sourceCounts[src];
           return (
-            <div key={src} className="card p-5">
-              <div className="flex items-center gap-2 mb-3">
+            <div key={src} className="card p-3 sm:p-5">
+              <div className="flex items-center gap-2 mb-2 sm:mb-3">
                 <span className={`text-xs px-2 py-0.5 rounded border font-medium ${SOURCE_COLORS[src]}`}>
                   {SOURCE_LABELS[src]}
                 </span>
               </div>
-              <div className="text-3xl font-bold">{c.total}</div>
-              <div className="text-sm text-[var(--muted)] mt-1">건</div>
-              <div className="flex gap-4 mt-3 text-sm">
+              <div className="text-2xl sm:text-3xl font-bold tabular-nums">{c.total}</div>
+              <div className="text-xs sm:text-sm text-[var(--muted)] mt-1">건</div>
+              <div className="flex gap-3 sm:gap-4 mt-2 sm:mt-3 text-xs sm:text-sm">
                 <span className="price-up font-medium">매수 {c.buy}</span>
                 <span className="price-down font-medium">매도 {c.sell}</span>
               </div>
@@ -113,7 +113,7 @@ export default async function ReportsPage({
             <span className="text-lg">💰</span>
             <h2 className="font-semibold">투자자 매매동향</h2>
           </div>
-          <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="p-3 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
             {trends.kospi && <TrendTable market="KOSPI" data={trends.kospi} />}
             {trends.kosdaq && <TrendTable market="KOSDAQ" data={trends.kosdaq} />}
           </div>
@@ -123,9 +123,9 @@ export default async function ReportsPage({
       {/* AI 일간 분석 - 섹션별 */}
       {aiSections.length > 0 && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg">🤖</span>
-            <h2 className="text-xl font-bold">AI 일간 분석</h2>
+            <h2 className="text-lg sm:text-xl font-bold">AI 일간 분석</h2>
             {reportSummary?.market_score != null && (
               <span className={`ml-auto text-sm font-medium px-3 py-1 rounded-lg ${
                 Number(reportSummary.market_score) >= 60
@@ -190,7 +190,7 @@ export default async function ReportsPage({
         ) : (
           <div className="divide-y divide-[var(--border)]">
             {(signals ?? []).map((s: Record<string, string>) => (
-              <div key={s.id} className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors">
+              <div key={s.id} className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap hover:bg-[var(--card-hover)] transition-colors">
                 <span className={`text-xs px-2 py-0.5 rounded font-medium whitespace-nowrap ${
                   (BUY_SIGNAL_TYPES as readonly string[]).includes(s.signal_type)
                     ? "bg-red-900/30 text-red-400"

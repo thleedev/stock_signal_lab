@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -13,6 +13,13 @@ export const metadata: Metadata = {
   description: "키움증권 AI 서비스 3종 신호 수집 및 분석 플랫폼",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ko">
@@ -21,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="min-h-screen">
             <Sidebar />
             <main className="md:pl-60 pb-20 md:pb-0">
-              <div className="max-w-7xl mx-auto px-4 py-6">
+              <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
                 {children}
               </div>
             </main>

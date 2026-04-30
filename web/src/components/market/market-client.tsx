@@ -110,24 +110,24 @@ function RiskAlertBanner({
 
   return (
     <div
-      className="card p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4"
+      className="card p-3 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4"
       style={{ borderColor: interp.color + "60", background: interp.color + "08" }}
     >
-      <Icon className="w-10 h-10 shrink-0" style={{ color: interp.color }} />
-      <div className="flex-1">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-2xl font-bold" style={{ color: interp.color }}>
+      <Icon className="w-8 h-8 sm:w-10 sm:h-10 shrink-0" style={{ color: interp.color }} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <span className="text-xl sm:text-2xl font-bold" style={{ color: interp.color }}>
             {interp.label}
           </span>
           <span
-            className="text-3xl font-black tabular-nums"
+            className="text-2xl sm:text-3xl font-black tabular-nums"
             style={{ color: interp.color }}
           >
             {riskIndex.toFixed(1)}
           </span>
-          <span className="text-sm text-[var(--muted)]">/ 100</span>
+          <span className="text-xs sm:text-sm text-[var(--muted)]">/ 100</span>
         </div>
-        <p className="text-sm text-[var(--muted)] mt-1">
+        <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
           {validCount}개 지표 중 {dangerCount}개가 위험 구간 · {interp.action}
         </p>
       </div>
@@ -146,10 +146,10 @@ function SummaryCard({
   color: string;
 }) {
   return (
-    <div className="card p-4">
+    <div className="card p-3 sm:p-4">
       <div className="text-xs text-[var(--muted)] mb-1">{title}</div>
-      <div className="text-xl font-bold tabular-nums" style={{ color }}>{value}</div>
-      <div className="text-xs text-[var(--muted)] mt-1">{sub}</div>
+      <div className="text-lg sm:text-xl font-bold tabular-nums" style={{ color }}>{value}</div>
+      <div className="text-[11px] sm:text-xs text-[var(--muted)] mt-1">{sub}</div>
     </div>
   );
 }
@@ -169,33 +169,33 @@ const IndicatorCard = React.memo(function IndicatorCard({
   const thresholdLabel = level !== null ? getRiskThresholdLabel(ind.indicator_type, level) : null;
 
   return (
-    <div className="px-4 py-3 flex items-center gap-3 flex-wrap hover:bg-[var(--card-hover)] transition-colors">
+    <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap hover:bg-[var(--card-hover)] transition-colors">
       {/* 레벨 배지 */}
-      <div className="w-14 shrink-0">
+      <div className="w-12 sm:w-14 shrink-0">
         {level !== null ? <RiskBadge level={level} /> : (
           <span className="text-xs text-[var(--muted)]">-</span>
         )}
       </div>
 
       {/* 지표명 */}
-      <div className="flex-1 min-w-[6rem]">
-        <span className="text-sm font-medium">{t?.label ?? ind.indicator_type}</span>
-        <span className="text-xs text-[var(--muted)] ml-1.5">{ind.indicator_type}</span>
+      <div className="flex-1 min-w-[5rem] sm:min-w-[6rem]">
+        <span className="text-xs sm:text-sm font-medium">{t?.label ?? ind.indicator_type}</span>
+        <span className="text-[11px] sm:text-xs text-[var(--muted)] ml-1 sm:ml-1.5">{ind.indicator_type}</span>
       </div>
 
       {/* 현재값 */}
-      <span className="text-sm font-bold tabular-nums">
+      <span className="text-xs sm:text-sm font-bold tabular-nums">
         {formatValue(ind.indicator_type, ind.value)}
       </span>
 
       {/* 변화율 */}
-      <span className={`text-xs tabular-nums ${isUp ? "text-red-400" : isDown ? "text-blue-400" : "text-[var(--muted)]"}`}>
+      <span className={`text-[11px] sm:text-xs tabular-nums ${isUp ? "text-red-400" : isDown ? "text-blue-400" : "text-[var(--muted)]"}`}>
         {changePct > 0 ? "+" : ""}{changePct.toFixed(2)}%
       </span>
 
       {/* 임계값 기준 */}
       {thresholdLabel && (
-        <span className="text-xs text-[var(--muted)] ml-auto">기준: {thresholdLabel}</span>
+        <span className="text-[11px] sm:text-xs text-[var(--muted)] sm:ml-auto">기준: {thresholdLabel}</span>
       )}
     </div>
   );
@@ -209,7 +209,7 @@ function RiskHistoryChart({ history }: {
   const reversed = [...history].reverse();
   return (
     <div className="card p-4 overflow-x-auto">
-      <div className="flex items-end gap-1 h-40 min-w-[600px]">
+      <div className="flex items-end gap-1 h-40 min-w-[420px] sm:min-w-[600px]">
         {reversed.map((entry) => {
           const val = entry.risk_index ?? null;
           if (val === null) return (
@@ -237,7 +237,7 @@ function RiskHistoryChart({ history }: {
           );
         })}
       </div>
-      <div className="flex gap-1 mt-2 min-w-[600px]">
+      <div className="flex gap-1 mt-2 min-w-[420px] sm:min-w-[600px]">
         {reversed.map((entry, i) => (
           <div key={entry.date} className="flex-1 text-center">
             {i % 5 === 0 && (
@@ -403,7 +403,7 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
       />
 
       {/* 요약 카드 3개 */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <SummaryCard
           title="위험 지표"
           value={`${dangerCount} / ${validCount}`}

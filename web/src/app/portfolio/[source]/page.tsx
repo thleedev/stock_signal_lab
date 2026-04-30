@@ -98,7 +98,7 @@ export default async function SourcePortfolioPage({
           <a
             key={t.key}
             href={`/portfolio/${source}?type=${t.key}`}
-            className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border transition-colors ${
               execType === t.key
                 ? "bg-[var(--accent)] text-white border-[var(--accent)]"
                 : "bg-[var(--card)] text-[var(--muted)] border-[var(--border)] hover:bg-[var(--card-hover)]"
@@ -110,7 +110,7 @@ export default async function SourcePortfolioPage({
       </div>
 
       {/* 일시 vs 분할 비교 카드 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         {[
           { snap: lumpSnap, label: "일시매매", key: "lump" },
           { snap: splitSnap, label: "분할매매", key: "split" },
@@ -120,14 +120,14 @@ export default async function SourcePortfolioPage({
           return (
             <div
               key={key}
-              className={`rounded-lg border border-[var(--border)] bg-[var(--card)] p-4 ${execType === key ? "ring-2 ring-[var(--accent)]" : ""}`}
+              className={`rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 sm:p-4 ${execType === key ? "ring-2 ring-[var(--accent)]" : ""}`}
             >
-              <div className="text-sm font-medium text-[var(--muted)]">{label}</div>
-              <div className="text-xl font-bold mt-1">{val.toLocaleString()}원</div>
-              <div className={`text-sm font-medium ${ret >= 0 ? "price-up" : "price-down"}`}>
+              <div className="text-xs sm:text-sm font-medium text-[var(--muted)]">{label}</div>
+              <div className="text-lg sm:text-xl font-bold mt-1 tabular-nums">{val.toLocaleString()}원</div>
+              <div className={`text-xs sm:text-sm font-medium ${ret >= 0 ? "price-up" : "price-down"}`}>
                 {ret >= 0 ? "+" : ""}{ret}%
               </div>
-              <div className="text-xs text-[var(--muted)] mt-1">
+              <div className="text-[11px] sm:text-xs text-[var(--muted)] mt-1">
                 보유 {snap?.holdings?.length ?? 0}종목
               </div>
             </div>
@@ -154,7 +154,7 @@ export default async function SourcePortfolioPage({
           <div className="p-8 text-center text-[var(--muted)]">보유 종목이 없습니다</div>
         ) : (
           <div className="divide-y divide-[var(--border)]">
-            <div className="px-4 py-2 grid grid-cols-5 text-xs text-[var(--muted)] font-medium">
+            <div className="hidden sm:grid px-4 py-2 grid-cols-5 text-xs text-[var(--muted)] font-medium">
               <span>종목</span>
               <span className="text-right">수량</span>
               <span className="text-right">평균단가</span>
@@ -165,15 +165,21 @@ export default async function SourcePortfolioPage({
               const curPrice = h.current_price ?? h.avg_price;
               const ret = ((curPrice - h.avg_price) / h.avg_price) * 100;
               return (
-                <div key={h.symbol} className="px-4 py-3 grid grid-cols-5 items-center">
-                  <div>
+                <div key={h.symbol} className="px-3 sm:px-4 py-2.5 sm:py-3 grid grid-cols-2 sm:grid-cols-5 gap-y-1 items-center">
+                  <div className="col-span-2 sm:col-span-1">
                     <Link href={`/stock/${h.symbol}`} className="font-medium text-sm hover:underline">{h.name}</Link>
                     <div className="text-xs text-[var(--muted)]">{h.symbol}</div>
                   </div>
-                  <div className="text-right text-sm">{h.quantity}</div>
-                  <div className="text-right text-sm">{h.avg_price.toLocaleString()}</div>
-                  <div className="text-right text-sm">{curPrice.toLocaleString()}</div>
-                  <div className={`text-right text-sm font-medium ${ret >= 0 ? "price-up" : "price-down"}`}>
+                  <div className="text-right text-xs sm:text-sm tabular-nums">
+                    <span className="sm:hidden text-[var(--muted)] mr-1">수량</span>{h.quantity}
+                  </div>
+                  <div className="text-right text-xs sm:text-sm tabular-nums">
+                    <span className="sm:hidden text-[var(--muted)] mr-1">평균</span>{h.avg_price.toLocaleString()}
+                  </div>
+                  <div className="text-right text-xs sm:text-sm tabular-nums">
+                    <span className="sm:hidden text-[var(--muted)] mr-1">현재</span>{curPrice.toLocaleString()}
+                  </div>
+                  <div className={`text-right text-xs sm:text-sm font-medium tabular-nums ${ret >= 0 ? "price-up" : "price-down"}`}>
                     {ret >= 0 ? "+" : ""}{ret.toFixed(1)}%
                   </div>
                 </div>
@@ -193,18 +199,18 @@ export default async function SourcePortfolioPage({
         ) : (
           <div className="divide-y divide-[var(--border)]">
             {(recentTrades ?? []).map((t) => (
-              <div key={t.id} className="px-4 py-3 flex items-center gap-3">
-                <span className={`text-xs px-2 py-0.5 rounded font-medium ${
+              <div key={t.id} className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap">
+                <span className={`text-[11px] sm:text-xs px-1.5 sm:px-2 py-0.5 rounded font-medium ${
                   t.side === "BUY" ? "bg-red-900/30 text-red-400" : "bg-blue-900/30 text-blue-400"
                 }`}>
                   {t.side === "BUY" ? "매수" : "매도"}
                 </span>
                 {t.split_seq && (
-                  <span className="text-xs text-[var(--muted)]">{t.split_seq}회차</span>
+                  <span className="text-[11px] sm:text-xs text-[var(--muted)]">{t.split_seq}회차</span>
                 )}
-                <span className="font-medium text-sm">{t.name ?? t.symbol}</span>
-                <span className="text-sm">{t.quantity}주 × {t.price.toLocaleString()}원</span>
-                <span className="ml-auto text-xs text-[var(--muted)]">
+                <span className="font-medium text-xs sm:text-sm truncate max-w-[8rem] sm:max-w-none">{t.name ?? t.symbol}</span>
+                <span className="text-xs sm:text-sm tabular-nums">{t.quantity}주 × {t.price.toLocaleString()}원</span>
+                <span className="ml-auto text-[11px] sm:text-xs text-[var(--muted)]">
                   {new Date(t.created_at).toLocaleDateString("ko-KR")}
                 </span>
               </div>

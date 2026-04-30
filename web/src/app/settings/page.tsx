@@ -63,32 +63,32 @@ export default async function SettingsPage() {
       {/* 1. 포트폴리오 설정 */}
       <section>
         <h2 className="text-lg font-semibold mb-3">포트폴리오 설정</h2>
-        <div className="card p-5">
+        <div className="card p-3 sm:p-5">
           <p className="text-xs text-[var(--muted)] mb-4">
             전략 엔진 기본 설정 (PORTFOLIO_CONFIG)
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <div>
               <div className="text-xs text-[var(--muted)]">소스당 초기자본</div>
-              <div className="text-lg font-bold mt-1">
+              <div className="text-base sm:text-lg font-bold mt-1 tabular-nums break-words">
                 {PORTFOLIO_CONFIG.INITIAL_CASH_PER_SOURCE.toLocaleString()}원
               </div>
             </div>
             <div>
               <div className="text-xs text-[var(--muted)]">전략당 자본</div>
-              <div className="text-lg font-bold mt-1">
+              <div className="text-base sm:text-lg font-bold mt-1 tabular-nums break-words">
                 {PORTFOLIO_CONFIG.CASH_PER_STRATEGY.toLocaleString()}원
               </div>
             </div>
             <div>
               <div className="text-xs text-[var(--muted)]">최대 포지션 비율</div>
-              <div className="text-lg font-bold mt-1">
+              <div className="text-base sm:text-lg font-bold mt-1 tabular-nums break-words">
                 {(PORTFOLIO_CONFIG.MAX_POSITION_RATIO * 100).toFixed(0)}%
               </div>
             </div>
             <div>
               <div className="text-xs text-[var(--muted)]">분할 횟수</div>
-              <div className="text-lg font-bold mt-1">
+              <div className="text-base sm:text-lg font-bold mt-1 tabular-nums break-words">
                 {PORTFOLIO_CONFIG.SPLIT_COUNT}회
               </div>
             </div>
@@ -199,7 +199,7 @@ export default async function SettingsPage() {
       {/* 5. 데이터 백업 */}
       <section>
         <h2 className="text-lg font-semibold mb-3">데이터 백업</h2>
-        <div className="card p-5">
+        <div className="card p-3 sm:p-5">
           <p className="text-sm text-[var(--muted)] mb-3">
             관심종목, 포트, 신호, 거래내역 등 핵심 데이터를 JSON 파일로 백업합니다.
           </p>

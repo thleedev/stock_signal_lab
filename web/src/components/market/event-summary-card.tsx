@@ -31,28 +31,28 @@ export function EventSummaryCard({ events, eventRiskScore, combinedScore, market
   return (
     <div className="space-y-4">
       {/* 3-스코어 요약 */}
-      <div className="grid grid-cols-3 gap-3">
-        <Link href="/market" className="card p-3 text-center hover:border-[var(--accent)] transition-colors">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <Link href="/market" className="card p-2 sm:p-3 text-center hover:border-[var(--accent)] transition-colors">
           <div className="text-xs text-[var(--muted)]">통합</div>
-          <div className="text-2xl font-bold mt-1" style={{ color: combinedInterp.color }}>
+          <div className="text-xl sm:text-2xl font-bold mt-1 tabular-nums" style={{ color: combinedInterp.color }}>
             {Math.round(combinedScore)}
           </div>
           <div className="text-xs mt-0.5" style={{ color: combinedInterp.color }}>
             {combinedInterp.label}
           </div>
         </Link>
-        <Link href="/market" className="card p-3 text-center hover:border-[var(--accent)] transition-colors">
+        <Link href="/market" className="card p-2 sm:p-3 text-center hover:border-[var(--accent)] transition-colors">
           <div className="text-xs text-[var(--muted)]">마켓</div>
-          <div className="text-2xl font-bold mt-1" style={{ color: marketInterp.color }}>
+          <div className="text-xl sm:text-2xl font-bold mt-1 tabular-nums" style={{ color: marketInterp.color }}>
             {Math.round(marketScore)}
           </div>
           <div className="text-xs mt-0.5" style={{ color: marketInterp.color }}>
             {marketInterp.label}
           </div>
         </Link>
-        <Link href="/market" className="card p-3 text-center hover:border-[var(--accent)] transition-colors">
+        <Link href="/market" className="card p-2 sm:p-3 text-center hover:border-[var(--accent)] transition-colors">
           <div className="text-xs text-[var(--muted)]">이벤트</div>
-          <div className="text-2xl font-bold mt-1" style={{ color: eventInterp.color }}>
+          <div className="text-xl sm:text-2xl font-bold mt-1 tabular-nums" style={{ color: eventInterp.color }}>
             {Math.round(eventRiskScore)}
           </div>
           <div className="text-xs mt-0.5" style={{ color: eventInterp.color }}>

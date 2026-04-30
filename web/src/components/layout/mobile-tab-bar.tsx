@@ -39,7 +39,7 @@ export function MobileTabBar() {
           onClick={() => setMoreOpen(false)}
         >
           <div
-            className="absolute bottom-14 left-0 right-0 bg-[#0d1117] border-t border-[var(--border)] p-3 grid grid-cols-6 gap-2"
+            className="absolute bottom-14 left-0 right-0 bg-[#0d1117] border-t border-[var(--border)] p-3 grid grid-cols-4 gap-2"
             onClick={(e) => e.stopPropagation()}
           >
             {MORE_TABS.map((item) => {

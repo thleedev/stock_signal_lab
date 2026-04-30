@@ -36,13 +36,13 @@ export function PanelHeader({
   const isUp = changeAmount >= 0;
 
   return (
-    <div className="sticky top-0 z-10 bg-[var(--card)] border-b border-[var(--border)] px-4 py-3">
-      <div className="flex items-start justify-between">
-        <div>
+    <div className="sticky top-0 z-10 bg-[var(--card)] border-b border-[var(--border)] px-3 sm:px-4 py-2.5 sm:py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
           {/* 종목명, 심볼, 등급 배지, 추천 텍스트 */}
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold">{name}</h2>
-            <span className="text-sm text-[var(--muted)]">{symbol}</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-base sm:text-lg font-bold truncate">{name}</h2>
+            <span className="text-xs sm:text-sm text-[var(--muted)]">{symbol}</span>
             {grade && (
               <span
                 className={`px-1.5 py-0.5 text-xs font-bold rounded ${
@@ -58,12 +58,12 @@ export function PanelHeader({
           </div>
 
           {/* 현재가 및 등락 */}
-          <div className="flex items-baseline gap-2 mt-1">
-            <span className="text-2xl font-bold">
+          <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+            <span className="text-xl sm:text-2xl font-bold tabular-nums">
               {currentPrice.toLocaleString()}원
             </span>
             <span
-              className={`text-sm font-medium ${
+              className={`text-xs sm:text-sm font-medium tabular-nums ${
                 isUp ? "text-[var(--buy)]" : "text-[var(--sell)]"
               }`}
             >

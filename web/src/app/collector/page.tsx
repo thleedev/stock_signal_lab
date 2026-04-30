@@ -50,11 +50,11 @@ export default async function CollectorPage() {
 
       {/* 기기 상태 카드 */}
       {devices.length === 0 ? (
-        <div className="card p-8 text-center text-[var(--muted)]">
+        <div className="card p-4 sm:p-8 text-center text-sm text-[var(--muted)]">
           등록된 수집기가 없습니다. 주식 신호 수집기 앱을 설치하고 실행해주세요.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {devices.map((d) => (
             <div
               key={d.device_id}
@@ -110,7 +110,7 @@ export default async function CollectorPage() {
         ) : (
           <div className="divide-y divide-[var(--border)]">
             {(recentSignals || []).map((s: Record<string, string>) => (
-              <div key={s.id} className="px-4 py-2.5 flex items-center gap-3 text-sm">
+              <div key={s.id} className="px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-wrap">
                 <span
                   className={`text-xs px-2 py-0.5 rounded font-medium ${
                     ["BUY", "BUY_FORECAST"].includes(s.signal_type)

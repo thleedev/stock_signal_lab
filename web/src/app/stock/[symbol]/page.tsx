@@ -123,9 +123,9 @@ export default async function StockDetailPage({
 
       {/* 투자지표 */}
       {stockCache && (
-        <div className="card p-4">
-          <h2 className="font-semibold mb-4">투자지표</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="card p-3 sm:p-4">
+          <h2 className="font-semibold mb-3 sm:mb-4 text-sm sm:text-base">투자지표</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
             {[
               { label: "PER", value: stockCache.per != null ? stockCache.per.toFixed(1) : "-", unit: "배" },
               { label: "PBR", value: stockCache.pbr != null ? stockCache.pbr.toFixed(2) : "-", unit: "배" },
@@ -176,7 +176,7 @@ export default async function StockDetailPage({
               return (
                 <div
                   key={s.id as string}
-                  className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors"
+                  className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap hover:bg-[var(--card-hover)] transition-colors"
                 >
                   {/* 신호 타입 */}
                   <SignalBadge type={s.signal_type as string} />
@@ -224,7 +224,7 @@ export default async function StockDetailPage({
               (t: Record<string, string | number | null>) => (
                 <div
                   key={t.id as string}
-                  className="px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors"
+                  className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap hover:bg-[var(--card-hover)] transition-colors"
                 >
                   {/* 매수/매도 */}
                   <span
@@ -270,16 +270,16 @@ export default async function StockDetailPage({
       </div>
 
       {/* 네비게이션 링크 */}
-      <div className="flex gap-3">
+      <div className="flex gap-2 sm:gap-3 flex-wrap">
         <Link
           href="/portfolio"
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors"
+          className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors"
         >
           포트폴리오
         </Link>
         <Link
           href="/signals"
-          className="px-4 py-2 rounded-lg text-sm font-medium border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors"
+          className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:bg-[var(--card-hover)] transition-colors"
         >
           신호 목록
         </Link>

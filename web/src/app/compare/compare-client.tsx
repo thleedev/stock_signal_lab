@@ -158,24 +158,24 @@ export default function CompareClient() {
 
       {/* 선택된 종목 헤더 */}
       {stocks.length > 0 && (
-        <div className={`grid gap-4 grid-cols-1 ${stocks.length >= 2 ? "md:grid-cols-2" : ""} ${stocks.length >= 3 ? "lg:grid-cols-3" : ""}`}>
+        <div className={`grid gap-3 sm:gap-4 grid-cols-1 ${stocks.length >= 2 ? "sm:grid-cols-2" : ""} ${stocks.length >= 3 ? "lg:grid-cols-3" : ""}`}>
           {stocks.map((stock) => (
-            <div key={stock.symbol} className="card p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="font-bold text-lg">{stock.name}</div>
+            <div key={stock.symbol} className="card p-3 sm:p-4">
+              <div className="flex items-start justify-between mb-2 gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-base sm:text-lg truncate">{stock.name}</div>
                   <div className="text-xs text-[var(--muted)]">{stock.symbol}</div>
                 </div>
                 <button
                   onClick={() => removeStock(stock.symbol)}
-                  className="p-1 hover:bg-[var(--card-hover)] rounded"
+                  className="p-1 hover:bg-[var(--card-hover)] rounded shrink-0"
                 >
                   <X className="w-4 h-4 text-[var(--muted)]" />
                 </button>
               </div>
               {stock.current_price && (
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xl font-bold">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="text-lg sm:text-xl font-bold tabular-nums">
                     {Number(stock.current_price).toLocaleString()}원
                   </span>
                   {stock.price_change_pct != null && (
@@ -203,9 +203,9 @@ export default function CompareClient() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[var(--background)]">
-                  <th className="text-left px-4 py-3 font-medium text-[var(--muted)]">지표</th>
+                  <th className="text-left px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium text-[var(--muted)]">지표</th>
                   {stocks.map((s) => (
-                    <th key={s.symbol} className="text-right px-4 py-3 font-medium">
+                    <th key={s.symbol} className="text-right px-3 sm:px-4 py-2 sm:py-3 text-xs sm:text-sm font-medium">
                       {s.name}
                     </th>
                   ))}

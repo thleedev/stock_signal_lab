@@ -47,18 +47,18 @@ function SentimentBanner({
   const c = SENTIMENT_CONFIG[overallLabel];
   return (
     <div
-      className="card p-5 flex items-center gap-4"
+      className="card p-3 sm:p-5 flex items-center gap-3 sm:gap-4"
       style={{ borderColor: c.color + "60", background: c.color + "08" }}
     >
       <SentimentIcon sentiment={overallLabel} />
-      <div className="flex-1">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xl font-bold" style={{ color: c.color }}>{c.label}</span>
-          <span className="text-2xl font-black tabular-nums" style={{ color: c.color }}>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <span className="text-lg sm:text-xl font-bold" style={{ color: c.color }}>{c.label}</span>
+          <span className="text-xl sm:text-2xl font-black tabular-nums" style={{ color: c.color }}>
             {overallSentiment > 0 ? "+" : ""}{overallSentiment.toFixed(2)}
           </span>
         </div>
-        <p className="text-sm text-[var(--muted)] mt-1">
+        <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
           {sectorCount}개 섹터 ETF 신호 기반 시장 센티먼트
         </p>
       </div>
@@ -75,12 +75,12 @@ function SectorCard({ sector }: { sector: SectorSentiment }) {
     <div className="border-b border-[var(--border)] last:border-b-0">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-[var(--card-hover)] transition-colors"
+        className="w-full px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 hover:bg-[var(--card-hover)] transition-colors"
       >
         <SentimentBadge sentiment={sector.sentiment} />
-        <span className="font-medium text-sm flex-1 text-left">{sector.label}</span>
+        <span className="font-medium text-xs sm:text-sm flex-1 text-left truncate">{sector.label}</span>
 
-        <div className="flex items-center gap-1 w-32">
+        <div className="flex items-center gap-1 w-20 sm:w-32 shrink-0">
           <div className="flex-1 h-2 rounded-full bg-[var(--border)] overflow-hidden">
             <div
               className="h-full rounded-full bg-emerald-500"

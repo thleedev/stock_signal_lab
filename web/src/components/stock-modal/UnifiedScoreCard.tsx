@@ -206,15 +206,15 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
   }, [data.symbol]);
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
 
       {/* ── 헤더: 총점 + 등급 | 레이더 | 추이 ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
 
         {/* 총점 + 등급 */}
         <div className="shrink-0 space-y-1.5">
           <div className="flex items-end gap-1">
-            <span className={`text-4xl font-bold tabular-nums leading-none ${scoreColor(data.score_total)}`}>
+            <span className={`text-3xl sm:text-4xl font-bold tabular-nums leading-none ${scoreColor(data.score_total)}`}>
               {Math.round(data.score_total)}
             </span>
             <span className="text-xs text-[var(--muted)] mb-0.5">/ 100</span>
@@ -224,7 +224,7 @@ export function UnifiedScoreCard({ data, history = [] }: Props) {
           </span>
           {/* 7일 추이 (점수 아래) */}
           {history.length > 1 && (
-            <div className="w-[120px] pt-1">
+            <div className="w-[100px] sm:w-[120px] pt-1">
               <span className="text-[10px] text-[var(--muted)]">7일 추이</span>
               <div className="h-[36px]">
                 <ResponsiveContainer width="100%" height="100%">

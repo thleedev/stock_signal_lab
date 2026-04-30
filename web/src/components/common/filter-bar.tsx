@@ -290,7 +290,7 @@ export function FilterBar({
           </button>
 
           {moreOpen && (
-            <div className="absolute top-full mt-1 left-0 z-50 w-52 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg p-3 space-y-2">
+            <div className="absolute top-full mt-1 left-0 z-50 w-52 max-w-[calc(100vw-1.5rem)] rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-lg p-3 space-y-2">
               {character && (
                 <LabeledSelect
                   label={character.label}

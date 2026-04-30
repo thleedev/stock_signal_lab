@@ -123,7 +123,7 @@ export default async function DashboardPage() {
       <DashboardRiskBanner riskIndex={riskIndex} />
 
       {/* 신호 3카드 + 시황 카드 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <SignalSummaryCard source="lassi" {...counts.lassi} />
         <SignalSummaryCard source="stockbot" {...counts.stockbot} />
         <SignalSummaryCard source="quant" {...counts.quant} />
@@ -135,7 +135,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* 관심종목 + 투자현황 + 가상PF */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="lg:col-span-2">
           <WatchlistWidget favorites={favorites ?? []} />
         </div>
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* 소스별 포트폴리오 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         <SourcePortfolioCard
           source="lassi"
           totalValue={lassiData.totalValue}

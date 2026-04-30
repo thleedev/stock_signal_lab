@@ -128,16 +128,16 @@ export default async function PortfolioPage({
       </div>
 
       {/* 총 평가액 */}
-      <div className="card p-6">
-        <div className="text-sm text-[var(--muted)]">총 평가액</div>
-        <div className="text-4xl font-bold mt-1">
+      <div className="card p-3 sm:p-6">
+        <div className="text-xs sm:text-sm text-[var(--muted)]">총 평가액</div>
+        <div className="text-2xl sm:text-4xl font-bold mt-1 tabular-nums">
           {totalValue.toLocaleString()}원
         </div>
-        <div className="flex gap-4 mt-2">
-          <span className={`text-sm font-medium ${cumReturn >= 0 ? "price-up" : "price-down"}`}>
+        <div className="flex gap-3 sm:gap-4 mt-2 flex-wrap">
+          <span className={`text-xs sm:text-sm font-medium ${cumReturn >= 0 ? "price-up" : "price-down"}`}>
             누적 {cumReturn >= 0 ? "+" : ""}{cumReturn}%
           </span>
-          <span className={`text-sm ${dailyReturn >= 0 ? "price-up" : "price-down"}`}>
+          <span className={`text-xs sm:text-sm ${dailyReturn >= 0 ? "price-up" : "price-down"}`}>
             오늘 {dailyReturn >= 0 ? "+" : ""}{dailyReturn}%
           </span>
         </div>
@@ -145,9 +145,9 @@ export default async function PortfolioPage({
 
       {/* 수익률 히스토리 (간단 바 차트) */}
       {history && history.length > 0 && (
-        <div className="card p-4">
-          <h2 className="font-semibold mb-3">일별 수익률 추이</h2>
-          <div className="flex items-end gap-1 h-32">
+        <div className="card p-3 sm:p-4">
+          <h2 className="font-semibold mb-2 sm:mb-3 text-sm sm:text-base">일별 수익률 추이</h2>
+          <div className="flex items-end gap-1 h-24 sm:h-32">
             {history.map((h) => {
               const val = h.cumulative_return_pct ?? 0;
               const maxAbs = Math.max(...history.map((x) => Math.abs(x.cumulative_return_pct ?? 0)), 1);
@@ -170,7 +170,7 @@ export default async function PortfolioPage({
       )}
 
       {/* AI별 성과 카드 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
         {(["lassi", "stockbot", "quant"] as const).map((src) => {
           const meta = SOURCE_META[src];
           const data = bySource[src];
@@ -182,19 +182,19 @@ export default async function PortfolioPage({
             <Link
               key={src}
               href={`/portfolio/${src}?type=${execType}`}
-              className={`rounded-lg border p-4 ${meta.color} hover:shadow-md transition-shadow`}
+              className={`rounded-lg border p-3 sm:p-4 ${meta.color} hover:shadow-md transition-shadow`}
             >
-              <div className="flex items-center gap-2 text-sm font-medium">
+              <div className="flex items-center gap-2 text-xs sm:text-sm font-medium">
                 <span className={`w-2.5 h-2.5 rounded-full ${SOURCE_DOT[src]}`} />
                 {meta.label}
               </div>
-              <div className="text-2xl font-bold mt-2">
+              <div className="text-xl sm:text-2xl font-bold mt-1 sm:mt-2 tabular-nums">
                 {value.toLocaleString()}원
               </div>
-              <div className={`text-sm font-medium mt-1 ${ret >= 0 ? "price-up" : "price-down"}`}>
+              <div className={`text-xs sm:text-sm font-medium mt-1 ${ret >= 0 ? "price-up" : "price-down"}`}>
                 {ret >= 0 ? "+" : ""}{ret}%
               </div>
-              <div className="text-xs text-[var(--muted)] mt-1">
+              <div className="text-[11px] sm:text-xs text-[var(--muted)] mt-1">
                 보유 {holdingsCount}종목 · 현금 {(data?.cash ?? PORTFOLIO_CONFIG.CASH_PER_STRATEGY).toLocaleString()}원
               </div>
             </Link>
@@ -203,15 +203,15 @@ export default async function PortfolioPage({
       </div>
 
       {/* AI별 보유 종목 상세 */}
-      <div className="space-y-4">
-        <h2 className="text-lg font-bold">AI별 보유 종목</h2>
+      <div className="space-y-3 sm:space-y-4">
+        <h2 className="text-base sm:text-lg font-bold">AI별 보유 종목</h2>
         {(["lassi", "stockbot", "quant"] as const).map((src) => {
           const meta = SOURCE_META[src];
           const holdings = holdingsBySource[src] ?? [];
 
           return (
             <div key={src} className={`card border ${meta.color} overflow-hidden`}>
-              <div className="px-4 py-3 border-b border-[var(--border)] flex items-center gap-2">
+              <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-[var(--border)] flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-full ${SOURCE_DOT[src]}`} />
                 <h3 className="font-semibold text-sm">{meta.label}</h3>
                 <span className="text-xs text-[var(--muted)] ml-auto">

@@ -170,7 +170,7 @@ export default function StockActionMenu({
           <div
             ref={menuRef}
             style={style}
-            className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl min-w-[200px] overflow-hidden"
+            className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl min-w-[180px] sm:min-w-[200px] max-w-[calc(100vw-1rem)] overflow-hidden"
           >
             {/* 헤더 */}
             <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
