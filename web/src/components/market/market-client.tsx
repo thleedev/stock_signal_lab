@@ -447,7 +447,7 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
         <h2 className="text-lg font-semibold mb-3">지표별 위험 현황</h2>
         <div className="card divide-y divide-[var(--border)] overflow-hidden">
           {sortedIndicators.map((ind) => {
-            const level = breakdown[ind.indicator_type]?.level ?? getRiskLevel(ind.indicator_type, ind.value);
+            const level = breakdown[ind.indicator_type]?.level ?? getRiskLevel(ind.indicator_type, ind.value, historyByType?.[ind.indicator_type]);
             return (
               <IndicatorCard key={ind.indicator_type} ind={ind} level={level} />
             );

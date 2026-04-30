@@ -33,10 +33,13 @@ export async function GET(request: NextRequest) {
   in30.setDate(in30.getDate() + 30);
   const in30Str = in30.toISOString().slice(0, 10);
 
-  // 1) 90일 윈도우 지표 (현재값 + min/max 산정)
+  // 1) 365일 윈도우 지표 (현재값 + 90일 min/max + 252일 history)
   const since = new Date();
-  since.setDate(since.getDate() - 90);
+  since.setDate(since.getDate() - 365);
   const sinceStr = since.toISOString().slice(0, 10);
+  const ninetyAgo = new Date();
+  ninetyAgo.setDate(ninetyAgo.getDate() - 90);
+  const ninetyAgoStr = ninetyAgo.toISOString().slice(0, 10);
 
   const { data: rawIndicators, error: indError } = await supabase
     .from('market_indicators')
@@ -50,17 +53,26 @@ export async function GET(request: NextRequest) {
 
   const valueMap: Record<string, number> = {};
   const minMaxMap: Record<string, { current: number; min90d: number; max90d: number }> = {};
+  const historyByType: Record<string, number[]> = {};
   for (const row of rawIndicators ?? []) {
     const t = row.indicator_type as string;
     const v = Number(row.value);
     if (!Number.isFinite(v)) continue;
     if (!(t in valueMap)) valueMap[t] = v; // 첫 행이 가장 최근(desc 정렬)
-    const cur = minMaxMap[t];
-    if (!cur) {
-      minMaxMap[t] = { current: v, min90d: v, max90d: v };
-    } else {
-      cur.min90d = Math.min(cur.min90d, v);
-      cur.max90d = Math.max(cur.max90d, v);
+
+    // 252일 history (drawdown_52w / ma200_diff 파생용)
+    if (!historyByType[t]) historyByType[t] = [];
+    if (historyByType[t].length < 252) historyByType[t].push(v);
+
+    // 90일 min/max는 90일 이내 값만 반영
+    if ((row.date as string) >= ninetyAgoStr) {
+      const cur = minMaxMap[t];
+      if (!cur) {
+        minMaxMap[t] = { current: v, min90d: v, max90d: v };
+      } else {
+        cur.min90d = Math.min(cur.min90d, v);
+        cur.max90d = Math.max(cur.max90d, v);
+      }
     }
   }
   // current 보정: 첫 row가 desc 첫 행이므로 valueMap[t] 가 곧 current
@@ -68,7 +80,8 @@ export async function GET(request: NextRequest) {
     minMaxMap[t].current = valueMap[t];
   }
 
-  const { riskIndex, breakdown: riskBreakdown, dangerCount, validCount } = calculateRiskIndex(valueMap);
+  const { riskIndex, breakdown: riskBreakdown, dangerCount, validCount } =
+    calculateRiskIndex(valueMap, historyByType);
 
   // 1-1) total_score 계산 (가중치 + 90일 정규화)
   const { data: weightRows } = await supabase.from('indicator_weights').select('*');

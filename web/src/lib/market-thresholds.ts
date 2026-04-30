@@ -17,6 +17,13 @@ export interface RiskThreshold {
   center?: number;
   /** 위험 지수 계산 시 이 지표의 중요도 가중치 */
   weight: number;
+  /**
+   * 절대 raw 값 대신 history 기반 파생값(%)으로 평가.
+   * - drawdown_52w: 52주 고점 대비 낙폭(%) — 음수일수록 깊은 조정
+   * - ma200_diff:   200일 이동평균 대비 이격도(%) — 양수일수록 과열
+   * 파생 평가가 설정된 지표는 history가 부족하면 위험도 계산에서 제외된다.
+   */
+  derive?: 'drawdown_52w' | 'ma200_diff';
 }
 
 export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
@@ -57,16 +64,18 @@ export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
     weight: 2,
   },
   KOSPI: {
-    label: 'KOSPI',
+    label: 'KOSPI 52주 고점 대비',
     direction: -1,
-    thresholds: [2600, 2400, 2200],
+    thresholds: [-7, -15, -25],
     weight: 2,
+    derive: 'drawdown_52w',
   },
   KOSDAQ: {
-    label: 'KOSDAQ',
+    label: 'KOSDAQ 52주 고점 대비',
     direction: -1,
-    thresholds: [800, 700, 600],
+    thresholds: [-10, -20, -30],
     weight: 1,
+    derive: 'drawdown_52w',
   },
   CNN_FEAR_GREED: {
     label: 'CNN 공포탐욕지수',
@@ -76,16 +85,18 @@ export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
     weight: 2,
   },
   EWY: {
-    label: 'EWY (한국 ETF)',
+    label: 'EWY 52주 고점 대비',
     direction: -1,
-    thresholds: [60, 52, 44],
+    thresholds: [-7, -15, -25],
     weight: 1,
+    derive: 'drawdown_52w',
   },
   GOLD: {
-    label: '금 현물가',
+    label: '금 200일 이격도',
     direction: 1,
-    thresholds: [2800, 3100, 3400],
+    thresholds: [10, 20, 30],
     weight: 1,
+    derive: 'ma200_diff',
   },
   HY_SPREAD: {
     label: 'HY 스프레드 (하이일드)',
@@ -105,32 +116,72 @@ export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
 const LEVEL_WEIGHTS: Record<RiskLevel, number> = { 0: 0, 1: 1, 2: 3, 3: 6 };
 
 /**
+ * derive 설정이 있으면 history 기반 파생값(%)으로 변환.
+ * history는 정렬 무관, 길이만 충분하면 됨 (drawdown은 50, ma200_diff는 50).
+ * 파생 불가(history 부족, ma=0 등)면 null 반환.
+ */
+export function deriveValue(
+  type: string,
+  value: number,
+  history: number[] | undefined
+): number | null {
+  const t = RISK_THRESHOLDS[type];
+  if (!t?.derive) return value;
+  if (!history || history.length < 50) return null;
+
+  if (t.derive === 'drawdown_52w') {
+    let max = value;
+    for (const v of history) if (v > max) max = v;
+    if (max <= 0) return null;
+    return ((value - max) / max) * 100;
+  }
+  if (t.derive === 'ma200_diff') {
+    const window = history.slice(0, 200);
+    if (window.length < 50) return null;
+    let sum = 0;
+    for (const v of window) sum += v;
+    const ma = sum / window.length;
+    if (ma === 0) return null;
+    return ((value - ma) / ma) * 100;
+  }
+  return null;
+}
+
+/**
  * 단일 지표의 위험 레벨 계산
  * value가 null/undefined이면 null 반환 (계산에서 제외)
+ * derive 설정이 있는 지표는 history가 필요하며, 부족하면 null 반환.
  */
-export function getRiskLevel(type: string, value: number | null | undefined): RiskLevel | null {
+export function getRiskLevel(
+  type: string,
+  value: number | null | undefined,
+  history?: number[]
+): RiskLevel | null {
   if (value == null) return null;
   const t = RISK_THRESHOLDS[type];
   if (!t) return null;
+
+  const evalValue = t.derive ? deriveValue(type, value, history) : value;
+  if (evalValue === null) return null;
 
   const [l1, l2, l3] = t.thresholds;
 
   if (t.direction === 0) {
     // 양극단 위험: center 기준 거리로 판단 (극공포 & 극탐욕 모두 위험)
-    const dist = Math.abs(value - (t.center ?? 50));
+    const dist = Math.abs(evalValue - (t.center ?? 50));
     if (dist >= l3) return 3;
     if (dist >= l2) return 2;
     if (dist >= l1) return 1;
     return 0;
   } else if (t.direction === 1) {
-    if (value >= l3) return 3;
-    if (value >= l2) return 2;
-    if (value >= l1) return 1;
+    if (evalValue >= l3) return 3;
+    if (evalValue >= l2) return 2;
+    if (evalValue >= l1) return 1;
     return 0;
   } else {
-    if (value < l3) return 3;
-    if (value < l2) return 2;
-    if (value < l1) return 1;
+    if (evalValue < l3) return 3;
+    if (evalValue < l2) return 2;
+    if (evalValue < l1) return 1;
     return 0;
   }
 }
@@ -143,6 +194,21 @@ export function getRiskThresholdLabel(type: string, level: RiskLevel): string {
   const t = RISK_THRESHOLDS[type];
   if (!t) return '';
   const [l1, l2, l3] = t.thresholds;
+
+  if (t.derive === 'drawdown_52w') {
+    // direction=-1, thresholds 음수 (예: -7, -15, -25)
+    if (level === 3) return `52주 고점 대비 ${l3}% 이하`;
+    if (level === 2) return `52주 고점 대비 ${l3}~${l2}%`;
+    if (level === 1) return `52주 고점 대비 ${l2}~${l1}%`;
+    return `52주 고점 대비 ${l1}% 이상`;
+  }
+  if (t.derive === 'ma200_diff') {
+    // direction=1, thresholds 양수 (예: 10, 20, 30)
+    if (level === 3) return `200일선 +${l3}% 이상`;
+    if (level === 2) return `200일선 +${l2}~+${l3}%`;
+    if (level === 1) return `200일선 +${l1}~+${l2}%`;
+    return `200일선 +${l1}% 미만`;
+  }
 
   const c = t.center ?? 50;
   if (t.direction === 0) {
@@ -191,6 +257,8 @@ export function getRelativeRiskLevel(
   if (!history || history.length < 30) return null;
   const t = RISK_THRESHOLDS[type];
   if (!t) return null;
+  // derive 지표는 이미 파생값 자체가 상대적이므로 분위수 보강을 적용하지 않음
+  if (t.derive) return null;
 
   // value 기준 percentile (0~100) 계산
   const sorted = [...history].sort((a, b) => a - b);
@@ -249,7 +317,7 @@ export function calculateRiskIndex(
 
   for (const [type, threshold] of Object.entries(RISK_THRESHOLDS)) {
     const value = values[type];
-    const absoluteLevel = getRiskLevel(type, value);
+    const absoluteLevel = getRiskLevel(type, value, history?.[type]);
     if (absoluteLevel === null || value == null) continue;
 
     const relativeLevel = history ? getRelativeRiskLevel(type, value, history[type]) : null;
