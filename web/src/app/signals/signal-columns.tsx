@@ -199,7 +199,7 @@ function SectorSummaryView({
                           <button
                             key={sig.symbol}
                             onClick={(e) => onStockClick(e, sig)}
-                            className="px-2.5 py-1 rounded-md text-sm bg-red-900/15 hover:bg-red-900/30 text-red-400 border border-red-800/30 transition-colors cursor-pointer"
+                            className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md text-xs sm:text-sm bg-red-900/15 hover:bg-red-900/30 text-red-400 border border-red-800/30 transition-colors cursor-pointer max-w-full truncate"
                           >
                             {sig.name}
                           </button>
@@ -212,7 +212,7 @@ function SectorSummaryView({
                           <button
                             key={sig.symbol}
                             onClick={(e) => onStockClick(e, sig)}
-                            className="px-2.5 py-1 rounded-md text-sm bg-blue-900/15 hover:bg-blue-900/30 text-blue-400 border border-blue-800/30 transition-colors cursor-pointer"
+                            className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md text-xs sm:text-sm bg-blue-900/15 hover:bg-blue-900/30 text-blue-400 border border-blue-800/30 transition-colors cursor-pointer max-w-full truncate"
                           >
                             {sig.name}
                           </button>
@@ -304,7 +304,7 @@ function IndustrySummaryView({
                     <button
                       key={sig.symbol}
                       onClick={(e) => onStockClick(e, sig)}
-                      className="px-2.5 py-1 rounded-md text-sm bg-red-900/15 hover:bg-red-900/30 text-red-400 border border-red-800/30 transition-colors cursor-pointer"
+                      className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md text-xs sm:text-sm bg-red-900/15 hover:bg-red-900/30 text-red-400 border border-red-800/30 transition-colors cursor-pointer max-w-full truncate"
                     >
                       {sig.name}
                     </button>
@@ -317,7 +317,7 @@ function IndustrySummaryView({
                     <button
                       key={sig.symbol}
                       onClick={(e) => onStockClick(e, sig)}
-                      className="px-2.5 py-1 rounded-md text-sm bg-blue-900/15 hover:bg-blue-900/30 text-blue-400 border border-blue-800/30 transition-colors cursor-pointer"
+                      className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md text-xs sm:text-sm bg-blue-900/15 hover:bg-blue-900/30 text-blue-400 border border-blue-800/30 transition-colors cursor-pointer max-w-full truncate"
                     >
                       {sig.name}
                     </button>

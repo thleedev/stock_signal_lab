@@ -177,7 +177,7 @@ export function AiOpinionCard({ data, scoreMode = 'standard', shortTermScores }:
               {characters.map((c) => (
                 <span
                   key={c}
-                  className="px-2 py-0.5 text-xs rounded-full bg-[var(--accent)]/20 text-[var(--accent)]"
+                  className="px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs rounded-full bg-[var(--accent)]/20 text-[var(--accent)] whitespace-nowrap"
                 >
                   {c}
                 </span>
