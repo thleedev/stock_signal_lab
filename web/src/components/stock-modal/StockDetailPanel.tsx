@@ -91,6 +91,7 @@ export function StockDetailPanel() {
 
   // 거래 모달 상태
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [portfolios, setPortfolios] = useState<Array<{ id: number; name: string; is_default: boolean }>>([]);
 
   // 실시간 시세
   const { prices: livePrices } = usePriceRefresh(modal ? [modal.symbol] : []);
@@ -351,7 +352,14 @@ export function StockDetailPanel() {
                 symbol={modal.symbol}
                 name={stockName}
                 currentPrice={currentPrice}
-                onAddClick={() => {
+                onAddClick={async () => {
+                  try {
+                    const res = await fetch("/api/v1/user-portfolio");
+                    const data = await res.json();
+                    setPortfolios(data.portfolios ?? []);
+                  } catch (e) {
+                    console.error("[StockDetailPanel] 포트폴리오 목록 조회 실패:", e);
+                  }
                   setTradeModalOpen(true);
                 }}
               />
@@ -373,7 +381,7 @@ export function StockDetailPanel() {
           initialSymbol={modal.symbol}
           initialName={stockName}
           initialPrice={currentPrice}
-          portfolios={[]}
+          portfolios={portfolios}
         />
       )}
     </>
