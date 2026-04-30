@@ -103,6 +103,23 @@ export default async function PortfolioPage({
     }
   }
 
+  // 보유 종목들의 종목추천 스코어 일괄 조회
+  const allHoldingSymbols = Array.from(
+    new Set(Object.values(holdingsBySource).flat().map((h) => h.symbol))
+  );
+  const scoreMap = new Map<string, number>();
+  if (allHoldingSymbols.length > 0) {
+    const { data: scoreRows } = await supabase
+      .from("stock_scores")
+      .select("symbol, score_total")
+      .in("symbol", allHoldingSymbols);
+    for (const row of scoreRows ?? []) {
+      if (typeof row.score_total === "number") {
+        scoreMap.set(row.symbol, row.score_total);
+      }
+    }
+  }
+
   return (
     <PageLayout>
       <PortfolioHeader lastPriceUpdate={lastPriceUpdate} />
@@ -232,6 +249,7 @@ export default async function PortfolioPage({
                       name={h.name}
                       quantity={h.quantity}
                       price={h.price}
+                      score={scoreMap.get(h.symbol) ?? null}
                     />
                   ))}
                 </div>
