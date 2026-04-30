@@ -18,6 +18,7 @@ import {
 } from "@/types/market";
 import type { MarketEvent } from "@/types/market-event";
 import { EventCalendar } from "./event-calendar";
+import { EventRiskBreakdown } from "./event-risk-breakdown";
 // 동적 임포트: ETF 센티먼트 섹션은 조건부 렌더링되므로 초기 번들에서 제외
 const EtfSentimentSection = dynamic(
   () => import("./etf-sentiment-section").then((mod) => mod.EtfSentimentSection),
@@ -453,6 +454,9 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
           })}
         </div>
       </section>
+
+      {/* 이벤트 리스크 상세 */}
+      <EventRiskBreakdown events={events} />
 
       {/* ETF 신호 기반 시장 센티먼트 */}
       {etfData && Object.keys(etfData.sectors).length > 0 && (

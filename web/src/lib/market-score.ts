@@ -139,17 +139,43 @@ export function calculateFearGreedIndex(
   return Math.round(vixComponent + deviationComponent + ratioComponent);
 }
 
+export interface EventRiskContribution {
+  event: MarketEvent;
+  daysUntil: number;
+  decay: number;
+  contribution: number; // |risk_score| * decay
+}
+
+export interface EventRiskBreakdown {
+  score: number;
+  rawPenalty: number;
+  cappedPenalty: number;
+  capped: boolean;
+  contributions: EventRiskContribution[];
+}
+
 /**
  * 이벤트 리스크 스코어 계산 (0~100, 100=리스크없음)
  */
 export function calculateEventRiskScore(events: MarketEvent[], baseDate?: Date): number {
+  return calculateEventRiskBreakdown(events, baseDate).score;
+}
+
+/**
+ * 이벤트 리스크 스코어 + 이벤트별 기여도 분해
+ */
+export function calculateEventRiskBreakdown(
+  events: MarketEvent[],
+  baseDate?: Date
+): EventRiskBreakdown {
   const today = baseDate ?? new Date();
   const todayStr = today.toISOString().slice(0, 10);
-  let totalPenalty = 0;
+  const todayDate = new Date(todayStr + 'T00:00:00');
+  const contributions: EventRiskContribution[] = [];
+  let rawPenalty = 0;
 
   for (const event of events) {
     const eventDate = new Date(event.event_date + 'T00:00:00');
-    const todayDate = new Date(todayStr + 'T00:00:00');
     const daysUntil = Math.round((eventDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
 
     if (daysUntil < 0) continue;
@@ -160,11 +186,25 @@ export function calculateEventRiskScore(events: MarketEvent[], baseDate?: Date):
                 : daysUntil <= 7 ? 0.2
                 : 0;
 
-    totalPenalty += Math.abs(event.risk_score) * decay;
+    if (decay === 0) continue;
+
+    const contribution = Math.abs(event.risk_score) * decay;
+    contributions.push({ event, daysUntil, decay, contribution });
+    rawPenalty += contribution;
   }
 
-  totalPenalty = Math.min(totalPenalty, 80);
-  return Math.max(0, Math.min(100, 100 - totalPenalty));
+  contributions.sort((a, b) => b.contribution - a.contribution);
+
+  const cappedPenalty = Math.min(rawPenalty, 80);
+  const score = Math.max(0, Math.min(100, 100 - cappedPenalty));
+
+  return {
+    score,
+    rawPenalty: Math.round(rawPenalty * 100) / 100,
+    cappedPenalty: Math.round(cappedPenalty * 100) / 100,
+    capped: rawPenalty > 80,
+    contributions,
+  };
 }
 
 /**
