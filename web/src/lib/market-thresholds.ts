@@ -167,7 +167,7 @@ export interface RiskIndexResult {
   /** 0~100, 높을수록 위험 */
   riskIndex: number;
   /** 위험 레벨 breakdown */
-  breakdown: Record<string, { level: RiskLevel; value: number }>;
+  breakdown: Record<string, { level: RiskLevel; value: number; absoluteLevel: RiskLevel; relativeLevel: RiskLevel | null }>;
   /** 데이터 있는 지표 수 */
   validCount: number;
   /** 위험(2) 이상 지표 수 */
@@ -175,27 +175,92 @@ export interface RiskIndexResult {
 }
 
 /**
+ * 252일 롤링 분포 기반 상대 위험 레벨
+ * direction=1: 상위 percentile일수록 위험 (≥75=주의, ≥90=위험, ≥97=극위험)
+ * direction=-1: 하위 percentile일수록 위험 (≤25=주의, ≤10=위험, ≤3=극위험)
+ * direction=0: 중앙값 거리 기준 (절대 함수와 동일하게 center 거리 percentile)
+ *
+ * history: 해당 지표의 과거 값 배열 (정렬 무관, 최소 30개 이상 필요)
+ */
+export function getRelativeRiskLevel(
+  type: string,
+  value: number | null | undefined,
+  history: number[] | undefined
+): RiskLevel | null {
+  if (value == null) return null;
+  if (!history || history.length < 30) return null;
+  const t = RISK_THRESHOLDS[type];
+  if (!t) return null;
+
+  // value 기준 percentile (0~100) 계산
+  const sorted = [...history].sort((a, b) => a - b);
+  const n = sorted.length;
+  let count = 0;
+  for (const v of sorted) {
+    if (v <= value) count++;
+    else break;
+  }
+  const percentile = (count / n) * 100;
+
+  if (t.direction === 1) {
+    if (percentile >= 97) return 3;
+    if (percentile >= 90) return 2;
+    if (percentile >= 75) return 1;
+    return 0;
+  } else if (t.direction === -1) {
+    if (percentile <= 3) return 3;
+    if (percentile <= 10) return 2;
+    if (percentile <= 25) return 1;
+    return 0;
+  } else {
+    // 양극단: |value - center| 의 분포에서 현재 거리의 percentile
+    const center = t.center ?? 50;
+    const dists = sorted.map((v) => Math.abs(v - center)).sort((a, b) => a - b);
+    const dCurrent = Math.abs(value - center);
+    let dCount = 0;
+    for (const d of dists) {
+      if (d <= dCurrent) dCount++;
+      else break;
+    }
+    const dp = (dCount / dists.length) * 100;
+    if (dp >= 97) return 3;
+    if (dp >= 90) return 2;
+    if (dp >= 75) return 1;
+    return 0;
+  }
+}
+
+/**
  * 전체 위험 지수 계산 (0~100, 높을수록 위험)
  * 데이터 없는 지표는 분자/분모 모두에서 제외
+ *
+ * history(252일치 등)를 함께 전달하면 절대 임계값과 상대 분위수의
+ * 더 위험한 쪽을 채택하는 하이브리드 모드로 동작한다.
  */
 export function calculateRiskIndex(
-  values: Record<string, number | null | undefined>
+  values: Record<string, number | null | undefined>,
+  history?: Record<string, number[] | undefined>
 ): RiskIndexResult {
   let weightedSum = 0;
   let maxPossible = 0;
   let validCount = 0;
   let dangerCount = 0;
-  const breakdown: Record<string, { level: RiskLevel; value: number }> = {};
+  const breakdown: Record<string, { level: RiskLevel; value: number; absoluteLevel: RiskLevel; relativeLevel: RiskLevel | null }> = {};
 
   for (const [type, threshold] of Object.entries(RISK_THRESHOLDS)) {
     const value = values[type];
-    const level = getRiskLevel(type, value);
-    if (level === null || value == null) continue;
+    const absoluteLevel = getRiskLevel(type, value);
+    if (absoluteLevel === null || value == null) continue;
+
+    const relativeLevel = history ? getRelativeRiskLevel(type, value, history[type]) : null;
+    const level = (relativeLevel != null
+      ? (Math.max(absoluteLevel, relativeLevel) as RiskLevel)
+      : absoluteLevel);
 
     validCount++;
     weightedSum += LEVEL_WEIGHTS[level] * threshold.weight;
     maxPossible += LEVEL_WEIGHTS[3] * threshold.weight; // 6 × weight
-    breakdown[type] = { level, value };
+    breakdown[type] = { level, value, absoluteLevel, relativeLevel };
     if (level >= 2) dangerCount++;
   }
 

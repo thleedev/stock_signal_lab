@@ -8,6 +8,16 @@ import { PageLayout, PageHeader } from "@/components/ui";
 import { PortfolioTabs } from "./components/portfolio-tabs";
 import { TradeModal } from "./components/trade-modal";
 import { PerformanceChart } from "./components/performance-chart";
+import { calcGrade } from "@/lib/unified-scoring/types";
+
+function getGradeStyle(score: number): { badge: string; label: string } {
+  if (score >= 90) return { badge: "bg-red-600 text-white",       label: "적극매수" };
+  if (score >= 80) return { badge: "bg-red-500 text-white",       label: "매수"     };
+  if (score >= 65) return { badge: "bg-orange-400 text-white",    label: "관심"     };
+  if (score >= 50) return { badge: "bg-yellow-400 text-gray-900", label: "보통"     };
+  if (score >= 35) return { badge: "bg-gray-400 text-white",      label: "관망"     };
+  return                   { badge: "bg-gray-600 text-gray-200",  label: "주의"     };
+}
 
 interface Portfolio {
   id: number;
@@ -30,6 +40,7 @@ interface Holding {
   note: string | null;
   bought_at: string;
   latest_signal: { type: string; source: string; date: string } | null;
+  score_total: number | null;
 }
 
 interface Summary {
@@ -452,6 +463,7 @@ export default function MyPortfolioPage() {
                 <tr className="border-b border-[var(--border)] text-[var(--muted)] text-xs">
                   <th className="px-3 py-3 text-left">종목명</th>
                   <th className="hidden md:table-cell px-3 py-3 text-left">코드</th>
+                  <th className="hidden sm:table-cell px-3 py-3 text-center">등급</th>
                   <th className="px-3 py-3 text-right">현재가</th>
                   <th className="px-3 py-3 text-right">등락률</th>
                   <th className="hidden sm:table-cell px-3 py-3 text-right">매수가</th>
@@ -500,6 +512,18 @@ export default function MyPortfolioPage() {
                       </td>
                       <td className="hidden md:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-[var(--muted)] text-xs">
                         {h.symbol}
+                      </td>
+                      <td className="hidden sm:table-cell px-2 sm:px-3 py-2 sm:py-2.5 text-center">
+                        {typeof h.score_total === "number" ? (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-bold tabular-nums ${getGradeStyle(h.score_total).badge}`}
+                            title={`${getGradeStyle(h.score_total).label} · ${Math.round(h.score_total)}점`}
+                          >
+                            {calcGrade(h.score_total)}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--muted)] text-xs">-</span>
+                        )}
                       </td>
                       <td className={`px-3 py-2.5 text-right font-medium tabular-nums ${priceColor(live?.price_change ?? null)}`}>
                         {formatNumber(currentPrice)}

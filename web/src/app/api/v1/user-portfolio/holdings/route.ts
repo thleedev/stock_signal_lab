@@ -137,6 +137,18 @@ export async function GET(request: Request) {
     .order("timestamp", { ascending: false })
     .limit(symbols.length * 3);
 
+  // 3-2. 종목추천 스코어 조회
+  const { data: scoreRows } = await supabase
+    .from("stock_scores")
+    .select("symbol, score_total")
+    .in("symbol", symbols);
+  const scoreMap = new Map<string, number>();
+  for (const row of scoreRows ?? []) {
+    if (typeof row.score_total === "number") {
+      scoreMap.set(row.symbol, row.score_total);
+    }
+  }
+
   const signalMap = new Map<string, { type: string; source: string; date: string }>();
   for (const sig of signalsData ?? []) {
     if (!signalMap.has(sig.symbol)) {
@@ -170,6 +182,7 @@ export async function GET(request: Request) {
       bought_at: buy.created_at,
       price_as_of: current?.asOf ?? null,
       latest_signal: signal ?? null,
+      score_total: scoreMap.get(buy.symbol) ?? null,
     };
   });
 

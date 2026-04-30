@@ -83,6 +83,24 @@ export async function GET() {
       }
     }
 
+    // 카테고리 매핑 (DB 기반 보정 - 정규식 fallback 보다 우선)
+    const categoryMap = new Map<string, { sector: string; side: 'bull' | 'bear' | null; excluded: boolean }>();
+    if (symbols.length > 0) {
+      const { data: maps } = await supabase
+        .from('etf_category_map')
+        .select('symbol, sector, side, excluded')
+        .in('symbol', symbols);
+      if (maps) {
+        for (const m of maps) {
+          categoryMap.set(m.symbol, {
+            sector: m.sector,
+            side: (m.side as 'bull' | 'bear' | null) ?? null,
+            excluded: !!m.excluded,
+          });
+        }
+      }
+    }
+
     // realName 변환 후 중복 제거 (잘린 이름 + 전체 이름이 같은 종목으로 매핑되는 경우)
     const classifiedEtfs: ClassifiedEtf[] = [];
     const seenRealNames = new Set<string>();
@@ -91,8 +109,12 @@ export async function GET() {
       if (seenRealNames.has(realName)) continue;
       seenRealNames.add(realName);
 
-      const { type, side, typeWeight } = classifyEtfType(realName);
-      const sector = extractSector(realName);
+      const override = info.symbol ? categoryMap.get(info.symbol) : undefined;
+      if (override?.excluded) continue;
+
+      const { type, side: detectedSide, typeWeight } = classifyEtfType(realName);
+      const side = override?.side ?? detectedSide;
+      const sector = override?.sector ?? extractSector(realName);
       const held = BUY_TYPES.includes(info.signalType);
       const marketCap = info.symbol ? (marketCapMap.get(info.symbol) ?? null) : null;
 

@@ -89,17 +89,15 @@ export async function fetchHolidays(
 }
 
 /**
- * fallback 경제캘린더 로드
+ * fallback 경제캘린더 로드 (정적 번들 - Vercel/Next.js 호환)
  */
 export async function loadFallbackEconomicEvents(): Promise<
   Array<{ date: string; type: EventType; title: string; country: string }>
 > {
   try {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const filePath = path.join(process.cwd(), '..', 'data', 'economic-calendar.json');
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content);
+    const mod = await import('@/data/economic-calendar.json');
+    const data = (mod.default ?? mod) as Array<{ date: string; type: EventType; title: string; country: string }>;
+    return data;
   } catch {
     return [];
   }

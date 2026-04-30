@@ -38,6 +38,7 @@ interface Props {
   indicators: IndicatorRow[];
   scoreHistory: Pick<MarketScoreHistory, "date" | "total_score" | "event_risk_score" | "combined_score" | "risk_index">[];
   events: MarketEvent[];
+  historyByType?: Record<string, number[]>;
 }
 
 // ─── 아이콘 매핑 ────────────────────────────────────────
@@ -252,7 +253,7 @@ function RiskHistoryChart({ history }: {
 
 // ─── 메인 컴포넌트 ──────────────────────────────────────
 
-export function MarketClient({ indicators: initialIndicators, scoreHistory, events }: Props) {
+export function MarketClient({ indicators: initialIndicators, scoreHistory, events, historyByType }: Props) {
   const [indicators, setIndicators] = useState(initialIndicators);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -348,10 +349,10 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
     return m;
   }, [indicators]);
 
-  // 위험 지수 계산
+  // 위험 지수 계산 (절대 임계값 + 252일 분위수 하이브리드)
   const { riskIndex, breakdown, validCount, dangerCount } = useMemo(
-    () => calculateRiskIndex(valueMap),
-    [valueMap]
+    () => calculateRiskIndex(valueMap, historyByType),
+    [valueMap, historyByType]
   );
 
   // 이벤트 리스크
