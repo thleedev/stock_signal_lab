@@ -3,6 +3,8 @@ package com.dashboardstock.collector.service
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 
 /**
@@ -24,12 +26,28 @@ class SignalTimeUpdateReceiver : BroadcastReceiver() {
 
         Log.i(TAG, "Signal time update alarm triggered")
 
-        val a11y = KiwoomAccessibilityService.instance
-        if (a11y != null) {
-            Log.i(TAG, "Starting update-mode scraping")
-            a11y.startScraping(isUpdate = true)
+        val lassi = KiwoomAccessibilityService.instance
+        if (lassi != null) {
+            Log.i(TAG, "Starting update-mode scraping (라씨)")
+            // 라씨 완료 후 알파캐치 순차 실행 (영웅문 동시 진입 방지)
+            val originalCallback = KiwoomAccessibilityService.onScrapingResult
+            KiwoomAccessibilityService.onScrapingResult = { buy, sell, ok, err ->
+                originalCallback?.invoke(buy, sell, ok, err)
+                KiwoomAccessibilityService.onScrapingResult = originalCallback
+                Handler(Looper.getMainLooper()).postDelayed({
+                    val ac = AlphaCatchAccessibilityService.instance
+                    if (ac != null) {
+                        Log.i(TAG, "Starting AlphaCatch scraping after Lassi")
+                        ac.startScraping()
+                    } else {
+                        Log.w(TAG, "AlphaCatchAccessibilityService not available")
+                    }
+                }, 5000)
+            }
+            lassi.startScraping(isUpdate = true)
         } else {
-            Log.w(TAG, "AccessibilityService not available, skipping update")
+            Log.w(TAG, "Kiwoom (라씨) service not available, trying AlphaCatch directly")
+            AlphaCatchAccessibilityService.instance?.startScraping()
         }
 
         // 다음 날 알람 재등록

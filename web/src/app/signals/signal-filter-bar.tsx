@@ -14,7 +14,7 @@ const SOURCE_OPTIONS = [
   { key: 'all',      label: '전체'   },
   { key: 'lassi',    label: '라씨'   },
   { key: 'stockbot', label: '스톡봇' },
-  { key: 'quant',    label: '퀀트'   },
+  { key: 'quant',    label: '알파캐치' },
   { key: 'prizm',    label: '프리즘' },
 ] as const;
 

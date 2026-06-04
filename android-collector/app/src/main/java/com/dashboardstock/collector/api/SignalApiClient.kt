@@ -235,6 +235,58 @@ object SignalApiClient {
         Log.i(TAG, "Updated signal_time for $updated/${signals.size} signals")
     }
 
+    /**
+     * 알파캐치 보유 종목 전체 덮어쓰기 (Supabase REST 직접 호출)
+     * 1) 기존 행 전체 DELETE → 2) 새 행 일괄 INSERT
+     */
+    suspend fun sendAlphaCatchHoldings(items: List<AlphaCatchHoldingInput>) {
+        // 1) 기존 행 전체 삭제 (?symbol=neq.<empty>로 모든 행 매칭)
+        val deleteReq = supabaseRequest("alphacatch_holdings?symbol=neq.__none__")
+            .header("Prefer", "return=minimal")
+            .delete()
+            .build()
+        try {
+            val resp = client.newCall(deleteReq).execute()
+            if (!resp.isSuccessful) {
+                Log.w(TAG, "Holdings DELETE failed (${resp.code}): ${resp.body?.string()}")
+            }
+            resp.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "Holdings DELETE error", e)
+        }
+
+        if (items.isEmpty()) {
+            Log.i(TAG, "Holdings cleared (empty list)")
+            return
+        }
+
+        // 2) 새 행 일괄 INSERT
+        val rows = items.map { h ->
+            mapOf(
+                "symbol" to (h.symbol.ifBlank { h.name }),  // symbol 미노출 시 name을 PK로 임시 사용
+                "name" to h.name,
+                "return_pct" to h.returnPct,
+                "close_price" to h.closePrice,
+                "avg_buy_price" to h.avgBuyPrice,
+                "bought_at" to h.boughtAt
+            )
+        }
+        val body = gson.toJson(rows).toRequestBody(JSON_TYPE)
+        val insertReq = supabaseRequest("alphacatch_holdings")
+            .header("Prefer", "return=minimal")
+            .post(body)
+            .build()
+
+        val resp = client.newCall(insertReq).execute()
+        if (!resp.isSuccessful) {
+            Log.e(TAG, "Holdings INSERT failed (${resp.code}): ${resp.body?.string()}")
+            resp.close()
+            throw Exception("Holdings insert failed: ${resp.code}")
+        }
+        resp.close()
+        Log.i(TAG, "Holdings synced: ${items.size}")
+    }
+
     private fun buildRawData(s: SignalInput): Map<String, Any?>? {
         val map = mutableMapOf<String, Any?>()
         s.rawData?.let { map.putAll(it) }

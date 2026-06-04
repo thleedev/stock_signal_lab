@@ -7,11 +7,12 @@ import com.dashboardstock.collector.api.SignalInput
  */
 object SmsRouter {
 
-    enum class Source { LASSI, STOCKBOT, QUANT, UNKNOWN }
+    enum class Source { LASSI, STOCKBOT, QUANT, ALPHACATCH, UNKNOWN }
 
     fun identify(sender: String, body: String): Source {
         return when {
             StockbotSmsParser.canParse(sender, body) -> Source.STOCKBOT
+            AlphaCatchSmsParser.canParse(sender, body) -> Source.ALPHACATCH
             QuantSmsParser.canParse(sender, body) -> Source.QUANT
             LassiSmsParser.canParse(sender, body) -> Source.LASSI
             else -> Source.UNKNOWN
@@ -23,6 +24,7 @@ object SmsRouter {
             Source.LASSI -> LassiSmsParser.parse(body)
             Source.STOCKBOT -> StockbotSmsParser.parse(body)
             Source.QUANT -> QuantSmsParser.parse(body)
+            Source.ALPHACATCH -> AlphaCatchSmsParser.parse(body)
             Source.UNKNOWN -> emptyList()
         }
     }

@@ -13,7 +13,7 @@ const SIGNAL_TYPE_KR: Record<SignalType, string> = {
 const SOURCE_KR: Record<string, string> = {
   lassi: '라씨',
   stockbot: '스톡봇',
-  quant: '퀀트',
+  quant: '알파캐치',
 };
 
 interface FCMMessage {

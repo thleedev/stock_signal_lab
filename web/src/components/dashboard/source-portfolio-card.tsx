@@ -12,7 +12,7 @@ const SOURCE_META: Record<string, { label: string; color: string; cardColor: str
     cardColor: "bg-green-900/20 border-green-800/50",
   },
   quant: {
-    label: "퀀트",
+    label: "알파캐치",
     color: "text-blue-400",
     cardColor: "bg-blue-900/20 border-blue-800/50",
   },

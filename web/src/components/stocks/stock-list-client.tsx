@@ -633,7 +633,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         <th className="hidden md:table-cell px-2 py-3 text-left w-[72px]">코드</th>
         <th className="hidden md:table-cell px-2 py-3 text-right w-[88px]">거래량</th>
         <th className="hidden md:table-cell px-2 py-3 text-right w-[56px]">PER</th>
-        <th className="hidden lg:table-cell px-1 py-3 text-center w-[60px]">퀀트</th>
+        <th className="hidden lg:table-cell px-1 py-3 text-center w-[60px]">알파캐치</th>
         <th className="hidden lg:table-cell px-1 py-3 text-center w-[60px]">라씨</th>
         <th className="hidden lg:table-cell px-1 py-3 text-center w-[68px]">스톡봇</th>
       </tr>

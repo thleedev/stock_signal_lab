@@ -59,7 +59,7 @@ const SOURCE_OPTIONS = [
   { key: 'all',      label: '전체'   },
   { key: 'lassi',    label: '라씨'   },
   { key: 'stockbot', label: '스톡봇' },
-  { key: 'quant',    label: '퀀트'   },
+  { key: 'quant',    label: '알파캐치' },
 ];
 
 const SORT_OPTIONS_WITH_GAP: { key: SortMode; label: string }[] = [

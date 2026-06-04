@@ -2,7 +2,7 @@
 export const SOURCE_LABELS: Record<string, string> = {
   lassi: "라씨매매",
   stockbot: "스톡봇",
-  quant: "퀀트",
+  quant: "알파캐치",
   prizm: "프리즘",
 };
 
@@ -10,7 +10,7 @@ export const SOURCE_LABELS: Record<string, string> = {
 export const SOURCE_LABELS_SHORT: Record<string, string> = {
   lassi: "라씨",
   stockbot: "스톡봇",
-  quant: "퀀트",
+  quant: "알파캐치",
   prizm: "프리즘",
 };
 
@@ -61,7 +61,7 @@ export const BUY_SIGNAL_TYPES = ["BUY", "BUY_FORECAST"] as const;
 export const SOURCE_LABELS_EMOJI: Record<string, string> = {
   lassi: "🔴 라씨매매",
   stockbot: "🟢 스톡봇",
-  quant: "🔵 퀀트",
+  quant: "🔵 알파캐치",
   prizm: "🟣 프리즘",
 };
 
