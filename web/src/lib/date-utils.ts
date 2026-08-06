@@ -59,7 +59,8 @@ export function getLastNDaysRange(n: number): { start: string; end: string } {
 export function getKstWeekRange(): { start: string; end: string } {
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const day = kst.getDay(); // 0=일, 1=월, ..., 6=토
+  // kst 는 UTC 필드로 읽어야 KST 시각이므로 getUTCDay 로 요일을 판정 (getDay 사용 시 로컬 오프셋이 중복 적용됨)
+  const day = kst.getUTCDay(); // 0=일, 1=월, ..., 6=토
   const daysFromMonday = day === 0 ? 6 : day - 1;
   const monday = new Date(kst.getTime() - daysFromMonday * 86400000);
   return {
@@ -70,7 +71,8 @@ export function getKstWeekRange(): { start: string; end: string } {
 
 export function formatDateLabel(dateStr: string): string {
   const [, m, d] = dateStr.split("-");
-  const date = new Date(dateStr + "T00:00:00+09:00");
-  const weekday = ["일", "월", "화", "수", "목", "금", "토"][date.getDay()];
+  // dateStr 자체가 KST 날짜이므로 UTC 자정으로 요일 판정 (+09:00 사용 시 UTC 머신에서 요일이 하루 밀림)
+  const date = new Date(dateStr + "T00:00:00Z");
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][date.getUTCDay()];
   return `${parseInt(m)}/${parseInt(d)}(${weekday})`;
 }

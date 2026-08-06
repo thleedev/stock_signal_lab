@@ -27,25 +27,18 @@ export default async function SettingsPage() {
     symbolGroupIds[r.symbol].push(r.group_id);
   }
 
-  // 수집기 heartbeat 조회
+  // 수집기 heartbeat 조회 — 기기별 최신 1건 뷰(078)
+  // 행수 제한으로 읽으면 하트비트가 잦은 기기가 나머지를 밀어내므로 뷰로 조회합니다.
   const { data: heartbeats } = await supabase
-    .from("collector_heartbeats")
+    .from("collector_devices_latest")
     .select("*")
-    .order("timestamp", { ascending: false })
-    .limit(20);
+    .order("timestamp", { ascending: false });
 
-  // 기기별 최신 상태
-  const deviceMap = new Map<string, (typeof heartbeats extends (infer T)[] | null ? T : never)>();
-  for (const hb of heartbeats || []) {
-    if (!deviceMap.has(hb.device_id)) {
-      deviceMap.set(hb.device_id, hb);
-    }
-  }
-
-  const devices = Array.from(deviceMap.values()).map((hb) => {
+  const devices = (heartbeats || []).map((hb) => {
     const lastSeen = new Date(hb.timestamp);
     const diffMs = Date.now() - lastSeen.getTime();
-    const isOnline = diffMs < 10 * 60 * 1000;
+    // thinkpool-api 는 장중 15분 간격으로 하트비트를 남기므로 임계가 10분이면 항상 오프라인으로 보입니다.
+    const isOnline = diffMs < 20 * 60 * 1000;
     const minutesAgo = Math.floor(diffMs / 60000);
 
     return {

@@ -16,8 +16,6 @@ import com.dashboardstock.collector.db.SentSignalCache
 import com.dashboardstock.collector.db.SignalQueueManager
 import com.dashboardstock.collector.parser.LassiScreenParser
 import kotlinx.coroutines.*
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * 키움증권 라씨매매신호 스크래핑 AccessibilityService
@@ -28,6 +26,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
  *   1) 노드 자체 ACTION_CLICK
  *   2) 클릭 가능한 부모 노드 ACTION_CLICK
  *   3) 좌표 기반 제스처 탭 (150ms 롱탭)
+ *
+ * 2026-08-06부터 비활성 상태입니다. 라씨 신호는 서버 크론(/api/v1/cron/lassi-signals)이
+ * 씽크풀 공개 API 로 수집하므로 AndroidManifest 의 서비스 등록도 해제했습니다.
+ * 씽크풀이 API 에 인증을 걸어 복구가 필요하면 매니페스트 블록을 되살리고
+ * [LASSI_SCRAPING_ENABLED] 를 true 로 바꾸면 됩니다.
  */
 class KiwoomAccessibilityService : AccessibilityService() {
 
@@ -38,6 +41,12 @@ class KiwoomAccessibilityService : AccessibilityService() {
         private const val STEP_TIMEOUT_MS = 15000L
         private const val OVERALL_TIMEOUT_MS = 600000L  // 10분
         private const val SCRAPING_WATCHDOG_MS = 60000L // 60초 워치독
+
+        /**
+         * 라씨 앱 스크래핑 사용 여부 — 서버 수집 전환으로 false 입니다.
+         * 복구 시 true 로 바꾸고 AndroidManifest 의 서비스 등록도 함께 되살립니다.
+         */
+        const val LASSI_SCRAPING_ENABLED = false
 
         @Volatile
         var instance: KiwoomAccessibilityService? = null
@@ -116,6 +125,14 @@ class KiwoomAccessibilityService : AccessibilityService() {
     }
 
     fun startScraping(isUpdate: Boolean = false) {
+        // 서버 크론(/api/v1/cron/lassi-signals)이 씽크풀 API 로 수집하므로 앱 스크래핑은 시작하지 않습니다.
+        // 호출부가 콜백만 기다리다 멈추지 않도록 결과 콜백을 즉시 알린 뒤 종료합니다.
+        if (!LASSI_SCRAPING_ENABLED) {
+            Log.i(TAG, "Lassi scraping disabled — 서버 크론(/api/v1/cron/lassi-signals)이 수집합니다")
+            onScrapingResult?.invoke(0, 0, false, "라씨 스크래핑 비활성 — 서버 수집으로 전환됨")
+            return
+        }
+
         if (state != State.IDLE) {
             Log.w(TAG, "Already scraping: $state")
             return
@@ -1175,6 +1192,10 @@ class KiwoomAccessibilityService : AccessibilityService() {
                         onScrapingResult?.invoke(bc, sc, true, "Updated ${withTime.size} signal times")
                         resetState()
                     }
+                } catch (e: CancellationException) {
+                    // onDestroy 의 scope.cancel() 로 인한 취소는 실패가 아니므로 그대로 전파합니다.
+                    Log.w(TAG, "Update cancelled — 서비스 종료로 중단되었습니다")
+                    throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Update signal times failed", e)
                     withContext(Dispatchers.Main) {
@@ -1195,6 +1216,12 @@ class KiwoomAccessibilityService : AccessibilityService() {
                     onScrapingResult?.invoke(bc, sc, true, null)
                     resetState()
                 }
+            } catch (e: CancellationException) {
+                // 전송이 모두 끝난 직후 onDestroy 가 scope 를 취소하면 이어지는
+                // withContext(Dispatchers.Main) 이 CancellationException 을 던집니다. 이를 실패로
+                // 처리하면 이미 서버에 들어간 신호를 큐에 다시 넣어 중복 전송이 됩니다.
+                Log.w(TAG, "Send cancelled — 서비스 종료로 중단되었습니다 (큐 적재 생략)")
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Send failed, queuing", e)
                 SignalQueueManager.enqueue(applicationContext, all)
@@ -1228,39 +1255,13 @@ class KiwoomAccessibilityService : AccessibilityService() {
 
     /**
      * 하트비트 API에 에러 상태 전송
+     *
+     * 실제 전송은 알파캐치 서비스와 공용인 SignalApiClient.reportHeartbeat 이 담당합니다.
+     * 이 서비스는 현재 비활성이지만 복구 가능성이 있어 호출부를 그대로 두고 래퍼만 남깁니다.
+     * 기기 단위 device_id 만으로는 수집 주체를 알 수 없으므로 사유 앞에 "라씨: "를 붙입니다.
      */
     private fun reportErrorHeartbeat(errorMessage: String) {
-        scope.launch {
-            try {
-                val now = java.time.OffsetDateTime.now(java.time.ZoneId.of("Asia/Seoul"))
-                    .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-
-                val hb = mapOf(
-                    "device_id" to com.dashboardstock.collector.BuildConfig.DEVICE_ID,
-                    "status" to "error",
-                    "timestamp" to now,
-                    "error_message" to errorMessage
-                )
-
-                val gson = com.google.gson.Gson()
-                val jsonType = "application/json; charset=utf-8".toMediaType()
-                val body = gson.toJson(hb).toRequestBody(jsonType)
-
-                val url = "${com.dashboardstock.collector.BuildConfig.SUPABASE_URL}/rest/v1/collector_heartbeats"
-                val request = okhttp3.Request.Builder()
-                    .url(url)
-                    .header("apikey", com.dashboardstock.collector.BuildConfig.SUPABASE_ANON_KEY)
-                    .header("Authorization", "Bearer ${com.dashboardstock.collector.BuildConfig.SUPABASE_ANON_KEY}")
-                    .header("Content-Type", "application/json")
-                    .post(body)
-                    .build()
-
-                okhttp3.OkHttpClient().newCall(request).execute().close()
-                Log.i(TAG, "Error heartbeat sent: $errorMessage")
-            } catch (e: Exception) {
-                Log.w(TAG, "Error heartbeat failed", e)
-            }
-        }
+        SignalApiClient.reportHeartbeat("error", "라씨: $errorMessage")
     }
 
     private fun onStepTimeout() {

@@ -5,6 +5,10 @@ import android.util.Log
 import com.dashboardstock.collector.BuildConfig
 import com.google.gson.GsonBuilder
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,6 +29,14 @@ object SignalApiClient {
     private const val TAG = "SignalApiClient"
     private val gson = GsonBuilder().serializeNulls().create()
     private val JSON_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    /**
+     * 하트비트 전송 전용 스코프
+     *
+     * AccessibilityService 의 스코프를 빌려 쓰면 onDestroy 의 scope.cancel() 로 전송 중이던
+     * 하트비트가 함께 취소됩니다. 서비스 수명과 분리해 앱 프로세스 수명으로 둡니다.
+     */
+    private val heartbeatScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -95,7 +107,8 @@ object SignalApiClient {
         }
 
         Log.i(TAG, "upsert_signals_bulk OK: ${signals.size} signals, batch=$batchId")
-        sendHeartbeat()
+        // 이미 IO 스레드(suspend 호출부)이므로 스코프를 새로 띄우지 않고 바로 전송합니다.
+        postHeartbeat("active", null, markSignal = true)
         triggerAiRecommendations()
     }
 
@@ -157,16 +170,38 @@ object SignalApiClient {
         }
     }
 
-    private fun sendHeartbeat() {
+    /**
+     * 수집기 상태를 collector_heartbeats 에 기록합니다 (fire-and-forget).
+     *
+     * KiwoomAccessibilityService 와 AlphaCatchAccessibilityService 가 함께 씁니다.
+     * 메인 스레드에서 불러도 되도록 내부 IO 스코프에서 실행하며, 전송 실패는 로그로만 남기고
+     * 예외를 던지지 않습니다. 하트비트 때문에 스크래핑 흐름이 멈추면 안 됩니다.
+     *
+     * collector_heartbeats 에는 수집 주체를 담는 컬럼이 없고 device_id 는 기기 단위이므로,
+     * 어느 수집기가 남긴 기록인지는 [message] 앞의 접두어("알파캐치: ", "라씨: ")로 구분합니다.
+     *
+     * @param status "active" 또는 "error"
+     * @param message error_message 컬럼 값. 대시보드(web/src/app/collector/page.tsx)가 값이 있으면
+     *                붉은 "오류:" 줄로 표시하므로 정상 경로에서는 null 로 둡니다.
+     * @param markSignal 신호를 실제로 전송했을 때만 true — last_signal 을 현재 시각으로 채웁니다.
+     */
+    fun reportHeartbeat(status: String, message: String? = null, markSignal: Boolean = false) {
+        heartbeatScope.launch { postHeartbeat(status, message, markSignal) }
+    }
+
+    /** 하트비트 1건 INSERT. 네트워크를 직접 호출하므로 IO 스레드에서만 실행합니다. */
+    private fun postHeartbeat(status: String, message: String?, markSignal: Boolean) {
         try {
             val now = OffsetDateTime.now(ZoneId.of("Asia/Seoul"))
                 .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+            val lastSignal: String? = if (markSignal) now else null
 
             val hb = mapOf(
                 "device_id" to BuildConfig.DEVICE_ID,
-                "status" to "active",
-                "last_signal" to now,
-                "timestamp" to now
+                "status" to status,
+                "last_signal" to lastSignal,
+                "timestamp" to now,
+                "error_message" to message
             )
 
             val body = gson.toJson(hb).toRequestBody(JSON_TYPE)
@@ -174,7 +209,13 @@ object SignalApiClient {
                 .post(body)
                 .build()
 
-            client.newCall(request).execute().close()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Heartbeat failed (${response.code}): ${response.body?.string()}")
+            } else {
+                Log.i(TAG, "Heartbeat sent: status=$status, message=$message")
+            }
+            response.close()
         } catch (e: Exception) {
             Log.w(TAG, "Heartbeat update failed", e)
         }
@@ -238,8 +279,19 @@ object SignalApiClient {
     /**
      * 알파캐치 보유 종목 전체 덮어쓰기 (Supabase REST 직접 호출)
      * 1) 기존 행 전체 DELETE → 2) 새 행 일괄 INSERT
+     *
+     * 빈 목록은 "보유 종목이 0건"이 아니라 스크래핑 실패로 봅니다. 알파추천 화면에는 보유 종목
+     * 섹션이 상시 노출되므로 0건은 팝업·레이아웃 변경으로 파서가 아무것도 읽지 못한 경우입니다.
+     * 이때 DELETE 를 실행하면 스크래핑 실패가 그대로 보유 종목 전량 삭제로 이어지므로 건너뜁니다.
+     * 의도적으로 전량 비우는 용법은 이 함수의 유일한 호출부인
+     * AlphaCatchAccessibilityService.onComplete 에 없습니다.
      */
     suspend fun sendAlphaCatchHoldings(items: List<AlphaCatchHoldingInput>) {
+        if (items.isEmpty()) {
+            Log.w(TAG, "Holdings sync skipped: 수집 0건이므로 기존 행을 삭제하지 않습니다")
+            return
+        }
+
         // 1) 기존 행 전체 삭제 (?symbol=neq.<empty>로 모든 행 매칭)
         val deleteReq = supabaseRequest("alphacatch_holdings?symbol=neq.__none__")
             .header("Prefer", "return=minimal")
@@ -253,11 +305,6 @@ object SignalApiClient {
             resp.close()
         } catch (e: Exception) {
             Log.w(TAG, "Holdings DELETE error", e)
-        }
-
-        if (items.isEmpty()) {
-            Log.i(TAG, "Holdings cleared (empty list)")
-            return
         }
 
         // 2) 새 행 일괄 INSERT

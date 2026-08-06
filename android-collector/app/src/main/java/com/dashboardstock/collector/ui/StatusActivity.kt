@@ -98,14 +98,28 @@ class StatusActivity : AppCompatActivity() {
                 result.appendLine("MMS ${mmsList.size}건 발견 (1544-9000)")
 
                 val allSignals = mutableListOf<SignalInput>()
+                var lassiSkipped = 0
                 for ((index, body) in mmsList.withIndex()) {
                     val source = SmsRouter.identify(KIWOOM_SENDER, body)
-                    val signals = SmsRouter.parse(KIWOOM_SENDER, body)
                     val preview = body.take(40).replace("\n", " ")
+
+                    // 라씨 신호는 MMS 데이터 무시 (서버 크론이 씽크풀 API 로 수집)
+                    // MMS 폴백은 가격·시간이 비어 있어 업로드하면 서버 수집분을 덮어씁니다.
+                    if (source == SmsRouter.Source.LASSI) {
+                        lassiSkipped++
+                        result.appendLine("  #${index + 1}: $source → 건너뜀 [$preview...]")
+                        continue
+                    }
+
+                    val signals = SmsRouter.parse(KIWOOM_SENDER, body)
                     result.appendLine("  #${index + 1}: $source → ${signals.size}건 [$preview...]")
                     allSignals.addAll(signals)
                     // MMS 원문 저장 (dailyReport용)
                     SignalApiClient.sendRawMms(KIWOOM_SENDER, source.name.lowercase(), body)
+                }
+
+                if (lassiSkipped > 0) {
+                    result.appendLine("라씨 MMS ${lassiSkipped}건은 서버 수집(/api/v1/cron/lassi-signals) 대상이라 건너뜁니다")
                 }
 
                 if (allSignals.isNotEmpty()) {
@@ -131,8 +145,12 @@ class StatusActivity : AppCompatActivity() {
             result.appendLine()
 
             // 2) 라씨매매 화면 스크래핑 (AccessibilityService 트리거)
+            //    LASSI_SCRAPING_ENABLED 가 false 이면 서버 크론(/api/v1/cron/lassi-signals)이 수집하므로
+            //    앱 스크래핑을 시작하지 않고 안내만 출력합니다.
             val a11y = KiwoomAccessibilityService.instance
-            if (a11y != null) {
+            if (!KiwoomAccessibilityService.LASSI_SCRAPING_ENABLED) {
+                result.appendLine("라씨: 서버 수집(씽크풀 API)으로 전환됨 — 앱 스크래핑 사용 안 함")
+            } else if (a11y != null) {
                 result.appendLine("라씨매매 화면 스크래핑 시작...")
                 withContext(Dispatchers.Main) {
                     tvResult.text = result.toString()
@@ -161,7 +179,6 @@ class StatusActivity : AppCompatActivity() {
 
             result.appendLine()
             result.appendLine("=== MMS 수집 완료: ${totalSent}건 전송 ===")
-            result.appendLine("(라씨매매 스크래핑은 키움앱에서 진행 중...)")
 
             withContext(Dispatchers.Main) {
                 tvResult.text = result.toString()

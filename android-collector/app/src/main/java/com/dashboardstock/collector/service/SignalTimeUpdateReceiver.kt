@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.dashboardstock.collector.api.SignalApiClient
 
 /**
  * 오후 5시(KST) 일괄 signal_time 보정 트리거
@@ -40,17 +41,32 @@ class SignalTimeUpdateReceiver : BroadcastReceiver() {
                         Log.i(TAG, "Starting AlphaCatch scraping after Lassi")
                         ac.startScraping()
                     } else {
-                        Log.w(TAG, "AlphaCatchAccessibilityService not available")
+                        reportAlphaCatchUnavailable()
                     }
                 }, 5000)
             }
             lassi.startScraping(isUpdate = true)
         } else {
             Log.w(TAG, "Kiwoom (라씨) service not available, trying AlphaCatch directly")
-            AlphaCatchAccessibilityService.instance?.startScraping()
+            val ac = AlphaCatchAccessibilityService.instance
+            if (ac != null) {
+                ac.startScraping()
+            } else {
+                reportAlphaCatchUnavailable()
+            }
         }
 
         // 다음 날 알람 재등록
         CollectorForegroundService.scheduleSignalTimeUpdate(context)
+    }
+
+    /**
+     * 접근성 서비스가 연결되지 않아 알파캐치 수집을 시작조차 못한 상황을 서버에 알립니다.
+     *
+     * 이 경로는 로그만 남기면 대시보드에 그날 아침 하트비트가 그대로 남아 정상으로 보입니다.
+     */
+    private fun reportAlphaCatchUnavailable() {
+        Log.w(TAG, "AlphaCatchAccessibilityService not available")
+        SignalApiClient.reportHeartbeat("error", "알파캐치: 접근성 서비스 미연결 — 17시 수집 시작 실패")
     }
 }

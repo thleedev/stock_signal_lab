@@ -88,18 +88,26 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
-        <!-- AccessibilityService (라씨매매 화면 스크래핑) -->
-        <service
-            android:name=".service.KiwoomAccessibilityService"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_config" />
-        </service>
+        <!--
+            AccessibilityService (라씨매매 화면 스크래핑) — 등록 해제 (2026-08-06)
+
+            라씨매매신호는 서버 크론(/api/v1/cron/lassi-signals)이 씽크풀 공개 API 로 수집합니다.
+            앱 접근성 스크래핑은 더 이상 사용하지 않으므로 서비스 등록을 해제했습니다.
+            복구하려면 아래 블록을 주석 밖으로 되살리고
+            KiwoomAccessibilityService.LASSI_SCRAPING_ENABLED 를 true 로 바꾸면 됩니다.
+
+            <service
+                android:name=".service.KiwoomAccessibilityService"
+                android:exported="true"
+                android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+                <intent-filter>
+                    <action android:name="android.accessibilityservice.AccessibilityService" />
+                </intent-filter>
+                <meta-data
+                    android:name="android.accessibilityservice"
+                    android:resource="@xml/accessibility_config" />
+            </service>
+        -->
 
         <!-- AccessibilityService (알파캐치 → 알파추천 화면 스크래핑) -->
         <service
