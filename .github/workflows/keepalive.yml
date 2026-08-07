@@ -1,0 +1,55 @@
+name: Keepalive
+
+# GitHub Actions 는 저장소에 60일간 커밋이 없으면 스케줄 워크플로우를 자동으로 끕니다
+# (state=disabled_inactivity). 실행 이력은 활동으로 치지 않아 daily-batch 가 매일 돌아도
+# 커밋이 없으면 꺼집니다. 2026-08-03 에 실제로 이 형태로 배치가 중단됐고,
+# 알림이 없어 나흘 뒤에야 발견했습니다.
+#
+# 방어는 두 겹입니다.
+#   1) 마지막 커밋이 30일 이상 지났으면 빈 커밋을 푸시해 60일 타이머를 되돌립니다.
+#      커밋이 생기면 daily-batch 와 이 워크플로우가 함께 살아남습니다.
+#   2) 그럼에도 daily-batch 가 꺼져 있으면 API 로 다시 켭니다.
+#
+# 실행 주기(1일·15일)와 30일 조건을 합치면 최대 44일 근처에서 타이머가 초기화되므로
+# 60일 한도에 닿지 않습니다.
+
+on:
+  schedule:
+    - cron: '0 21 1,15 * *' # 매월 1일·15일 06:00 KST
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Daily Batch 상태 확인 및 재활성화
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          STATE=$(gh api "repos/${{ github.repository }}/actions/workflows/daily-batch.yml" --jq .state)
+          echo "daily-batch 상태: $STATE"
+          if [ "$STATE" != "active" ]; then
+            gh workflow enable daily-batch.yml
+            echo "daily-batch 를 재활성화했습니다"
+          fi
+
+      - name: 마지막 커밋 경과일 계산
+        id: age
+        run: |
+          DAYS=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "마지막 커밋 이후 ${DAYS}일 경과"
+          echo "days=$DAYS" >> "$GITHUB_OUTPUT"
+
+      - name: 30일 이상 정체 시 빈 커밋 푸시
+        if: fromJSON(steps.age.outputs.days) >= 30
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --allow-empty -m 'chore: 스케줄 워크플로우 자동 비활성화 방지용 빈 커밋'
+          git push
