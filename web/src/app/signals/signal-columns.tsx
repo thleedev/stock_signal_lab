@@ -410,6 +410,19 @@ export default function SignalColumns({
   const buy = useActiveSignals(buySignals, buyTotal, "buy", isActiveMode);
   const sell = useActiveSignals(sellSignals, sellTotal, "sell", isActiveMode);
 
+  // 요약·업종 뷰는 전체 집계가 필요하므로 뷰를 여는 시점에 전량을 채웁니다.
+  const needsFullData = viewMode === "summary" || viewMode === "industry";
+  const fullDataReady = !isActiveMode || (buy.complete && sell.complete);
+
+  useEffect(() => {
+    if (!needsFullData || !isActiveMode) return;
+    if (!buy.complete) buy.loadAll();
+    if (!sell.complete) sell.loadAll();
+    // loadAll 은 rows 에 의존해 매 렌더 새로 만들어지므로 의존성에서 제외합니다.
+    // complete 플래그가 재호출을 막습니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [needsFullData, isActiveMode, buy.complete, sell.complete]);
+
   // 이어받기를 시작했으면 자동 새로고침이 스크롤 위치를 초기화하지 않도록 멈춥니다.
   const hasLoadedMore = buy.rows.length > buySignals.length || sell.rows.length > sellSignals.length;
 
@@ -553,10 +566,14 @@ export default function SignalColumns({
       </div>
 
       {/* 요약 뷰 */}
-      {viewMode === "summary" ? (
-        <SectorSummaryView buySignals={buySignals} sellSignals={sellSignals} onStockClick={handleSignalClick} />
+      {needsFullData && !fullDataReady ? (
+        <div className="card p-8 text-center text-[var(--muted)]">
+          전체 {buyTotal + sellTotal}건 집계 중…
+        </div>
+      ) : viewMode === "summary" ? (
+        <SectorSummaryView buySignals={buy.rows} sellSignals={sell.rows} onStockClick={handleSignalClick} />
       ) : viewMode === "industry" ? (
-        <IndustrySummaryView buySignals={buySignals} sellSignals={sellSignals} onStockClick={handleSignalClick} />
+        <IndustrySummaryView buySignals={buy.rows} sellSignals={sell.rows} onStockClick={handleSignalClick} />
       ) : (
       <>
       {/* 모바일: 탭 전환 */}
