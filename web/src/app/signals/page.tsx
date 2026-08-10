@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase";
 import { PageLayout, PageHeader } from "@/components/ui";
@@ -9,6 +10,7 @@ import { SignalFilterBar } from "./signal-filter-bar";
 import RecommendationView from "@/components/signals/RecommendationView";
 import { HotThemesBanner } from "@/components/signals/HotThemesBanner";
 import { CollectingBanner } from "@/components/signals/CollectingBanner";
+import { SignalsSkeleton } from "./signals-skeleton";
 import type { WatchlistGroup } from "@/types/stock";
 
 // searchParams 를 읽으므로 Next.js 가 자동으로 동적 렌더링합니다.
@@ -24,13 +26,13 @@ export default async function SignalsPage({
   const params = await searchParams;
   const activeSource = params.source || "all";
   const activeTab = params.tab === "stock-analysis" ? "stock-analysis" : "signals";
-  const activeTheme = params.theme || "all";
   const leaderOnly = params.leader === "1";
   const supabase = createServiceClient();
 
   const last7 = getLastNWeekdays(7);
 
   // date가 명시되지 않은 경우 오늘 신호 유무 확인 → 없으면 신호전체를 기본으로
+  // (헤더·필터가 먼저 페인트되어야 하므로 이 판정만 SignalsPage 에 남깁니다.)
   const isDateAuto = !params.date;
   let defaultDateMode: 'today' | 'signal_all' = 'today';
   if (isDateAuto) {
@@ -50,160 +52,6 @@ export default async function SignalsPage({
     : params.date && last7.includes(params.date) ? params.date
     : defaultDateMode === 'signal_all' ? "all"
     : last7[0];
-
-  // 즐겨찾기 + 보유 + 관심그룹 + 가격 업데이트 시간 → 두 탭 공통 사용
-  const [{ data: favorites }, { data: watchlistItems }, { data: groupRows }, { data: groupStockRows }] = await Promise.all([
-    supabase.from("favorite_stocks").select("symbol"),
-    supabase.from("watchlist").select("symbol"),
-    supabase.from("watchlist_groups").select("*").order("sort_order"),
-    supabase.from("watchlist_group_stocks").select("group_id, symbol"),
-  ]);
-  const favoriteSymbols = (favorites ?? []).map((f: { symbol: string }) => f.symbol);
-  const watchlistSymbols = (watchlistItems ?? []).map((w: { symbol: string }) => w.symbol);
-  const groups: WatchlistGroup[] = groupRows ?? [];
-  const symbolGroups: Record<string, string[]> = {};
-  for (const r of groupStockRows ?? []) {
-    if (!symbolGroups[r.symbol]) symbolGroups[r.symbol] = [];
-    symbolGroups[r.symbol].push(r.group_id);
-  }
-
-  // ── AI 신호 탭 ──────────────────────────────────────────
-  let buySignals: (Record<string, string> & { is_leader?: boolean })[] = [];
-  let sellSignals: (Record<string, string> & { is_leader?: boolean })[] = [];
-  // 활성 모드에서만 서버 총계가 실제 건수와 다릅니다(최초 200행만 전송).
-  let buyTotal = 0;
-  let sellTotal = 0;
-  let isActiveMode = false;
-
-  if (activeTab === "signals") {
-    if (selectedDate === "all") {
-      // ── 전체 모드: 현재 BUY/SELL 상태 종목 (stock_cache 기반, 기간 무관) ──
-      // 최초 화면은 최신순 200행만 보내고 나머지는 클라이언트가
-      // /api/v1/signals/active 로 이어받습니다. 전체 건수는 같은 쿼리의
-      // count: "exact" 로 함께 받으므로 별도 head 조회가 없습니다.
-      const INITIAL = 200;
-      const BUY_COLUMNS = "symbol, name, market, latest_signal_date, latest_signal_type, latest_signal_price";
-      const SELL_COLUMNS = "symbol, name, market, latest_sell_date";
-
-      // latest_signal_date/latest_sell_date 만으로 정렬하면 동일 날짜 행이
-      // 많아(BUY 상위 1000행 중 최다 그룹 286행) Postgres 가 순서를 보장하지
-      // 않습니다. symbol 오름차순을 tiebreaker 로 더해 페이지 경계에서
-      // 행이 누락되거나 중복되지 않게 합니다. /api/v1/signals/active 의
-      // 정렬과 반드시 동일해야 합니다.
-      const [
-        { data: buyRows, count: buyCount },
-        { data: sellRows, count: sellCount },
-      ] = await Promise.all([
-        supabase
-          .from("stock_cache")
-          .select(BUY_COLUMNS, { count: "exact" })
-          .eq("has_active_sell", false)
-          .not("latest_signal_date", "is", null)
-          .order("latest_signal_date", { ascending: false })
-          .order("symbol", { ascending: true })
-          .range(0, INITIAL - 1),
-        supabase
-          .from("stock_cache")
-          .select(SELL_COLUMNS, { count: "exact" })
-          .eq("has_active_sell", true)
-          .not("latest_sell_date", "is", null)
-          .order("latest_sell_date", { ascending: false })
-          .order("symbol", { ascending: true })
-          .range(0, INITIAL - 1),
-      ]);
-
-      buySignals = (buyRows ?? []).map(
-        (s) => toActiveSignal(s as unknown as ActiveSignalRow, "buy") as unknown as Record<string, string>
-      );
-      sellSignals = (sellRows ?? []).map(
-        (s) => toActiveSignal(s as unknown as ActiveSignalRow, "sell") as unknown as Record<string, string>
-      );
-      buyTotal = buyCount ?? buySignals.length;
-      sellTotal = sellCount ?? sellSignals.length;
-      isActiveMode = true;
-
-    } else {
-      // ── 날짜 범위 모드: 오늘 / 최근7일 / 특정일 ──
-      const range = selectedDate === "week"
-        ? getLastNDaysRange(7)
-        : getKstDayRange(selectedDate);
-
-      let query = supabase
-        .from("signals")
-        .select("*")
-        .not("symbol", "is", null)
-        .gte("timestamp", range.start)
-        .lte("timestamp", range.end)
-        .order("timestamp", { ascending: false });
-      if (activeSource !== "all") query = query.eq("source", activeSource);
-
-      const { data: rawSignals } = await query;
-
-      const signalSymbols = [...new Set((rawSignals || []).map((s: Record<string, string>) => s.symbol))];
-      let nameMap: Record<string, string> = {};
-      let marketMap: Record<string, string> = {};
-      let sectorMap: Record<string, string> = {};
-      let leaderMap: Record<string, boolean> = {};
-      let themeTagsMap: Record<string, { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[]> = {};
-      let activeSellSymbols = new Set<string>();
-      if (signalSymbols.length > 0) {
-        const todayKst = last7[0];
-        const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
-          supabase.from("stock_cache").select("symbol, name, market, has_active_sell").in("symbol", signalSymbols),
-          supabase.from("stock_info").select("symbol, name, sector").in("symbol", signalSymbols),
-        ]);
-        if (stockNames) {
-          nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
-          marketMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.market || "기타"]));
-          activeSellSymbols = new Set(
-            stockNames.filter((s) => s.has_active_sell === true).map((s) => s.symbol)
-          );
-        }
-        if (stockInfos) {
-          sectorMap = Object.fromEntries(stockInfos.map((s) => [s.symbol, s.sector]));
-          for (const s of stockInfos) {
-            if (!nameMap[s.symbol] && s.name) nameMap[s.symbol] = s.name;
-          }
-        }
-        // 테마 데이터 (오늘 없으면 최근 날짜 fallback)
-        const effectiveThemeDate = await getEffectiveThemeDate(supabase, todayKst);
-        const themeMap = await fetchThemeMap(supabase, signalSymbols, effectiveThemeDate);
-        for (const [sym, info] of themeMap) {
-          leaderMap[sym] = info.is_leader;
-          themeTagsMap[sym] = info.theme_tags;
-        }
-      }
-      const signals = (rawSignals || []).map((s: Record<string, unknown>) => {
-        const rawData = s.raw_data as Record<string, unknown> | null;
-        const signalPrice = extractSignalPrice(rawData);
-        return {
-          ...s,
-          name: nameMap[s.symbol as string] || (s.name as string) || (s.symbol as string),
-          market: marketMap[s.symbol as string] || "기타",
-          sector: sectorMap[s.symbol as string] || "기타",
-          is_leader: leaderMap[s.symbol as string] ?? false,
-          is_hot_theme: (themeTagsMap[s.symbol as string] ?? []).some(t => t.is_hot),
-          theme_tags: themeTagsMap[s.symbol as string] ?? [],
-          ...(signalPrice !== null ? { signal_price: String(signalPrice) } : {}),
-        } as unknown as Record<string, string> & { is_leader?: boolean; is_hot_theme?: boolean; theme_tags?: { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[] };
-      });
-
-      signals.sort((a, b) => {
-        const timeA = new Date((a.signal_time || a.timestamp) as string).getTime();
-        const timeB = new Date((b.signal_time || b.timestamp) as string).getTime();
-        return timeB - timeA;
-      });
-
-      buySignals = signals.filter((s) =>
-        (s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST") &&
-        !activeSellSymbols.has(s.symbol as string)
-      );
-      sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
-      buyTotal = buySignals.length;
-      sellTotal = sellSignals.length;
-    } // end else (날짜 범위 모드)
-  } // end if (activeTab === "signals")
-
 
   return (
     <PageLayout>
@@ -244,33 +92,246 @@ export default async function SignalsPage({
           </div>
 
           {/* 핫 테마 배너 */}
-          <HotThemesBanner />
+          <Suspense fallback={<div className="h-10" />}>
+            <HotThemesBanner />
+          </Suspense>
 
-          <SignalColumns
-            buySignals={
-              leaderOnly
-                ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true)
-                : buySignals
-            }
-            sellSignals={sellSignals}
-            favoriteSymbols={favoriteSymbols}
-            watchlistSymbols={watchlistSymbols}
-            groups={groups}
-            symbolGroups={symbolGroups}
-            buyTotal={leaderOnly ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true).length : buyTotal}
-            sellTotal={leaderOnly ? sellSignals.length : sellTotal}
-            isActiveMode={isActiveMode && !leaderOnly}
-          />
+          <Suspense fallback={<SignalsSkeleton />}>
+            <SignalsContent
+              selectedDate={selectedDate}
+              activeSource={activeSource}
+              leaderOnly={leaderOnly}
+              last7={last7}
+            />
+          </Suspense>
         </>
       ) : (
-        <RecommendationView
-          initialDateMode={defaultDateMode}
-          favoriteSymbols={favoriteSymbols}
-          watchlistSymbols={watchlistSymbols}
-          groups={groups}
-          symbolGroups={symbolGroups}
-        />
+        <Suspense fallback={<SignalsSkeleton />}>
+          <RecommendationContent defaultDateMode={defaultDateMode} />
+        </Suspense>
       )}
     </PageLayout>
+  );
+}
+
+/** 즐겨찾기·관심그룹 조회 — 두 Content 컴포넌트가 공유합니다. */
+async function fetchCommon(supabase: ReturnType<typeof createServiceClient>) {
+  const [{ data: favorites }, { data: watchlistItems }, { data: groupRows }, { data: groupStockRows }] =
+    await Promise.all([
+      supabase.from("favorite_stocks").select("symbol"),
+      supabase.from("watchlist").select("symbol"),
+      supabase.from("watchlist_groups").select("*").order("sort_order"),
+      supabase.from("watchlist_group_stocks").select("group_id, symbol"),
+    ]);
+
+  const symbolGroups: Record<string, string[]> = {};
+  for (const r of groupStockRows ?? []) {
+    if (!symbolGroups[r.symbol]) symbolGroups[r.symbol] = [];
+    symbolGroups[r.symbol].push(r.group_id);
+  }
+
+  return {
+    favoriteSymbols: (favorites ?? []).map((f: { symbol: string }) => f.symbol),
+    watchlistSymbols: (watchlistItems ?? []).map((w: { symbol: string }) => w.symbol),
+    groups: (groupRows ?? []) as WatchlistGroup[],
+    symbolGroups,
+  };
+}
+
+/** AI 신호 탭의 매수/매도 신호 조회. 활성 모드(date=all)와 날짜 범위 모드로 갈립니다. */
+async function fetchSignals(
+  supabase: ReturnType<typeof createServiceClient>,
+  selectedDate: string,
+  activeSource: string,
+  last7: string[]
+) {
+  let buySignals: (Record<string, string> & { is_leader?: boolean })[] = [];
+  let sellSignals: (Record<string, string> & { is_leader?: boolean })[] = [];
+  // 활성 모드에서만 서버 총계가 실제 건수와 다릅니다(최초 200행만 전송).
+  let buyTotal = 0;
+  let sellTotal = 0;
+  let isActiveMode = false;
+
+  if (selectedDate === "all") {
+    // ── 전체 모드: 현재 BUY/SELL 상태 종목 (stock_cache 기반, 기간 무관) ──
+    // 최초 화면은 최신순 200행만 보내고 나머지는 클라이언트가
+    // /api/v1/signals/active 로 이어받습니다. 전체 건수는 같은 쿼리의
+    // count: "exact" 로 함께 받으므로 별도 head 조회가 없습니다.
+    const INITIAL = 200;
+    const BUY_COLUMNS = "symbol, name, market, latest_signal_date, latest_signal_type, latest_signal_price";
+    const SELL_COLUMNS = "symbol, name, market, latest_sell_date";
+
+    // latest_signal_date/latest_sell_date 만으로 정렬하면 동일 날짜 행이
+    // 많아(BUY 상위 1000행 중 최다 그룹 286행) Postgres 가 순서를 보장하지
+    // 않습니다. symbol 오름차순을 tiebreaker 로 더해 페이지 경계에서
+    // 행이 누락되거나 중복되지 않게 합니다. /api/v1/signals/active 의
+    // 정렬과 반드시 동일해야 합니다.
+    const [
+      { data: buyRows, count: buyCount },
+      { data: sellRows, count: sellCount },
+    ] = await Promise.all([
+      supabase
+        .from("stock_cache")
+        .select(BUY_COLUMNS, { count: "exact" })
+        .eq("has_active_sell", false)
+        .not("latest_signal_date", "is", null)
+        .order("latest_signal_date", { ascending: false })
+        .order("symbol", { ascending: true })
+        .range(0, INITIAL - 1),
+      supabase
+        .from("stock_cache")
+        .select(SELL_COLUMNS, { count: "exact" })
+        .eq("has_active_sell", true)
+        .not("latest_sell_date", "is", null)
+        .order("latest_sell_date", { ascending: false })
+        .order("symbol", { ascending: true })
+        .range(0, INITIAL - 1),
+    ]);
+
+    buySignals = (buyRows ?? []).map(
+      (s) => toActiveSignal(s as unknown as ActiveSignalRow, "buy") as unknown as Record<string, string>
+    );
+    sellSignals = (sellRows ?? []).map(
+      (s) => toActiveSignal(s as unknown as ActiveSignalRow, "sell") as unknown as Record<string, string>
+    );
+    buyTotal = buyCount ?? buySignals.length;
+    sellTotal = sellCount ?? sellSignals.length;
+    isActiveMode = true;
+
+  } else {
+    // ── 날짜 범위 모드: 오늘 / 최근7일 / 특정일 ──
+    const range = selectedDate === "week"
+      ? getLastNDaysRange(7)
+      : getKstDayRange(selectedDate);
+
+    let query = supabase
+      .from("signals")
+      .select("*")
+      .not("symbol", "is", null)
+      .gte("timestamp", range.start)
+      .lte("timestamp", range.end)
+      .order("timestamp", { ascending: false });
+    if (activeSource !== "all") query = query.eq("source", activeSource);
+
+    const { data: rawSignals } = await query;
+
+    const signalSymbols = [...new Set((rawSignals || []).map((s: Record<string, string>) => s.symbol))];
+    let nameMap: Record<string, string> = {};
+    let marketMap: Record<string, string> = {};
+    let sectorMap: Record<string, string> = {};
+    const leaderMap: Record<string, boolean> = {};
+    const themeTagsMap: Record<string, { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[]> = {};
+    let activeSellSymbols = new Set<string>();
+    if (signalSymbols.length > 0) {
+      const todayKst = last7[0];
+      const [{ data: stockNames }, { data: stockInfos }] = await Promise.all([
+        supabase.from("stock_cache").select("symbol, name, market, has_active_sell").in("symbol", signalSymbols),
+        supabase.from("stock_info").select("symbol, name, sector").in("symbol", signalSymbols),
+      ]);
+      if (stockNames) {
+        nameMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.name]));
+        marketMap = Object.fromEntries(stockNames.map((s) => [s.symbol, s.market || "기타"]));
+        activeSellSymbols = new Set(
+          stockNames.filter((s) => s.has_active_sell === true).map((s) => s.symbol)
+        );
+      }
+      if (stockInfos) {
+        sectorMap = Object.fromEntries(stockInfos.map((s) => [s.symbol, s.sector]));
+        for (const s of stockInfos) {
+          if (!nameMap[s.symbol] && s.name) nameMap[s.symbol] = s.name;
+        }
+      }
+      // 테마 데이터 (오늘 없으면 최근 날짜 fallback)
+      const effectiveThemeDate = await getEffectiveThemeDate(supabase, todayKst);
+      const themeMap = await fetchThemeMap(supabase, signalSymbols, effectiveThemeDate);
+      for (const [sym, info] of themeMap) {
+        leaderMap[sym] = info.is_leader;
+        themeTagsMap[sym] = info.theme_tags;
+      }
+    }
+    const signals = (rawSignals || []).map((s: Record<string, unknown>) => {
+      const rawData = s.raw_data as Record<string, unknown> | null;
+      const signalPrice = extractSignalPrice(rawData);
+      return {
+        ...s,
+        name: nameMap[s.symbol as string] || (s.name as string) || (s.symbol as string),
+        market: marketMap[s.symbol as string] || "기타",
+        sector: sectorMap[s.symbol as string] || "기타",
+        is_leader: leaderMap[s.symbol as string] ?? false,
+        is_hot_theme: (themeTagsMap[s.symbol as string] ?? []).some(t => t.is_hot),
+        theme_tags: themeTagsMap[s.symbol as string] ?? [],
+        ...(signalPrice !== null ? { signal_price: String(signalPrice) } : {}),
+      } as unknown as Record<string, string> & { is_leader?: boolean; is_hot_theme?: boolean; theme_tags?: { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean }[] };
+    });
+
+    signals.sort((a, b) => {
+      const timeA = new Date((a.signal_time || a.timestamp) as string).getTime();
+      const timeB = new Date((b.signal_time || b.timestamp) as string).getTime();
+      return timeB - timeA;
+    });
+
+    buySignals = signals.filter((s) =>
+      (s.signal_type === "BUY" || s.signal_type === "BUY_FORECAST") &&
+      !activeSellSymbols.has(s.symbol as string)
+    );
+    sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
+    buyTotal = buySignals.length;
+    sellTotal = sellSignals.length;
+  } // end else (날짜 범위 모드)
+
+  return { buySignals, sellSignals, buyTotal, sellTotal, isActiveMode };
+}
+
+/** AI 신호 탭 본문. 공통 조회와 신호 조회를 함께 실행해 헤더·필터가 먼저 페인트된 뒤 이 부분만 늦게 채워집니다. */
+async function SignalsContent({
+  selectedDate,
+  activeSource,
+  leaderOnly,
+  last7,
+}: {
+  selectedDate: string;
+  activeSource: string;
+  leaderOnly: boolean;
+  last7: string[];
+}) {
+  const supabase = createServiceClient();
+  const [common, { buySignals, sellSignals, buyTotal, sellTotal, isActiveMode }] = await Promise.all([
+    fetchCommon(supabase),
+    fetchSignals(supabase, selectedDate, activeSource, last7),
+  ]);
+  const { favoriteSymbols, watchlistSymbols, groups, symbolGroups } = common;
+
+  return (
+    <SignalColumns
+      buySignals={
+        leaderOnly
+          ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true)
+          : buySignals
+      }
+      sellSignals={sellSignals}
+      favoriteSymbols={favoriteSymbols}
+      watchlistSymbols={watchlistSymbols}
+      groups={groups}
+      symbolGroups={symbolGroups}
+      buyTotal={leaderOnly ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true).length : buyTotal}
+      sellTotal={leaderOnly ? sellSignals.length : sellTotal}
+      isActiveMode={isActiveMode && !leaderOnly}
+    />
+  );
+}
+
+/** 종목분석 탭 본문. 공통 조회만 필요합니다. */
+async function RecommendationContent({ defaultDateMode }: { defaultDateMode: 'today' | 'signal_all' }) {
+  const supabase = createServiceClient();
+  const { favoriteSymbols, watchlistSymbols, groups, symbolGroups } = await fetchCommon(supabase);
+
+  return (
+    <RecommendationView
+      initialDateMode={defaultDateMode}
+      favoriteSymbols={favoriteSymbols}
+      watchlistSymbols={watchlistSymbols}
+      groups={groups}
+      symbolGroups={symbolGroups}
+    />
   );
 }
