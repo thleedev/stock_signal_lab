@@ -4,14 +4,16 @@ import { PageLayout, PageHeader } from "@/components/ui";
 import { getLastNWeekdays, getKstDayRange, getLastNDaysRange } from "@/lib/date-utils";
 import { getEffectiveThemeDate, fetchThemeMap } from "@/lib/theme-utils";
 import SignalColumns from "./signal-columns";
-import { extractSignalPrice } from "@/lib/signal-constants";
+import { extractSignalPrice, toActiveSignal, type ActiveSignalRow } from "@/lib/signal-constants";
 import { SignalFilterBar } from "./signal-filter-bar";
 import RecommendationView from "@/components/signals/RecommendationView";
 import { HotThemesBanner } from "@/components/signals/HotThemesBanner";
 import { CollectingBanner } from "@/components/signals/CollectingBanner";
 import type { WatchlistGroup } from "@/types/stock";
 
-export const dynamic = 'force-dynamic';
+// searchParams 를 읽으므로 Next.js 가 자동으로 동적 렌더링합니다.
+// revalidate 는 fetch 캐시와 클라이언트 라우터 캐시(staleTimes.dynamic)에 작용합니다.
+export const revalidate = 30;
 
 export default async function SignalsPage({
   searchParams,
@@ -67,55 +69,50 @@ export default async function SignalsPage({
   // ── AI 신호 탭 ──────────────────────────────────────────
   let buySignals: (Record<string, string> & { is_leader?: boolean })[] = [];
   let sellSignals: (Record<string, string> & { is_leader?: boolean })[] = [];
+  // 활성 모드에서만 서버 총계가 실제 건수와 다릅니다(최초 200행만 전송).
+  let buyTotal = 0;
+  let sellTotal = 0;
+  let isActiveMode = false;
 
   if (activeTab === "signals") {
     if (selectedDate === "all") {
-      // ── 전체 모드: 현재 BUY/SELL 상태 종목 전체 (stock_cache 기반, 기간 무관, 페이지네이션) ──
-      const PAGE = 1000;
+      // ── 전체 모드: 현재 BUY/SELL 상태 종목 (stock_cache 기반, 기간 무관) ──
+      // 최초 화면은 최신순 200행만 보내고 나머지는 클라이언트가
+      // /api/v1/signals/active 로 이어받습니다. 전체 건수는 head 조회로
+      // 본문 전송 없이 가져옵니다.
+      const INITIAL = 200;
+      const BUY_COLUMNS = "symbol, name, market, latest_signal_date, latest_signal_type, latest_signal_price";
+      const SELL_COLUMNS = "symbol, name, market, latest_sell_date";
 
-      // BUY 상태 전체 수집
-      const activeBuyRows: Record<string, unknown>[] = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data } = await supabase
+      const [
+        { data: buyRows, count: buyCount },
+        { data: sellRows, count: sellCount },
+      ] = await Promise.all([
+        supabase
           .from("stock_cache")
-          .select("symbol, name, market, latest_signal_date, latest_signal_type, latest_signal_price")
+          .select(BUY_COLUMNS, { count: "exact" })
           .eq("has_active_sell", false)
           .not("latest_signal_date", "is", null)
           .order("latest_signal_date", { ascending: false })
-          .range(from, from + PAGE - 1);
-        if (!data || data.length === 0) break;
-        activeBuyRows.push(...data);
-        if (data.length < PAGE) break;
-      }
-
-      // SELL 상태 전체 수집
-      const activeSellRows: Record<string, unknown>[] = [];
-      for (let from = 0; ; from += PAGE) {
-        const { data } = await supabase
+          .range(0, INITIAL - 1),
+        supabase
           .from("stock_cache")
-          .select("symbol, name, market, latest_sell_date")
+          .select(SELL_COLUMNS, { count: "exact" })
           .eq("has_active_sell", true)
           .not("latest_sell_date", "is", null)
           .order("latest_sell_date", { ascending: false })
-          .range(from, from + PAGE - 1);
-        if (!data || data.length === 0) break;
-        activeSellRows.push(...data);
-        if (data.length < PAGE) break;
-      }
+          .range(0, INITIAL - 1),
+      ]);
 
-      const toSignal = (s: Record<string, unknown>, type: "buy" | "sell") => ({
-        symbol: s.symbol as string,
-        name: (s.name as string) || (s.symbol as string),
-        market: (s.market as string) || "기타",
-        signal_type: type === "buy" ? ((s.latest_signal_type as string) || "BUY") : "SELL",
-        source: "",
-        timestamp: (type === "buy" ? s.latest_signal_date : s.latest_sell_date) as string,
-        signal_price: s.latest_signal_price ? String(s.latest_signal_price) : "",
-        sector: "",
-      });
-
-      buySignals  = activeBuyRows.map((s) => toSignal(s, "buy"));
-      sellSignals = activeSellRows.map((s) => toSignal(s, "sell"));
+      buySignals = (buyRows ?? []).map(
+        (s) => toActiveSignal(s as unknown as ActiveSignalRow, "buy") as unknown as Record<string, string>
+      );
+      sellSignals = (sellRows ?? []).map(
+        (s) => toActiveSignal(s as unknown as ActiveSignalRow, "sell") as unknown as Record<string, string>
+      );
+      buyTotal = buyCount ?? buySignals.length;
+      sellTotal = sellCount ?? sellSignals.length;
+      isActiveMode = true;
 
     } else {
       // ── 날짜 범위 모드: 오늘 / 최근7일 / 특정일 ──
@@ -194,6 +191,8 @@ export default async function SignalsPage({
         !activeSellSymbols.has(s.symbol as string)
       );
       sellSignals = signals.filter((s) => s.signal_type === "SELL" || s.signal_type === "SELL_COMPLETE");
+      buyTotal = buySignals.length;
+      sellTotal = sellSignals.length;
     } // end else (날짜 범위 모드)
   } // end if (activeTab === "signals")
 
@@ -250,6 +249,9 @@ export default async function SignalsPage({
             watchlistSymbols={watchlistSymbols}
             groups={groups}
             symbolGroups={symbolGroups}
+            buyTotal={leaderOnly ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true).length : buyTotal}
+            sellTotal={sellTotal}
+            isActiveMode={isActiveMode && !leaderOnly}
           />
         </>
       ) : (

@@ -1,15 +1,57 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutList, Grid3X3, Layers, Briefcase } from "lucide-react";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import type { WatchlistGroup } from "@/types/stock";
 import { SourceBadge, SignalBadge } from "@/components/ui";
 import { ThemeBadges } from "@/components/signals/ThemeBadges";
+import { useActiveSignals } from "@/components/signals/use-active-signals";
 
 type ThemeTag = { theme_id: string; theme_name: string; momentum_score: number; is_hot: boolean };
 type Signal = Record<string, string> & { is_leader?: boolean; is_hot_theme?: boolean; theme_tags?: ThemeTag[] };
+
+/** 스크롤 끝에 닿으면 다음 페이지를 요청하는 감시 요소 */
+function InfiniteSentinel({
+  hasMore,
+  loading,
+  onReach,
+  loaded,
+  total,
+}: {
+  hasMore: boolean;
+  loading: boolean;
+  onReach: () => void;
+  loaded: number;
+  total: number;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!hasMore || !ref.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) onReach();
+      },
+      { rootMargin: "200px" }
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [hasMore, onReach]);
+
+  if (total === 0) return null;
+
+  return (
+    <div ref={ref} className="py-4 text-center text-xs text-[var(--muted)]">
+      {loading
+        ? "불러오는 중…"
+        : hasMore
+          ? `${loaded} / ${total}건`
+          : `전체 ${total}건`}
+    </div>
+  );
+}
 
 function SignalCard({
   signal,
@@ -339,6 +381,9 @@ export default function SignalColumns({
   watchlistSymbols = [],
   groups: initialGroups = [],
   symbolGroups: initialSymbolGroups = {},
+  buyTotal = 0,
+  sellTotal = 0,
+  isActiveMode = false,
 }: {
   buySignals: Signal[];
   sellSignals: Signal[];
@@ -346,6 +391,9 @@ export default function SignalColumns({
   watchlistSymbols?: string[];
   groups?: WatchlistGroup[];
   symbolGroups?: Record<string, string[]>;
+  buyTotal?: number;
+  sellTotal?: number;
+  isActiveMode?: boolean;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
@@ -359,9 +407,16 @@ export default function SignalColumns({
     position: { x: number; y: number };
   } | null>(null);
 
+  const buy = useActiveSignals(buySignals, buyTotal, "buy", isActiveMode);
+  const sell = useActiveSignals(sellSignals, sellTotal, "sell", isActiveMode);
+
+  // 이어받기를 시작했으면 자동 새로고침이 스크롤 위치를 초기화하지 않도록 멈춥니다.
+  const hasLoadedMore = buy.rows.length > buySignals.length || sell.rows.length > sellSignals.length;
+
   // 장중 60초마다 서버 데이터 자동 새로고침
   useEffect(() => {
     const interval = setInterval(() => {
+      if (hasLoadedMore) return;
       const now = new Date();
       const kstHour = (now.getUTCHours() + 9) % 24;
       const day = now.getDay();
@@ -370,7 +425,7 @@ export default function SignalColumns({
       }
     }, 60_000);
     return () => clearInterval(interval);
-  }, [router]);
+  }, [router, hasLoadedMore]);
 
   const handleSignalClick = useCallback((e: React.MouseEvent, signal: Signal) => {
     setActionMenu({
@@ -512,7 +567,7 @@ export default function SignalColumns({
           >
             매수 신호
             <span className="ml-1.5 text-xs opacity-70">
-              ({buySignals.length})
+              ({isActiveMode ? buyTotal : buy.rows.length})
             </span>
           </button>
           <button
@@ -525,35 +580,53 @@ export default function SignalColumns({
           >
             매도 신호
             <span className="ml-1.5 text-xs opacity-70">
-              ({sellSignals.length})
+              ({isActiveMode ? sellTotal : sell.rows.length})
             </span>
           </button>
         </div>
 
         <div className="card">
           {activeTab === "buy" ? (
-            <SignalList
-              signals={buySignals}
-              favSet={favSet}
-              portSet={portSet}
-              emptyMessage="매수 신호가 없습니다"
-              onSignalClick={handleSignalClick}
-            />
+            <>
+              <SignalList
+                signals={buy.rows}
+                favSet={favSet}
+                portSet={portSet}
+                emptyMessage="매수 신호가 없습니다"
+                onSignalClick={handleSignalClick}
+              />
+              <InfiniteSentinel
+                hasMore={buy.hasMore}
+                loading={buy.loading}
+                onReach={buy.loadMore}
+                loaded={buy.rows.length}
+                total={buyTotal}
+              />
+            </>
           ) : (
-            <SignalList
-              signals={sellSignals}
-              favSet={favSet}
-              portSet={portSet}
-              emptyMessage="매도 신호가 없습니다"
-              onSignalClick={handleSignalClick}
-            />
+            <>
+              <SignalList
+                signals={sell.rows}
+                favSet={favSet}
+                portSet={portSet}
+                emptyMessage="매도 신호가 없습니다"
+                onSignalClick={handleSignalClick}
+              />
+              <InfiniteSentinel
+                hasMore={sell.hasMore}
+                loading={sell.loading}
+                onReach={sell.loadMore}
+                loaded={sell.rows.length}
+                total={sellTotal}
+              />
+            </>
           )}
         </div>
 
         <div className="text-sm text-[var(--muted)] text-right mt-2">
           {activeTab === "buy"
-            ? `매수 ${buySignals.length}건`
-            : `매도 ${sellSignals.length}건`}
+            ? `매수 ${buy.rows.length}건`
+            : `매도 ${sell.rows.length}건`}
         </div>
       </div>
 
@@ -564,16 +637,23 @@ export default function SignalColumns({
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-lg font-semibold text-red-400">매수 신호</h2>
             <span className="text-xs text-[var(--muted)]">
-              {buySignals.length}건
+              {buy.rows.length}건
             </span>
           </div>
           <div className="card">
             <SignalList
-              signals={buySignals}
+              signals={buy.rows}
               favSet={favSet}
               portSet={portSet}
               emptyMessage="매수 신호가 없습니다"
               onSignalClick={handleSignalClick}
+            />
+            <InfiniteSentinel
+              hasMore={buy.hasMore}
+              loading={buy.loading}
+              onReach={buy.loadMore}
+              loaded={buy.rows.length}
+              total={buyTotal}
             />
           </div>
         </div>
@@ -583,16 +663,23 @@ export default function SignalColumns({
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-lg font-semibold text-blue-400">매도 신호</h2>
             <span className="text-xs text-[var(--muted)]">
-              {sellSignals.length}건
+              {sell.rows.length}건
             </span>
           </div>
           <div className="card">
             <SignalList
-              signals={sellSignals}
+              signals={sell.rows}
               favSet={favSet}
               portSet={portSet}
               emptyMessage="매도 신호가 없습니다"
               onSignalClick={handleSignalClick}
+            />
+            <InfiniteSentinel
+              hasMore={sell.hasMore}
+              loading={sell.loading}
+              onReach={sell.loadMore}
+              loaded={sell.rows.length}
+              total={sellTotal}
             />
           </div>
         </div>
@@ -600,8 +687,8 @@ export default function SignalColumns({
 
       {/* 데스크톱 총 건수 */}
       <div className="hidden md:block text-sm text-[var(--muted)] text-right">
-        총 {buySignals.length + sellSignals.length}건 (매수{" "}
-        {buySignals.length} / 매도 {sellSignals.length})
+        총 {buy.rows.length + sell.rows.length}건 (매수{" "}
+        {buy.rows.length} / 매도 {sell.rows.length})
       </div>
     </>
       )}
