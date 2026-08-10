@@ -6,4 +6,4 @@ export { EmptyState } from "./EmptyState";
 export { SourceBadge } from "./SourceBadge";
 export { SignalBadge } from "./SignalBadge";
 export { PriceText } from "./PriceText";
-export { ResponsiveTable } from "./ResponsiveTable";
+export { StackedList } from "./StackedList";
