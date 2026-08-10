@@ -18,9 +18,20 @@ async function fetchPage(type: "buy" | "sell", offset: number, limit: number) {
 }
 
 /**
+ * initial 배열의 내용을 비교하기 위한 서명입니다. symbol 목록만 이어붙여도
+ * 순서·구성 변화를 충분히 잡아내고, 200행 규모에서 비용도 무시할 만합니다.
+ */
+function signatureOf(rows: Row[]): string {
+  return rows.map((r) => r.symbol).join(",");
+}
+
+/**
  * 서버가 보낸 최초 목록 뒤를 이어받습니다.
  *
- * initial 이 바뀌면(서버 재검증) 이어받은 분량을 버리고 처음부터 다시 시작합니다.
+ * initial 은 router.refresh() 가 일어날 때마다(장중 자동 새로고침뿐 아니라
+ * 즐겨찾기·포트폴리오 조작 등 페이지 어디서든) 새 배열 참조로 내려옵니다.
+ * 참조만 보고 리셋하면 실제 신호 데이터는 그대로인데도 이어받은 분량이
+ * 날아가므로, symbol 구성이 실제로 달라졌을 때만 리셋합니다.
  * loadAll 은 요약·업종 뷰가 전량을 필요로 할 때 씁니다.
  */
 export function useActiveSignals(initial: Row[], total: number, type: "buy" | "sell", enabled: boolean) {
@@ -28,9 +39,13 @@ export function useActiveSignals(initial: Row[], total: number, type: "buy" | "s
   const [loading, setLoading] = useState(false);
   const [complete, setComplete] = useState(false);
   const loadingRef = useRef(false);
+  const initialSignatureRef = useRef(signatureOf(initial));
 
-  // 서버 데이터가 갱신되면 이어받은 분량을 리셋합니다.
+  // 서버 데이터의 symbol 구성이 실제로 바뀐 경우에만 이어받은 분량을 리셋합니다.
   useEffect(() => {
+    const signature = signatureOf(initial);
+    if (signature === initialSignatureRef.current) return;
+    initialSignatureRef.current = signature;
     setRows(initial);
     setComplete(false);
   }, [initial]);

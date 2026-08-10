@@ -17,6 +17,10 @@ export async function GET(request: NextRequest) {
   const { type, offset, limit } = parseActiveParams(new URL(request.url).searchParams);
   const supabase = createServiceClient();
 
+  // latest_signal_date/latest_sell_date 만으로 정렬하면 동일 날짜 행이 많아
+  // (BUY 상위 1000행 중 최다 그룹 286행) Postgres 가 순서를 보장하지 않습니다.
+  // symbol 오름차순을 tiebreaker 로 더해 페이지 경계에서 행이 누락되거나
+  // 중복되지 않게 합니다. /signals 의 최초 200행 조회와 반드시 동일해야 합니다.
   const query =
     type === 'buy'
       ? supabase
@@ -25,12 +29,14 @@ export async function GET(request: NextRequest) {
           .eq('has_active_sell', false)
           .not('latest_signal_date', 'is', null)
           .order('latest_signal_date', { ascending: false })
+          .order('symbol', { ascending: true })
       : supabase
           .from('stock_cache')
           .select(SELL_COLUMNS, { count: 'exact' })
           .eq('has_active_sell', true)
           .not('latest_sell_date', 'is', null)
-          .order('latest_sell_date', { ascending: false });
+          .order('latest_sell_date', { ascending: false })
+          .order('symbol', { ascending: true });
 
   const { data, count, error } = await query.range(offset, offset + limit - 1);
 

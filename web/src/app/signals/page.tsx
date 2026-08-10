@@ -12,7 +12,8 @@ import { CollectingBanner } from "@/components/signals/CollectingBanner";
 import type { WatchlistGroup } from "@/types/stock";
 
 // searchParams 를 읽으므로 Next.js 가 자동으로 동적 렌더링합니다.
-// revalidate 는 fetch 캐시와 클라이언트 라우터 캐시(staleTimes.dynamic)에 작용합니다.
+// revalidate 는 이 세그먼트의 fetch/데이터 캐시 유효 시간을 30초로 못박습니다.
+// staleTimes.dynamic 은 next.config 의 별도 설정이며 이 값으로 바뀌지 않습니다.
 export const revalidate = 30;
 
 export default async function SignalsPage({
@@ -78,12 +79,17 @@ export default async function SignalsPage({
     if (selectedDate === "all") {
       // ── 전체 모드: 현재 BUY/SELL 상태 종목 (stock_cache 기반, 기간 무관) ──
       // 최초 화면은 최신순 200행만 보내고 나머지는 클라이언트가
-      // /api/v1/signals/active 로 이어받습니다. 전체 건수는 head 조회로
-      // 본문 전송 없이 가져옵니다.
+      // /api/v1/signals/active 로 이어받습니다. 전체 건수는 같은 쿼리의
+      // count: "exact" 로 함께 받으므로 별도 head 조회가 없습니다.
       const INITIAL = 200;
       const BUY_COLUMNS = "symbol, name, market, latest_signal_date, latest_signal_type, latest_signal_price";
       const SELL_COLUMNS = "symbol, name, market, latest_sell_date";
 
+      // latest_signal_date/latest_sell_date 만으로 정렬하면 동일 날짜 행이
+      // 많아(BUY 상위 1000행 중 최다 그룹 286행) Postgres 가 순서를 보장하지
+      // 않습니다. symbol 오름차순을 tiebreaker 로 더해 페이지 경계에서
+      // 행이 누락되거나 중복되지 않게 합니다. /api/v1/signals/active 의
+      // 정렬과 반드시 동일해야 합니다.
       const [
         { data: buyRows, count: buyCount },
         { data: sellRows, count: sellCount },
@@ -94,6 +100,7 @@ export default async function SignalsPage({
           .eq("has_active_sell", false)
           .not("latest_signal_date", "is", null)
           .order("latest_signal_date", { ascending: false })
+          .order("symbol", { ascending: true })
           .range(0, INITIAL - 1),
         supabase
           .from("stock_cache")
@@ -101,6 +108,7 @@ export default async function SignalsPage({
           .eq("has_active_sell", true)
           .not("latest_sell_date", "is", null)
           .order("latest_sell_date", { ascending: false })
+          .order("symbol", { ascending: true })
           .range(0, INITIAL - 1),
       ]);
 
@@ -250,7 +258,7 @@ export default async function SignalsPage({
             groups={groups}
             symbolGroups={symbolGroups}
             buyTotal={leaderOnly ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true).length : buyTotal}
-            sellTotal={sellTotal}
+            sellTotal={leaderOnly ? sellSignals.length : sellTotal}
             isActiveMode={isActiveMode && !leaderOnly}
           />
         </>

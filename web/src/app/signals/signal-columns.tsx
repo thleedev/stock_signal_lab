@@ -136,7 +136,7 @@ function SignalList({
     <div className="divide-y divide-[var(--border)]">
       {signals.map((s) => (
         <SignalCard
-          key={s.id}
+          key={s.id ?? s.symbol}
           signal={s}
           isFavorite={favSet.has(s.symbol)}
           isInPortfolio={portSet.has(s.symbol)}
@@ -413,6 +413,11 @@ export default function SignalColumns({
   // 이어받기를 시작했으면 자동 새로고침이 스크롤 위치를 초기화하지 않도록 멈춥니다.
   const hasLoadedMore = buy.rows.length > buySignals.length || sell.rows.length > sellSignals.length;
 
+  // 활성 모드에서는 화면에 보이는 모든 건수 표시가 서버 총계를 따릅니다.
+  // 날짜 범위 모드는 전량을 이미 받았으므로 배열 길이가 곧 총계입니다.
+  const buyDisplayTotal = isActiveMode ? buyTotal : buy.rows.length;
+  const sellDisplayTotal = isActiveMode ? sellTotal : sell.rows.length;
+
   // 장중 60초마다 서버 데이터 자동 새로고침
   useEffect(() => {
     const interval = setInterval(() => {
@@ -567,7 +572,7 @@ export default function SignalColumns({
           >
             매수 신호
             <span className="ml-1.5 text-xs opacity-70">
-              ({isActiveMode ? buyTotal : buy.rows.length})
+              ({buyDisplayTotal})
             </span>
           </button>
           <button
@@ -580,7 +585,7 @@ export default function SignalColumns({
           >
             매도 신호
             <span className="ml-1.5 text-xs opacity-70">
-              ({isActiveMode ? sellTotal : sell.rows.length})
+              ({sellDisplayTotal})
             </span>
           </button>
         </div>
@@ -625,8 +630,8 @@ export default function SignalColumns({
 
         <div className="text-sm text-[var(--muted)] text-right mt-2">
           {activeTab === "buy"
-            ? `매수 ${buy.rows.length}건`
-            : `매도 ${sell.rows.length}건`}
+            ? `매수 ${buyDisplayTotal}건`
+            : `매도 ${sellDisplayTotal}건`}
         </div>
       </div>
 
@@ -637,7 +642,7 @@ export default function SignalColumns({
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-lg font-semibold text-red-400">매수 신호</h2>
             <span className="text-xs text-[var(--muted)]">
-              {buy.rows.length}건
+              {buyDisplayTotal}건
             </span>
           </div>
           <div className="card">
@@ -663,7 +668,7 @@ export default function SignalColumns({
           <div className="flex items-center gap-2 mb-3">
             <h2 className="text-lg font-semibold text-blue-400">매도 신호</h2>
             <span className="text-xs text-[var(--muted)]">
-              {sell.rows.length}건
+              {sellDisplayTotal}건
             </span>
           </div>
           <div className="card">
@@ -687,8 +692,8 @@ export default function SignalColumns({
 
       {/* 데스크톱 총 건수 */}
       <div className="hidden md:block text-sm text-[var(--muted)] text-right">
-        총 {buy.rows.length + sell.rows.length}건 (매수{" "}
-        {buy.rows.length} / 매도 {sell.rows.length})
+        총 {buyDisplayTotal + sellDisplayTotal}건 (매수{" "}
+        {buyDisplayTotal} / 매도 {sellDisplayTotal})
       </div>
     </>
       )}
