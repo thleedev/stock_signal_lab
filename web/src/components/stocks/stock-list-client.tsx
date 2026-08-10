@@ -34,7 +34,6 @@ interface Props {
   groups: WatchlistGroup[];               // watchlist_groups 목록
   symbolGroups: Record<string, string[]>; // symbol → group_id[]
   hasFavorites: boolean;                  // 즐겨찾기 존재 여부 (진입 탭 결정용)
-  marketOpen?: boolean;                   // 장중 여부 — true면 마운트 후 실시간 시세를 조회
 }
 
 
@@ -121,6 +120,9 @@ function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
 }
 
 
+// 네이버 실시간 시세는 종목이 아직 체결 전이거나 데이터 결측일 때 volume·market_cap 을
+// 0으로 반환하는 경우가 있어, 0은 신뢰하지 않고 기존 DB 값을 유지합니다.
+// current_price·price_change·price_change_pct 는 0(보합)도 유효한 값이라 그대로 반영합니다.
 function applyLivePrices(list: StockCache[], prices: LivePriceMap): StockCache[] {
   return list.map((stock) => {
     const live = prices[stock.symbol];
@@ -130,13 +132,13 @@ function applyLivePrices(list: StockCache[], prices: LivePriceMap): StockCache[]
       current_price: live.current_price ?? stock.current_price,
       price_change: live.price_change ?? stock.price_change,
       price_change_pct: live.price_change_pct ?? stock.price_change_pct,
-      volume: live.volume ?? stock.volume,
-      market_cap: live.market_cap ?? stock.market_cap,
+      volume: live.volume > 0 ? live.volume : stock.volume,
+      market_cap: live.market_cap || stock.market_cap,
     };
   });
 }
 
-export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, groups: initialGroups, symbolGroups: initialSymbolGroups, marketOpen = false }: Props) {
+export default function StockListClient({ initialStocks, favorites, watchlistSymbols = [], lastPriceUpdate, groups: initialGroups, symbolGroups: initialSymbolGroups }: Props) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [query, setQuery] = useState(searchParams.get("q") || "");
@@ -182,43 +184,6 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
   const [pinFavorites, setPinFavorites] = useState<boolean>(true);
   const [pinMounted, setPinMounted] = useState(false);
-
-  // 장중에는 마운트 후 실시간 시세를 받아 DB 가격 위에 덮어씁니다.
-  // 서버 렌더링에서 네이버 API 를 기다리지 않으므로 첫 페인트가 지연되지 않습니다.
-  useEffect(() => {
-    if (!marketOpen) return;
-    let cancelled = false;
-
-    const applyLive = (
-      rows: StockCache[],
-      prices: Record<string, Partial<StockCache>>
-    ): StockCache[] =>
-      rows.map((row) => {
-        const live = prices[row.symbol];
-        if (!live) return row;
-        return {
-          ...row,
-          current_price: live.current_price ?? row.current_price,
-          price_change: live.price_change ?? row.price_change,
-          price_change_pct: live.price_change_pct ?? row.price_change_pct,
-          volume: (live.volume ?? 0) > 0 ? live.volume! : row.volume,
-          market_cap: live.market_cap || row.market_cap,
-        };
-      });
-
-    fetch("/api/v1/stocks/live-prices")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (cancelled || !json?.prices) return;
-        const prices = json.prices as Record<string, Partial<StockCache>>;
-        if (Object.keys(prices).length === 0) return;
-        setStocks((prev) => applyLive(prev, prices));
-        setFavStocks((prev) => applyLive(prev, prices));
-      })
-      .catch((e) => console.error("[stocks] 실시간 시세 조회 실패:", e));
-
-    return () => { cancelled = true; };
-  }, [marketOpen]);
 
   useEffect(() => {
     const stored = localStorage.getItem("pinFavorites");
@@ -648,6 +613,28 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     setStocks((prev) => applyLivePrices(prev, allPrices));
     setFavStocks((prev) => applyLivePrices(prev, allPrices));
   }, []);
+
+  // 마운트 후 실시간 시세를 한 번 받아 livePricesRef 에 기록하고 DB 가격 위에 덮어씁니다.
+  // 서버 렌더링에서 네이버 API 를 기다리지 않으므로 첫 페인트가 지연되지 않습니다.
+  // handlePricesRefreshed 를 그대로 재사용해 livePricesRef 캐시에 기록하므로, 이후
+  // 정렬·필터 변경으로 fetchStocks 가 stocks 를 다시 채워도 이 캐시가 계속 적용됩니다.
+  // 장중 여부는 이 라우트가 서버에서 다시 판정하므로(장외면 빈 prices 를 즉시 반환)
+  // 클라이언트는 무조건 호출하고 응답만 신뢰합니다.
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/v1/stocks/live-prices")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.marketOpen || !json?.prices) return;
+        const prices = json.prices as LivePriceMap;
+        if (Object.keys(prices).length === 0) return;
+        handlePricesRefreshed(prices);
+      })
+      .catch((e) => console.error("[stocks] 실시간 시세 조회 실패:", e));
+
+    return () => { cancelled = true; };
+  }, [handlePricesRefreshed]);
 
   const { refreshing, isStale, updateTime: priceUpdateTime, refresh: refreshPrices } =
     useGlobalPriceRefresh({

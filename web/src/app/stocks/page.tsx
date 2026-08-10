@@ -3,7 +3,7 @@ import StockListClient from "@/components/stocks/stock-list-client";
 import type { WatchlistGroup } from "@/types/stock";
 import { extractSignalPrice } from "@/lib/signal-constants";
 
-export const revalidate = 30;
+export const dynamic = 'force-dynamic';
 
 /**
  * StockCache 타입이 실제로 쓰는 컬럼만 명시합니다.
@@ -15,14 +15,6 @@ export const revalidate = 30;
  * 그래서 배열이 아닌 리터럴 문자열로 직접 선언합니다.
  */
 const STOCK_COLUMNS = "symbol, name, market, current_price, price_change, price_change_pct, volume, market_cap, per, pbr, roe, eps, bps, dividend_yield, high_52w, low_52w, latest_signal_type, latest_signal_date, signal_count_30d, ai_score, is_holding, high_90d_pct, is_favorite, updated_at";
-
-/** 장중(KST 08~20시, 평일) 여부 */
-function isMarketHours() {
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  const h = kst.getUTCHours();
-  const d = kst.getUTCDay();
-  return d >= 1 && d <= 5 && h >= 8 && h < 20;
-}
 
 export default async function StocksPage() {
   const supabase = createServiceClient();
@@ -132,7 +124,6 @@ export default async function StocksPage() {
       groups={groups}
       symbolGroups={symbolGroups}
       hasFavorites={hasFavorites}
-      marketOpen={isMarketHours()}
     />
   );
 }
