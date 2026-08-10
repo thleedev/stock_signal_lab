@@ -17,7 +17,13 @@ export type LivePriceMap = Record<
 
 interface UseGlobalPriceRefreshOptions {
   staleMinutes?: number;
-  onPricesRefreshed?: (prices: LivePriceMap) => void;
+  /**
+   * asOf 는 넘긴 가격이 "언제 기준" 값인지 나타내는 epoch(ms)입니다.
+   * 이 훅은 stock_cache 를 읽으므로 행들의 updated_at 중 가장 최신 값을 씁니다.
+   * 호출부가 네이버 실시간 시세 같은 다른 경로와 같은 심볼을 다룰 때
+   * 더 오래된 값이 최신 값을 덮지 않도록 비교 기준으로 쓰라고 함께 넘깁니다.
+   */
+  onPricesRefreshed?: (prices: LivePriceMap, asOf: number) => void;
 }
 
 export function useGlobalPriceRefresh({
@@ -60,7 +66,8 @@ export function useGlobalPriceRefresh({
         .pop() ?? new Date().toISOString();
 
       setUpdateTime(latestUpdate);
-      onPricesRefreshed?.(priceMap);
+      const asOf = Date.parse(latestUpdate);
+      onPricesRefreshed?.(priceMap, Number.isNaN(asOf) ? Date.now() : asOf);
     } finally {
       setRefreshing(false);
     }

@@ -59,9 +59,10 @@ BUY·SELL 조회를 공통 4개 쿼리(즐겨찾기, 관심종목, 관심그룹,
 `Promise.all`에 넣어 왕복을 1라운드로 접습니다. 각 목록은 최신순 200행만 가져옵니다.
 1,000행 루프는 제거합니다.
 
-전체 건수는 `select('*', { count: 'exact', head: true })`로 별도 취득합니다. 본문 전송이
-없어 비용이 사실상 0이고, 화면에는 "BUY 1,678건 중 200건 표시" 형태로 노출합니다. 이
-count 쿼리도 같은 `Promise.all`에 합류시킵니다.
+전체 건수는 200행 조회에 `{ count: 'exact' }`를 붙여 같은 응답으로 함께 받습니다.
+초안은 `head: true` 쿼리를 별도로 두는 방향이었으나, PostgREST가 `Content-Range`로
+총계를 돌려주므로 본문 조회와 하나로 합쳐 쿼리를 하나 더 줄였습니다. 화면에는
+"BUY 1,678건 중 200건 표시" 형태로 노출합니다.
 
 오늘 신호 유무를 판정하는 선행 `count` 쿼리는 결과에 따라 `selectedDate`가 갈리므로
 앞으로 뺄 수 없습니다. 이 쿼리만 1라운드로 먼저 실행하고, 나머지 전부를 2라운드 하나로
@@ -86,6 +87,12 @@ count 쿼리도 같은 `Promise.all`에 합류시킵니다.
 `signal-columns.tsx`의 `list` 뷰 하단에 `IntersectionObserver` 감시 요소를 두고, 화면에
 들어오면 다음 200행을 이어 받습니다. 로드 중에는 하단에 스피너를 표시하고, `hasMore`가
 false면 감시를 해제합니다. 이미 받은 행은 `symbol` 기준으로 중복을 제거합니다.
+
+이어받기 여부는 매수·매도 목록마다 따로 판단합니다. 주도주 필터(`leader=1`)는 매수
+신호만 걸러내는데, 활성 모드 응답에는 `is_leader`가 없어 매수 쪽은 서버가 보낸 200행
+안에서만 필터가 성립합니다. 그래서 매수 목록만 이어받기를 끄고 실제로 넘긴 행 수를
+총계로 표시하며, 필터와 무관한 매도 목록은 이어받기를 유지해 전량에 도달하게 합니다.
+화면의 건수는 언제나 실제로 보여줄 수 있는 행 수와 일치해야 합니다.
 
 ### 4. summary·industry 뷰 정합성
 
@@ -131,26 +138,41 @@ false면 감시를 해제합니다. 이미 받은 행은 `symbol` 기준으로 �
 이 앱은 인증이 없고 `user_id` 개념이 없는 단일 사용자 앱이므로 페이지 캐시를 공유해도
 사용자별 데이터가 섞이지 않습니다.
 
-두 페이지에서 `force-dynamic`을 제거하고 `export const revalidate = 30`을 적용합니다.
-신호 수집 크론 주기보다 짧아 신선도 손실이 없습니다. 즐겨찾기·관심그룹을 변경한 직후에는
-클라이언트에서 `router.refresh()`를 호출해 즉시 반영합니다.
+`/signals`는 `force-dynamic`을 제거하고 `export const revalidate = 30`을 적용합니다.
+신호 수집 크론 주기보다 짧아 신선도 손실이 없습니다. 이 페이지는 `searchParams`를 읽으므로
+Next.js가 자동으로 동적 렌더링하며, `revalidate`는 페이지 캐시가 아니라 `fetch` 캐시와
+`staleTimes`의 클라이언트 라우터 캐시에 작용합니다. `next.config.ts`의
+`staleTimes.dynamic`은 현재 30초이므로 뒤로 가기와 탭 전환의 재방문이 즉시 표시됩니다.
 
-`/signals`는 `searchParams`를 읽으므로 Next.js가 자동으로 동적 렌더링합니다. 이 경우
-`revalidate`는 페이지 캐시가 아니라 `fetch` 캐시와 `staleTimes`의 클라이언트 라우터
-캐시에 작용합니다. `next.config.ts`의 `staleTimes.dynamic`은 현재 30초이므로 뒤로 가기와
-탭 전환의 재방문이 즉시 표시됩니다.
+`/stocks`는 `force-dynamic`을 그대로 유지합니다. 초안은 두 페이지 모두에서 이를 제거하는
+방향이었으나 사용자 결정으로 바꿨습니다. `/stocks`는 `searchParams`를 읽지 않아
+`force-dynamic`이 없으면 정적 프리렌더 대상이 되고, 그러면 서버가 판정한 장중 상태와
+가격 갱신 시각이 HTML에 고정되어 실제 시장 상황과 어긋납니다. 즐겨찾기 변경도 최대
+30초 늦게 반영됩니다. 장중 정확성과 즐겨찾기 즉시 반영이 이 페이지의 캐시 이득보다
+중요하다고 판단했습니다.
+
+즐겨찾기·관심그룹을 변경한 직후에는 두 페이지 모두 클라이언트에서 `router.refresh()`를
+호출해 즉시 반영합니다.
 
 ## 파일 변경 목록
 
 | 파일 | 변경 |
 |---|---|
-| `web/src/app/signals/page.tsx` | 1,000행 루프 제거, 200행 + count, Suspense 경계, 캐시 선언 |
+| `web/src/app/signals/page.tsx` | 1,000행 루프 제거, 200행 + count, Suspense 경계, 캐시 선언, 매수·매도 이어받기 여부 분리 |
 | `web/src/app/signals/signal-columns.tsx` | 무한 스크롤, summary·industry lazy 로드, 총계 표시 |
+| `web/src/app/signals/signals-skeleton.tsx` | 신규 — Suspense fallback 스켈레톤 |
+| `web/src/components/signals/use-active-signals.ts` | 신규 — 이어받기·전량 로드 훅 |
+| `web/src/components/signals/merge-signals.ts` | 신규 — `symbol` 기준 중복 제거 병합 |
 | `web/src/app/api/v1/signals/active/route.ts` | 신규 — BUY/SELL 활성 목록 페이지네이션 |
+| `web/src/app/api/v1/signals/active/params.ts` | 신규 — `type`·`offset`·`limit` 파싱과 상한 |
 | `web/src/lib/signal-constants.ts` | `toSignal` 변환 함수 이관 |
-| `web/src/app/stocks/page.tsx` | 컬럼 명시, 네이버 대기 제거, 캐시 선언 |
-| `web/src/components/stocks/stock-list-client.tsx` | 마운트 후 실시간 시세 병합 |
+| `web/src/app/stocks/page.tsx` | 컬럼 명시, 네이버 대기 제거 (`force-dynamic` 유지) |
+| `web/src/components/stocks/stock-list-client.tsx` | 마운트 후 실시간 시세 병합, 심볼별 최신 값 우선 규칙 |
+| `web/src/hooks/use-global-price-refresh.ts` | `onPricesRefreshed`에 기준시각 `asOf` 전달 |
 | `web/src/app/api/v1/stocks/live-prices/route.ts` | 신규 — 장중 실시간 시세 |
+| `web/src/lib/signal-constants.test.ts` | 신규 — `toActiveSignal` 변환 단위 테스트 5개 |
+| `web/src/app/api/v1/signals/active/params.test.ts` | 신규 — 파라미터 파싱 경계 테스트 7개 |
+| `web/src/components/signals/merge-signals.test.ts` | 신규 — 중복 제거 병합 테스트 5개 |
 
 ## 검증
 
@@ -170,9 +192,14 @@ UI 변경이 포함되므로 커밋 전에 로컬에서 직접 실행해 확인�
 
 ## 예상 효과
 
-`/signals`의 서버 구간 약 1.3초가 300ms대로, RSC 페이로드 약 500KB가 40KB 안팎으로
+`/signals`의 서버 구간 약 1.3초가 300ms대로, RSC 페이로드가 행수에 비례해 약 8분의 1로
 줄어듭니다. DOM 노드는 3,248행에서 400행으로 감소합니다. `/stocks`는 장중 최대 4초
 대기가 사라지고 응답 본문이 컬럼 축소만큼 줄어듭니다.
+
+초안은 페이로드가 40KB 안팎까지 줄어든다고 적었으나 실측은 454,785 bytes였습니다.
+행수만 8분의 1로 보고 계산한 값이라 무한 스크롤·지연 로드용 클라이언트 코드와 RSC 구조
+자체의 고정 비용을 빠뜨린 추정이었습니다. 감소 폭의 방향은 맞았으나 절대값은 10배
+어긋났습니다.
 
 ## 후속 작업
 
@@ -214,8 +241,10 @@ diff로 대조한 결과 이번 변경 줄이 아닌 기존 코드입니다. `np
 | `/stocks` 응답 본문(100행) | 170,485~170,505 bytes | 106,097 bytes | 컬럼 축소로 약 38% 감소 |
 
 설계 문서 "배경" 절의 계측값(서버 구간 약 1.3초, `stock_cache` 100행 102KB)은 이번 측정과
-측정 방식이 달라(운영 DB 직접 계측 대 로컬 curl) 절대값이 정확히 일치하지는 않지만, 개선
-전후 방향과 폭은 예상 효과("300ms대로", "약 40KB 안팎으로")와 같은 수준입니다. `/signals`
+측정 방식이 달라(운영 DB 직접 계측 대 로컬 curl) 절대값이 정확히 일치하지는 않습니다.
+응답 시간은 예상 효과("300ms대로")와 같은 수준으로 떨어졌으나, 페이로드는 예상값
+"40KB 안팎"과 실측 454,785 bytes가 10배 어긋났습니다. 감소 폭 86%라는 방향은 맞았고
+추정만 빗나갔습니다. `/signals`
 기본 진입(오늘 모드)은 원래도 1,000행 루프 대상이 아니어서 이번 개선의 직접 수혜 구간이
 아니며, 응답 본문이 오히려 소폭 늘어난 것은 무한 스크롤·지연 로드용 클라이언트 코드가
 추가된 데 따른 것으로, 행수 자체(93건)는 개선 전후 동일합니다.

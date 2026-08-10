@@ -301,21 +301,27 @@ async function SignalsContent({
   ]);
   const { favoriteSymbols, watchlistSymbols, groups, symbolGroups } = common;
 
+  // 주도주 필터는 매수 신호만 걸러냅니다. 활성 모드에서는 서버가 최초 200행만
+  // 보내므로 필터 결과도 그 200행 안에서만 나오고, 이어받기로 총계를 채울 수도
+  // 없습니다(활성 모드 응답에 is_leader 가 없습니다). 따라서 매수 쪽만 활성
+  // 모드를 끄고 실제로 넘긴 행 수를 총계로 씁니다. 매도 쪽은 필터와 무관하므로
+  // 활성 모드를 유지해 이어받기가 계속되게 합니다.
+  const filteredBuySignals = leaderOnly
+    ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true)
+    : buySignals;
+
   return (
     <SignalColumns
-      buySignals={
-        leaderOnly
-          ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true)
-          : buySignals
-      }
+      buySignals={filteredBuySignals}
       sellSignals={sellSignals}
       favoriteSymbols={favoriteSymbols}
       watchlistSymbols={watchlistSymbols}
       groups={groups}
       symbolGroups={symbolGroups}
-      buyTotal={leaderOnly ? buySignals.filter((s) => (s as Record<string, unknown>).is_leader === true).length : buyTotal}
-      sellTotal={leaderOnly ? sellSignals.length : sellTotal}
-      isActiveMode={isActiveMode && !leaderOnly}
+      buyTotal={leaderOnly ? filteredBuySignals.length : buyTotal}
+      sellTotal={sellTotal}
+      buyActiveMode={isActiveMode && !leaderOnly}
+      sellActiveMode={isActiveMode}
     />
   );
 }

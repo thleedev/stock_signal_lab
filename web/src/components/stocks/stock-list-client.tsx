@@ -607,16 +607,33 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
   // 최근 fetch된 live price 캐시 (새 페이지 로드 시 적용)
   const livePricesRef = useRef<LivePriceMap>({});
+  // 심볼별로 현재 캐시에 담긴 값이 "언제 기준"인지 기록합니다.
+  const priceAsOfRef = useRef<Record<string, number>>({});
 
-  const handlePricesRefreshed = useCallback((allPrices: LivePriceMap) => {
-    livePricesRef.current = { ...livePricesRef.current, ...allPrices };
-    setStocks((prev) => applyLivePrices(prev, allPrices));
-    setFavStocks((prev) => applyLivePrices(prev, allPrices));
+  /**
+   * 가격을 병합합니다. 서로 다른 두 경로가 순서 보장 없이 같은 심볼을 덮어씁니다.
+   * 하나는 마운트 직후 호출하는 네이버 실시간 시세(/api/v1/stocks/live-prices)이고
+   * 다른 하나는 useGlobalPriceRefresh 의 stock_cache 전량 조회입니다. DB 응답이
+   * 늦게 도착하면 방금 받은 실시간 시세가 캐시 값으로 되돌아가므로, 심볼별로
+   * 더 최신 기준시각을 가진 값만 반영합니다. 네이버 시세는 응답 수신 시각을,
+   * DB 값은 stock_cache 의 updated_at 을 기준시각으로 씁니다.
+   */
+  const applyPrices = useCallback((incoming: LivePriceMap, asOf: number) => {
+    const accepted: LivePriceMap = {};
+    for (const [symbol, price] of Object.entries(incoming)) {
+      if ((priceAsOfRef.current[symbol] ?? 0) > asOf) continue;
+      priceAsOfRef.current[symbol] = asOf;
+      accepted[symbol] = price;
+    }
+    if (Object.keys(accepted).length === 0) return;
+    livePricesRef.current = { ...livePricesRef.current, ...accepted };
+    setStocks((prev) => applyLivePrices(prev, accepted));
+    setFavStocks((prev) => applyLivePrices(prev, accepted));
   }, []);
 
   // 마운트 후 실시간 시세를 한 번 받아 livePricesRef 에 기록하고 DB 가격 위에 덮어씁니다.
   // 서버 렌더링에서 네이버 API 를 기다리지 않으므로 첫 페인트가 지연되지 않습니다.
-  // handlePricesRefreshed 를 그대로 재사용해 livePricesRef 캐시에 기록하므로, 이후
+  // applyPrices 를 그대로 재사용해 livePricesRef 캐시에 기록하므로, 이후
   // 정렬·필터 변경으로 fetchStocks 가 stocks 를 다시 채워도 이 캐시가 계속 적용됩니다.
   // 장중 여부는 이 라우트가 서버에서 다시 판정하므로(장외면 빈 prices 를 즉시 반환)
   // 클라이언트는 무조건 호출하고 응답만 신뢰합니다.
@@ -629,16 +646,16 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         if (cancelled || !json?.marketOpen || !json?.prices) return;
         const prices = json.prices as LivePriceMap;
         if (Object.keys(prices).length === 0) return;
-        handlePricesRefreshed(prices);
+        applyPrices(prices, Date.now());
       })
       .catch((e) => console.error("[stocks] 실시간 시세 조회 실패:", e));
 
     return () => { cancelled = true; };
-  }, [handlePricesRefreshed]);
+  }, [applyPrices]);
 
   const { refreshing, isStale, updateTime: priceUpdateTime, refresh: refreshPrices } =
     useGlobalPriceRefresh({
-      onPricesRefreshed: handlePricesRefreshed,
+      onPricesRefreshed: applyPrices,
     });
 
   const { trigger: triggerRefresh, isRunning: batchRunning } = useBatchRefresh({

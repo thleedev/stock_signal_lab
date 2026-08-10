@@ -383,7 +383,8 @@ export default function SignalColumns({
   symbolGroups: initialSymbolGroups = {},
   buyTotal = 0,
   sellTotal = 0,
-  isActiveMode = false,
+  buyActiveMode = false,
+  sellActiveMode = false,
 }: {
   buySignals: Signal[];
   sellSignals: Signal[];
@@ -393,7 +394,10 @@ export default function SignalColumns({
   symbolGroups?: Record<string, string[]>;
   buyTotal?: number;
   sellTotal?: number;
-  isActiveMode?: boolean;
+  /** 매수 목록이 서버 최초 200행 뒤를 이어받아야 하는지 여부입니다. */
+  buyActiveMode?: boolean;
+  /** 매도 목록이 서버 최초 200행 뒤를 이어받아야 하는지 여부입니다. */
+  sellActiveMode?: boolean;
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
@@ -407,32 +411,45 @@ export default function SignalColumns({
     position: { x: number; y: number };
   } | null>(null);
 
-  const buy = useActiveSignals(buySignals, buyTotal, "buy", isActiveMode);
-  const sell = useActiveSignals(sellSignals, sellTotal, "sell", isActiveMode);
+  const buy = useActiveSignals(buySignals, buyTotal, "buy", buyActiveMode);
+  const sell = useActiveSignals(sellSignals, sellTotal, "sell", sellActiveMode);
 
   // 요약·업종 뷰는 전체 집계가 필요하므로 뷰를 여는 시점에 전량을 채웁니다.
   const needsFullData = viewMode === "summary" || viewMode === "industry";
-  const fullDataReady = !isActiveMode || (buy.complete && sell.complete);
+  const fullDataReady =
+    (!buyActiveMode || buy.complete) && (!sellActiveMode || sell.complete);
   // 전량 로드 도중 요청이 실패해도 complete 는 true 가 되므로(무한 대기 방지),
   // 화면이 조용히 불완전한 데이터를 보여주지 않도록 별도로 실패 여부를 알립니다.
-  const fullDataError = isActiveMode && (buy.error || sell.error);
+  const fullDataError = (buyActiveMode && buy.error) || (sellActiveMode && sell.error);
 
   useEffect(() => {
-    if (!needsFullData || !isActiveMode) return;
-    if (!buy.complete) buy.loadAll();
-    if (!sell.complete) sell.loadAll();
+    if (!needsFullData) return;
+    // loadAll 은 loadMore 가 진행 중이면 즉시 반환합니다. loading 을 의존성에
+    // 넣어야 그 로드가 끝난 뒤 다시 시도해 "집계 중"에서 멈추지 않습니다.
+    // 재실행되어도 complete 면 호출하지 않고, 진행 중이면 훅 내부 가드가
+    // 막으므로 루프가 생기지 않습니다.
+    if (buyActiveMode && !buy.complete && !buy.loading) buy.loadAll();
+    if (sellActiveMode && !sell.complete && !sell.loading) sell.loadAll();
     // loadAll 은 rows 에 의존해 매 렌더 새로 만들어지므로 의존성에서 제외합니다.
-    // complete 플래그가 재호출을 막습니다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsFullData, isActiveMode, buy.complete, sell.complete]);
+  }, [
+    needsFullData,
+    buyActiveMode,
+    sellActiveMode,
+    buy.complete,
+    sell.complete,
+    buy.loading,
+    sell.loading,
+  ]);
 
   // 이어받기를 시작했으면 자동 새로고침이 스크롤 위치를 초기화하지 않도록 멈춥니다.
   const hasLoadedMore = buy.rows.length > buySignals.length || sell.rows.length > sellSignals.length;
 
-  // 활성 모드에서는 화면에 보이는 모든 건수 표시가 서버 총계를 따릅니다.
-  // 날짜 범위 모드는 전량을 이미 받았으므로 배열 길이가 곧 총계입니다.
-  const buyDisplayTotal = isActiveMode ? buyTotal : buy.rows.length;
-  const sellDisplayTotal = isActiveMode ? sellTotal : sell.rows.length;
+  // 활성 모드에서는 이어받기로 총계까지 채울 수 있으므로 서버 총계를 그대로
+  // 표시합니다. 활성 모드가 아니면 더 받을 수단이 없으므로 실제로 보여줄 수
+  // 있는 행 수만 표시합니다. 거짓 총계를 남기지 않기 위한 구분입니다.
+  const buyDisplayTotal = buyActiveMode ? buyTotal : buy.rows.length;
+  const sellDisplayTotal = sellActiveMode ? sellTotal : sell.rows.length;
 
   // 장중 60초마다 서버 데이터 자동 새로고침
   useEffect(() => {
@@ -571,7 +588,7 @@ export default function SignalColumns({
       {/* 요약 뷰 */}
       {needsFullData && !fullDataReady ? (
         <div className="card p-8 text-center text-[var(--muted)]">
-          전체 {buyTotal + sellTotal}건 집계 중…
+          전체 {buyDisplayTotal + sellDisplayTotal}건 집계 중…
         </div>
       ) : viewMode === "summary" ? (
         <div className="space-y-3">
@@ -639,7 +656,7 @@ export default function SignalColumns({
                 loading={buy.loading}
                 onReach={buy.loadMore}
                 loaded={buy.rows.length}
-                total={buyTotal}
+                total={buyDisplayTotal}
               />
             </>
           ) : (
@@ -656,7 +673,7 @@ export default function SignalColumns({
                 loading={sell.loading}
                 onReach={sell.loadMore}
                 loaded={sell.rows.length}
-                total={sellTotal}
+                total={sellDisplayTotal}
               />
             </>
           )}
@@ -692,7 +709,7 @@ export default function SignalColumns({
               loading={buy.loading}
               onReach={buy.loadMore}
               loaded={buy.rows.length}
-              total={buyTotal}
+              total={buyDisplayTotal}
             />
           </div>
         </div>
@@ -718,7 +735,7 @@ export default function SignalColumns({
               loading={sell.loading}
               onReach={sell.loadMore}
               loaded={sell.rows.length}
-              total={sellTotal}
+              total={sellDisplayTotal}
             />
           </div>
         </div>
