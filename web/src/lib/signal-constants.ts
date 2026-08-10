@@ -75,3 +75,47 @@ export function extractSignalPrice(rawData: Record<string, unknown> | null): num
   }
   return null;
 }
+
+/** stock_cache 기반 활성 신호 원본 행 */
+export type ActiveSignalRow = {
+  symbol: string;
+  name?: string | null;
+  market?: string | null;
+  latest_signal_date?: string | null;
+  latest_signal_type?: string | null;
+  latest_signal_price?: number | null;
+  latest_sell_date?: string | null;
+};
+
+/** SignalColumns 가 소비하는 신호 형태 */
+export type ActiveSignal = {
+  symbol: string;
+  name: string;
+  market: string;
+  signal_type: string;
+  source: string;
+  timestamp: string;
+  signal_price: string;
+  sector: string;
+};
+
+/**
+ * stock_cache 행을 활성 신호로 변환합니다.
+ *
+ * 페이지의 최초 200행과 API 의 이어받기 행이 같은 형태여야 하므로
+ * 양쪽 모두 이 함수를 사용합니다. source·sector 가 빈 문자열인 것은
+ * stock_cache 에 해당 정보가 없기 때문이며 기존 동작과 같습니다.
+ */
+export function toActiveSignal(row: ActiveSignalRow, type: 'buy' | 'sell'): ActiveSignal {
+  const price = row.latest_signal_price;
+  return {
+    symbol: row.symbol,
+    name: row.name || row.symbol,
+    market: row.market || '기타',
+    signal_type: type === 'buy' ? row.latest_signal_type || 'BUY' : 'SELL',
+    source: '',
+    timestamp: (type === 'buy' ? row.latest_signal_date : row.latest_sell_date) ?? '',
+    signal_price: type === 'buy' && price !== null && price !== undefined ? String(price) : '',
+    sector: '',
+  };
+}
