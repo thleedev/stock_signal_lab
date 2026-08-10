@@ -38,6 +38,9 @@ export function useActiveSignals(initial: Row[], total: number, type: "buy" | "s
   const [rows, setRows] = useState<Row[]>(initial);
   const [loading, setLoading] = useState(false);
   const [complete, setComplete] = useState(false);
+  // 이어받기·전량 로드 도중 요청이 실패했음을 나타냅니다. 재시도 수단은 없고,
+  // 호출부가 "일부만 불러왔다"는 사실을 사용자에게 알리는 데만 씁니다.
+  const [error, setError] = useState(false);
   const loadingRef = useRef(false);
   const initialSignatureRef = useRef(signatureOf(initial));
 
@@ -48,6 +51,7 @@ export function useActiveSignals(initial: Row[], total: number, type: "buy" | "s
     initialSignatureRef.current = signature;
     setRows(initial);
     setComplete(false);
+    setError(false);
   }, [initial]);
 
   const hasMore = enabled && !complete && rows.length < total;
@@ -63,6 +67,7 @@ export function useActiveSignals(initial: Row[], total: number, type: "buy" | "s
     } catch (e) {
       console.error("[useActiveSignals] 이어받기 실패:", e);
       setComplete(true);
+      setError(true);
     } finally {
       loadingRef.current = false;
       setLoading(false);
@@ -73,8 +78,9 @@ export function useActiveSignals(initial: Row[], total: number, type: "buy" | "s
     if (!enabled || loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
+    // catch 블록에서도 "지금까지 받은 만큼"을 반영해야 하므로 try 밖에 둡니다.
+    let acc = rows;
     try {
-      let acc = rows;
       let offset = acc.length;
       // 총계까지 1000행씩 채웁니다. 서버가 hasMore=false 를 주면 멈춥니다.
       for (;;) {
@@ -87,11 +93,17 @@ export function useActiveSignals(initial: Row[], total: number, type: "buy" | "s
       setComplete(true);
     } catch (e) {
       console.error("[useActiveSignals] 전량 로드 실패:", e);
+      // complete 를 true 로 만들지 않으면 호출부의 effect 가 재실행되지 않아
+      // "집계 중" 문구에 무한정 멈춥니다. 지금까지 받은 acc 만이라도 반영하고
+      // error 로 실패 사실을 알립니다.
+      setRows(acc);
+      setComplete(true);
+      setError(true);
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
   }, [enabled, type, rows]);
 
-  return { rows, loading, hasMore, loadMore, loadAll, complete };
+  return { rows, loading, hasMore, loadMore, loadAll, complete, error };
 }

@@ -413,6 +413,9 @@ export default function SignalColumns({
   // 요약·업종 뷰는 전체 집계가 필요하므로 뷰를 여는 시점에 전량을 채웁니다.
   const needsFullData = viewMode === "summary" || viewMode === "industry";
   const fullDataReady = !isActiveMode || (buy.complete && sell.complete);
+  // 전량 로드 도중 요청이 실패해도 complete 는 true 가 되므로(무한 대기 방지),
+  // 화면이 조용히 불완전한 데이터를 보여주지 않도록 별도로 실패 여부를 알립니다.
+  const fullDataError = isActiveMode && (buy.error || sell.error);
 
   useEffect(() => {
     if (!needsFullData || !isActiveMode) return;
@@ -571,9 +574,23 @@ export default function SignalColumns({
           전체 {buyTotal + sellTotal}건 집계 중…
         </div>
       ) : viewMode === "summary" ? (
-        <SectorSummaryView buySignals={buy.rows} sellSignals={sell.rows} onStockClick={handleSignalClick} />
+        <div className="space-y-3">
+          {fullDataError && (
+            <div className="card p-4 text-center text-sm text-[var(--muted)]">
+              일부 신호를 불러오지 못해 표시된 내용이 실제보다 적을 수 있습니다.
+            </div>
+          )}
+          <SectorSummaryView buySignals={buy.rows} sellSignals={sell.rows} onStockClick={handleSignalClick} />
+        </div>
       ) : viewMode === "industry" ? (
-        <IndustrySummaryView buySignals={buy.rows} sellSignals={sell.rows} onStockClick={handleSignalClick} />
+        <div className="space-y-3">
+          {fullDataError && (
+            <div className="card p-4 text-center text-sm text-[var(--muted)]">
+              일부 신호를 불러오지 못해 표시된 내용이 실제보다 적을 수 있습니다.
+            </div>
+          )}
+          <IndustrySummaryView buySignals={buy.rows} sellSignals={sell.rows} onStockClick={handleSignalClick} />
+        </div>
       ) : (
       <>
       {/* 모바일: 탭 전환 */}
