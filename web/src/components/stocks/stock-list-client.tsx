@@ -9,7 +9,7 @@ import { useBatchRefresh } from "@/hooks/use-batch-refresh";
 import { PriceUpdateBadge } from "@/components/common/price-update-badge";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
-import { PageLayout, PageHeader } from "@/components/ui";
+import { PageLayout, PageHeader, StackedList } from "@/components/ui";
 import { SOURCE_LABELS_SHORT, SIGNAL_COLORS, SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import WatchlistGroupTabs, { type TabId } from "@/components/stocks/watchlist-group-tabs";
@@ -395,6 +395,19 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
     return { favs, nonFavs };
   }, [stocks, mergedStocks, sortFn, pinFavorites, pinMounted]);
+
+  // 모바일 카드(StackedList)용 목록 — 즐겨찾기 여부를 함께 담아 카드 별 표시에 씁니다.
+  const combinedCardItems = useMemo<DisplayItem[]>(
+    () => [
+      ...displayStocks.favs.map((s) => ({ stock: s, isFav: true })),
+      ...displayStocks.nonFavs.map((s) => ({ stock: s, isFav: favSet.has(s.symbol) })),
+    ],
+    [displayStocks, favSet]
+  );
+  const favCardItems = useMemo<DisplayItem[]>(
+    () => mergedStocks.favs.map((s) => ({ stock: s, isFav: true })),
+    [mergedStocks]
+  );
 
   // 전체탭은 항상 전체DB 뷰, 또는 관심종목 없고 query 없을 때
   const showAllStocksMode = activeTab === "all" || (favSet.size === 0 && !showSearchMode);
@@ -797,54 +810,74 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       {showSearchMode || showAllStocksMode ? (
         /* 검색/전체DB 뷰: 기존 무한스크롤 테이블 */
         <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm table-fixed">
-              {tableHeader}
-              <tbody className="divide-y divide-[var(--border)]">
-                {displayStocks.favs.length > 0 && (
-                  <>
-                    {displayStocks.favs.map((stock) => (
+          <StackedList
+            items={combinedCardItems}
+            keyOf={(item) => item.stock.symbol}
+            renderCard={(item) => (
+              <StockCard
+                stock={item.stock}
+                isFav={item.isFav}
+                gapSource={gapSource}
+                isInPortfolio={portSet.has(item.stock.symbol)}
+                onToggleFavorite={handleStarClick}
+              />
+            )}
+            onItemClick={(item, e) => handleRowClick(e, item.stock)}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm table-fixed">
+                {tableHeader}
+                <tbody className="divide-y divide-[var(--border)]">
+                  {displayStocks.favs.length > 0 && (
+                    <>
+                      {displayStocks.favs.map((stock) => (
+                        <StockRow
+                          key={stock.symbol}
+                          stock={stock}
+                          isFav={true}
+                          gapSource={gapSource}
+                          isInPortfolio={portSet.has(stock.symbol)}
+                          showHigh90d={sortBy === "high90d"}
+                          onToggleFavorite={(s) => handleStarClick(s)}
+                          onRowClick={handleRowClick}
+                        />
+                      ))}
+                      <tr>
+                        <td colSpan={11} className="px-0 py-0">
+                          <div className="border-b-2 border-yellow-600/30" />
+                        </td>
+                      </tr>
+                    </>
+                  )}
+                  {displayStocks.nonFavs.length === 0 && displayStocks.favs.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={11} className="px-4 py-12 text-center text-[var(--muted)]">
+                        검색 결과가 없습니다
+                      </td>
+                    </tr>
+                  ) : (
+                    displayStocks.nonFavs.map((stock) => (
                       <StockRow
                         key={stock.symbol}
                         stock={stock}
-                        isFav={true}
+                        isFav={favSet.has(stock.symbol)}
                         gapSource={gapSource}
                         isInPortfolio={portSet.has(stock.symbol)}
-                        showHigh90d={sortBy === "high90d"}
+                        showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
                         onToggleFavorite={(s) => handleStarClick(s)}
                         onRowClick={handleRowClick}
                       />
-                    ))}
-                    <tr>
-                      <td colSpan={11} className="px-0 py-0">
-                        <div className="border-b-2 border-yellow-600/30" />
-                      </td>
-                    </tr>
-                  </>
-                )}
-                {displayStocks.nonFavs.length === 0 && displayStocks.favs.length === 0 && !loading ? (
-                  <tr>
-                    <td colSpan={11} className="px-4 py-12 text-center text-[var(--muted)]">
-                      검색 결과가 없습니다
-                    </td>
-                  </tr>
-                ) : (
-                  displayStocks.nonFavs.map((stock) => (
-                    <StockRow
-                      key={stock.symbol}
-                      stock={stock}
-                      isFav={favSet.has(stock.symbol)}
-                      gapSource={gapSource}
-                      isInPortfolio={portSet.has(stock.symbol)}
-                      showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
-                      onToggleFavorite={(s) => handleStarClick(s)}
-                      onRowClick={handleRowClick}
-                    />
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </StackedList>
+          {combinedCardItems.length === 0 && !loading && (
+            <div className="md:hidden text-center py-12 text-[var(--muted)] text-sm">
+              검색 결과가 없습니다
+            </div>
+          )}
           <div ref={sentinelRef} className="h-4" />
           {loading && (
             <div className="flex justify-center py-4">
@@ -867,25 +900,40 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           </div>
         ) : (
           <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm table-fixed">
-                {tableHeader}
-                <tbody className="divide-y divide-[var(--border)]">
-                  {mergedStocks.favs.map((stock) => (
-                    <StockRow
-                      key={stock.symbol}
-                      stock={stock}
-                      isFav={true}
-                      gapSource={gapSource}
-                      isInPortfolio={portSet.has(stock.symbol)}
-                      showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
-                      onToggleFavorite={(s) => handleStarClick(s)}
-                      onRowClick={handleRowClick}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <StackedList
+              items={favCardItems}
+              keyOf={(item) => item.stock.symbol}
+              renderCard={(item) => (
+                <StockCard
+                  stock={item.stock}
+                  isFav={item.isFav}
+                  gapSource={gapSource}
+                  isInPortfolio={portSet.has(item.stock.symbol)}
+                  onToggleFavorite={handleStarClick}
+                />
+              )}
+              onItemClick={(item, e) => handleRowClick(e, item.stock)}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm table-fixed">
+                  {tableHeader}
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {mergedStocks.favs.map((stock) => (
+                      <StockRow
+                        key={stock.symbol}
+                        stock={stock}
+                        isFav={true}
+                        gapSource={gapSource}
+                        isInPortfolio={portSet.has(stock.symbol)}
+                        showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
+                        onToggleFavorite={(s) => handleStarClick(s)}
+                        onRowClick={handleRowClick}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </StackedList>
           </div>
         )
       )}
@@ -1045,5 +1093,105 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
         <SignalBadge sig={signals.stockbot} source="stockbot" />
       </td>
     </tr>
+  );
+});
+
+/** StackedList 카드 목록의 항목 하나 (종목 + 즐겨찾기 여부) */
+interface DisplayItem {
+  stock: StockCache;
+  isFav: boolean;
+}
+
+/** 신호 소스 라벨 + 배지 쌍. 신호가 없으면 자리를 차지하지 않도록 렌더링하지 않습니다. */
+function CardSignal({ sig, source }: { sig: SourceSignal; source: SourceKey }) {
+  if (!sig.type) return null;
+  return (
+    <span className="flex items-center gap-1">
+      <span className="text-[var(--muted)]">{SOURCE_LABELS_SHORT[source]}</span>
+      <SignalBadge sig={sig} source={source} />
+    </span>
+  );
+}
+
+/** 모바일 카드 (375px 등 md 미만). StockRow와 같은 표시 로직을 재사용합니다. */
+interface StockCardProps {
+  stock: StockCache;
+  isFav: boolean;
+  gapSource: SourceKey | "all";
+  isInPortfolio: boolean;
+  onToggleFavorite: (stock: StockCache) => void;
+}
+
+const StockCard = memo(function StockCard({ stock, isFav, gapSource, isInPortfolio, onToggleFavorite }: StockCardProps) {
+  const gapResult = calcGap(stock, gapSource);
+  const gap = gapResult?.gap ?? null;
+  const signals = stock.signals ?? {
+    lassi: { type: null, price: null },
+    stockbot: { type: null, price: null },
+    quant: { type: null, price: null },
+  };
+
+  const hasBottomRow =
+    signals.quant?.type != null ||
+    signals.lassi?.type != null ||
+    signals.stockbot?.type != null ||
+    gap != null ||
+    stock.volume != null ||
+    stock.per != null;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* 윗줄: 즐겨찾기, 종목명/코드, 현재가, 등락률 */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite(stock); }}
+          className="p-0.5 hover:scale-110 transition-transform shrink-0"
+        >
+          <Star
+            className={`w-4 h-4 ${
+              isFav ? "text-yellow-400 fill-yellow-400" : "text-[var(--border)] hover:text-yellow-400"
+            }`}
+          />
+        </button>
+        {isInPortfolio && (
+          <Briefcase className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/20 shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <span className="font-medium block truncate">{stock.name}</span>
+          <span className="text-[10px] text-[var(--muted)]">{stock.symbol}</span>
+        </div>
+        <div className="text-right shrink-0">
+          <div className={`font-medium tabular-nums ${priceColor(stock.price_change)}`}>
+            {formatNumber(stock.current_price)}
+          </div>
+          <div className={`text-xs tabular-nums ${priceColor(stock.price_change_pct)}`}>
+            {formatPercent(stock.price_change_pct)}
+          </div>
+        </div>
+      </div>
+
+      {/* 아랫줄: 알파캐치·라씨·스톡봇 신호, Gap, 거래량, PER — 값 없는 항목은 생략 */}
+      {hasBottomRow && (
+        <div className="flex items-center gap-3 flex-wrap pl-6 text-[10px]">
+          <CardSignal sig={signals.quant} source="quant" />
+          <CardSignal sig={signals.lassi} source="lassi" />
+          <CardSignal sig={signals.stockbot} source="stockbot" />
+          {gap != null && (
+            <span className="text-[var(--muted)]">
+              Gap{" "}
+              <span className={gap >= 0 ? "text-red-400" : "text-blue-400"}>
+                {gap >= 0 ? "+" : ""}{gap.toFixed(1)}%
+              </span>
+            </span>
+          )}
+          {stock.volume != null && (
+            <span className="text-[var(--muted)]">거래량 {formatNumber(stock.volume)}</span>
+          )}
+          {stock.per != null && (
+            <span className="text-[var(--muted)]">PER {stock.per.toFixed(1)}</span>
+          )}
+        </div>
+      )}
+    </div>
   );
 });
