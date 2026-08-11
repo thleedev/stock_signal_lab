@@ -38,12 +38,21 @@
   /* === Page Layout === */
   --page-padding-x: 1rem;
   --page-padding-y: 1.5rem;
-  --section-gap: 1.5rem;
+  --section-gap: 1rem;
 
   /* === Typography === */
   --text-page-title: 1.5rem;
   --text-section-title: 1.125rem;
   --text-body: 0.875rem;
+}
+
+/* 섹션 간격은 화면 폭에 맞춥니다.
+   좁은 화면은 한 번에 더 담고, 넓은 화면은 구분을 뚜렷하게 합니다. */
+@media (min-width: 768px) {
+  :root { --section-gap: 1.5rem; }
+}
+@media (min-width: 1280px) {
+  :root { --section-gap: 2rem; }
 }
 
 @theme inline {
