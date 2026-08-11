@@ -886,7 +886,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             </div>
           </StackedList>
           {combinedCardItems.length === 0 && !loading && (
-            <div className="md:hidden text-center py-12 text-[var(--muted)] text-sm">
+            <div className="lg:hidden text-center py-12 text-[var(--muted)] text-sm">
               검색 결과가 없습니다
             </div>
           )}

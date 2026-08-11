@@ -76,20 +76,29 @@ type StackedListProps<T> = {
   keyOf: (item: T) => string;
   renderCard: (item: T) => React.ReactNode;
   onItemClick?: (item: T, e: React.MouseEvent) => void;
-  emptyMessage?: string;
   children: React.ReactNode;   // 데스크톱 테이블을 그대로 통과시킵니다
+  breakpoint?: "md" | "lg";    // 카드→테이블 전환 폭, 기본값 md
 };
 ```
 
-`md` 미만에서 `renderCard`로 그린 카드를 세로로 쌓고, `md` 이상에서 `children`으로 받은
-기존 테이블을 그대로 보여줍니다. 컴포넌트는 카드 껍데기와 전환만 책임지고 셀 내용에는
-관여하지 않습니다. 각 페이지가 자기 데이터에 맞는 카드를 직접 그리므로 배지든 팝오버든
-자유롭게 넣습니다.
+`breakpoint` 미만에서 `renderCard`로 그린 카드를 세로로 쌓고, `breakpoint` 이상에서
+`children`으로 받은 기존 테이블을 그대로 보여줍니다. 기본값은 `md`이지만, 소비처
+테이블에서 `lg:table-cell`까지 숨는 컬럼이 있으면 `lg`를 지정해 카드가 사라지는 폭과
+테이블 마지막 컬럼이 나타나는 폭을 맞춰야 합니다. 컴포넌트는 카드 껍데기와 전환만
+책임지고 셀 내용에는 관여하지 않습니다. 각 페이지가 자기 데이터에 맞는 카드를 직접
+그리므로 배지든 팝오버든 자유롭게 넣습니다.
 
-전환은 CSS 클래스로 처리합니다. `md:hidden`과 `hidden md:block` 두 블록을 두면 자바스크립트
-없이 동작하고 서버 렌더링과도 어긋나지 않습니다. 다만 두 블록이 동시에 DOM 에 존재하므로,
-목록이 큰 `/stocks`(약 900행)에서는 렌더 비용이 문제가 될 수 있습니다. 구현 시 실제
-DOM 노드 수와 렌더 시간을 재서, 비용이 크면 `matchMedia` 기반 조건부 렌더로 바꿉니다.
+빈 상태 문구도 `StackedList`가 책임지지 않습니다. `emptyMessage` prop은 두지 않고,
+`items`가 비어도 카드 블록과 `children`을 그대로 렌더합니다. 검색 결과 없음 같은 빈
+상태 표시는 소비처 페이지가 직접 그리며, 이때도 `StackedList`에 지정한 것과 같은
+브레이크포인트로 카드용·테이블용 문구를 감싸야 전환 지점 사이에서 문구가 사라지는
+구간이 생기지 않습니다.
+
+전환은 CSS 클래스로 처리합니다. `${breakpoint}:hidden`과 `hidden ${breakpoint}:block`
+두 블록을 두면 자바스크립트 없이 동작하고 서버 렌더링과도 어긋나지 않습니다. 다만 두
+블록이 동시에 DOM 에 존재하므로, 목록이 큰 `/stocks`(약 900행)에서는 렌더 비용이 문제가
+될 수 있습니다. 구현 시 실제 DOM 노드 수와 렌더 시간을 재서, 비용이 크면 `matchMedia`
+기반 조건부 렌더로 바꿉니다.
 
 ### 2. /stocks 카드 구성
 
@@ -120,7 +129,7 @@ DOM 노드 수와 렌더 시간을 재서, 비용이 크면 `matchMedia` 기반 
 
 ### 5. 가로 오버플로 수정
 
-`web/src/app/signals/page.tsx`의 필터 줄을 두 겹으로 나눕니다. 바깥 요소가 `overflow-x-auto`로
+`web/src/app/signals/signal-filter-bar.tsx`의 필터 줄을 두 겹으로 나눕니다. 바깥 요소가 `overflow-x-auto`로
 가로 스크롤을 담당하고, 안쪽 요소가 `flex-nowrap`을 유지해 버튼이 줄바꿈되지 않게 합니다.
 지금은 한 요소가 두 역할을 겸해 넘치는 폭이 그대로 페이지를 밀어냅니다. 수정 후에는 페이지
 전체가 밀리는 대신 필터 한 줄만 가로로 흐릅니다.
@@ -135,17 +144,17 @@ DOM 노드 수와 렌더 시간을 재서, 비용이 크면 `matchMedia` 기반 
 사이드바 240px 을 제외한 1680px 에 거의 들어맞고, 초광폭 모니터에서 글줄이 지나치게
 길어지는 것은 막습니다.
 
-넓어진 폭을 실제로 쓰려면 그리드 열도 늘려야 합니다. Tailwind v4 의 `2xl` 은 1536px 이며,
-이 지점부터 열을 하나씩 더합니다. `lg:grid-cols-4` 인 그리드에는 `2xl:grid-cols-5`를,
-`md:grid-cols-3` 인 그리드에는 `2xl:grid-cols-4`를 더합니다.
-
-열을 늘리기 전에 각 카드가 좁아져도 읽히는지 확인해야 합니다. 1600px 에서 5열이면 카드
-하나가 약 290px 입니다. 현재 4열일 때가 300px 이므로 큰 차이는 없으나, 카드 내부에 긴
-숫자나 종목명이 들어가는 곳은 실제로 확인하고 좁아지면 그 그리드는 열을 늘리지 않습니다.
+넓어진 폭을 실제로 쓰려면 그리드 열을 늘리는 방안을 먼저 검토합니다. Tailwind v4 의
+`2xl` 은 1536px 이며, 이 지점부터 열을 하나씩 더하는 것이 후보입니다. 다만 대상 그리드는
+`app/page.tsx`의 요약 카드처럼 항목 수와 열 수가 정확히 일치하는 고정 카드 그룹입니다.
+이런 그리드에 열을 늘리면 카드 폭만 좁아지고 늘어난 열에는 채울 항목이 없어 빈 칸이
+남습니다. 따라서 열 추가는 항목 수가 열 수보다 뚜렷이 많은 그리드에서만 검토하고,
+고정 카드 그룹은 열을 늘리지 않습니다.
 
 대상 파일은 `app/page.tsx`, `app/portfolio/page.tsx`, `app/portfolio/[source]/page.tsx`,
 `app/settings/page.tsx`, `app/compare/compare-client.tsx` 와 각 `loading.tsx` 입니다.
-`loading.tsx` 의 스켈레톤 그리드도 함께 바꿔야 로딩 중과 로딩 후의 열 수가 어긋나지
+열을 늘리기로 정한 그리드가 있다면 `loading.tsx` 의 스켈레톤 그리드도 함께 바꿔야
+로딩 중과 로딩 후의 열 수가 어긋나지
 않습니다.
 
 ### 7. 간격 토큰 브레이크포인트 대응
@@ -176,10 +185,10 @@ DOM 노드 수와 렌더 시간을 재서, 비용이 크면 `matchMedia` 기반 
 | `web/src/components/ui/index.ts` | ResponsiveTable export 제거, StackedList 추가 |
 | `web/src/components/stocks/stock-list-client.tsx` | 모바일 카드 적용 |
 | `web/src/app/my-portfolio/page.tsx` | 모바일 카드 적용 |
-| `web/src/app/signals/page.tsx` | 필터 줄 가로 오버플로 수정 |
+| `web/src/app/signals/signal-filter-bar.tsx` | 필터 줄 가로 오버플로 수정 |
 | `web/src/app/layout.tsx` | `max-w-7xl` → `max-w-[1600px]` |
 | `web/src/app/globals.css` | `--section-gap` 브레이크포인트 대응 |
-| 그리드가 있는 페이지와 `loading.tsx` | `2xl` 열 추가 |
+| 그리드가 있는 페이지와 `loading.tsx` | `2xl` 열 추가 검토, 고정 카드 그룹은 제외 |
 | `.claude/steering/design-tokens.md` | 간격 규칙 갱신 |
 
 ## 검증
