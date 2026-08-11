@@ -61,7 +61,10 @@ next-env.d.ts
 screenshots/
 
 # System files
-.claude/
+# 디자인 토큰 규칙만 버전 관리합니다. CLAUDE.md 가 필수 준수로 참조하기 때문입니다.
+# .claude/ 로 디렉터리를 통째로 제외하면 하위 파일을 되살릴 수 없으므로 .claude/* 를 씁니다.
+.claude/*
+!.claude/steering/
 .playwright-mcp/
 
 # Yarn
