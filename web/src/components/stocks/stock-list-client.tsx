@@ -396,17 +396,27 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return { favs, nonFavs };
   }, [stocks, mergedStocks, sortFn, pinFavorites, pinMounted]);
 
-  // 모바일 카드(StackedList)용 목록 — 즐겨찾기 여부를 함께 담아 카드 별 표시에 씁니다.
+  // 모바일 카드(StackedList)용 목록 — 즐겨찾기 여부와 showHigh90d 를 함께 담아
+  // 데스크톱 테이블의 같은 구간(favs/nonFavs)이 쓰는 조건을 그대로 따라갑니다.
   const combinedCardItems = useMemo<DisplayItem[]>(
     () => [
-      ...displayStocks.favs.map((s) => ({ stock: s, isFav: true })),
-      ...displayStocks.nonFavs.map((s) => ({ stock: s, isFav: favSet.has(s.symbol) })),
+      ...displayStocks.favs.map((s) => ({ stock: s, isFav: true, showHigh90d: sortBy === "high90d" })),
+      ...displayStocks.nonFavs.map((s) => ({
+        stock: s,
+        isFav: favSet.has(s.symbol),
+        showHigh90d: sortBy === "high90d" || sortBy === "change_1m",
+      })),
     ],
-    [displayStocks, favSet]
+    [displayStocks, favSet, sortBy]
   );
   const favCardItems = useMemo<DisplayItem[]>(
-    () => mergedStocks.favs.map((s) => ({ stock: s, isFav: true })),
-    [mergedStocks]
+    () =>
+      mergedStocks.favs.map((s) => ({
+        stock: s,
+        isFav: true,
+        showHigh90d: sortBy === "high90d" || sortBy === "change_1m",
+      })),
+    [mergedStocks, sortBy]
   );
 
   // 전체탭은 항상 전체DB 뷰, 또는 관심종목 없고 query 없을 때
@@ -813,12 +823,14 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
           <StackedList
             items={combinedCardItems}
             keyOf={(item) => item.stock.symbol}
+            breakpoint="lg"
             renderCard={(item) => (
               <StockCard
                 stock={item.stock}
                 isFav={item.isFav}
                 gapSource={gapSource}
                 isInPortfolio={portSet.has(item.stock.symbol)}
+                showHigh90d={item.showHigh90d}
                 onToggleFavorite={handleStarClick}
               />
             )}
@@ -903,12 +915,14 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             <StackedList
               items={favCardItems}
               keyOf={(item) => item.stock.symbol}
+              breakpoint="lg"
               renderCard={(item) => (
                 <StockCard
                   stock={item.stock}
                   isFav={item.isFav}
                   gapSource={gapSource}
                   isInPortfolio={portSet.has(item.stock.symbol)}
+                  showHigh90d={item.showHigh90d}
                   onToggleFavorite={handleStarClick}
                 />
               )}
@@ -1096,33 +1110,35 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
   );
 });
 
-/** StackedList 카드 목록의 항목 하나 (종목 + 즐겨찾기 여부) */
+/** StackedList 카드 목록의 항목 하나 (종목 + 즐겨찾기 여부 + 정렬 기준에 따른 표시값 전환) */
 interface DisplayItem {
   stock: StockCache;
   isFav: boolean;
+  showHigh90d: boolean;
 }
 
 /** 신호 소스 라벨 + 배지 쌍. 신호가 없으면 자리를 차지하지 않도록 렌더링하지 않습니다. */
 function CardSignal({ sig, source }: { sig: SourceSignal; source: SourceKey }) {
   if (!sig.type) return null;
   return (
-    <span className="flex items-center gap-1">
+    <div className="flex items-center gap-1">
       <span className="text-[var(--muted)]">{SOURCE_LABELS_SHORT[source]}</span>
       <SignalBadge sig={sig} source={source} />
-    </span>
+    </div>
   );
 }
 
-/** 모바일 카드 (375px 등 md 미만). StockRow와 같은 표시 로직을 재사용합니다. */
+/** 모바일 카드 (768px 또는 1024px 미만, StackedList breakpoint 참조). StockRow와 같은 표시 로직을 재사용합니다. */
 interface StockCardProps {
   stock: StockCache;
   isFav: boolean;
   gapSource: SourceKey | "all";
   isInPortfolio: boolean;
+  showHigh90d: boolean;
   onToggleFavorite: (stock: StockCache) => void;
 }
 
-const StockCard = memo(function StockCard({ stock, isFav, gapSource, isInPortfolio, onToggleFavorite }: StockCardProps) {
+const StockCard = memo(function StockCard({ stock, isFav, gapSource, isInPortfolio, showHigh90d, onToggleFavorite }: StockCardProps) {
   const gapResult = calcGap(stock, gapSource);
   const gap = gapResult?.gap ?? null;
   const signals = stock.signals ?? {
@@ -1164,8 +1180,9 @@ const StockCard = memo(function StockCard({ stock, isFav, gapSource, isInPortfol
           <div className={`font-medium tabular-nums ${priceColor(stock.price_change)}`}>
             {formatNumber(stock.current_price)}
           </div>
-          <div className={`text-xs tabular-nums ${priceColor(stock.price_change_pct)}`}>
-            {formatPercent(stock.price_change_pct)}
+          <div className={`text-xs tabular-nums ${priceColor(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}`}>
+            {showHigh90d && <span className="text-[9px] text-[var(--muted)] mr-1">90일고점비</span>}
+            {formatPercent(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}
           </div>
         </div>
       </div>
