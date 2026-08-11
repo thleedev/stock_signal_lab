@@ -145,3 +145,62 @@ UI 쪽으로는 종목 모달 세 컴포넌트와 `SnapshotTracker`의 테이블
 
 `/collector`, `/market`, `/reports`의 `loading.tsx`와 실제 페이지 그리드 클래스가
 640~768px 구간에서 어긋나는 기존 결함도 남아 있습니다.
+
+## 측정 결과
+
+두 태스크 모두 브라우저 실측으로 수정을 확인했습니다. `/investment`는 Task 1이 네
+폭에서, `/stocks`는 Task 2가 세 폭에서 `documentElement.scrollWidth`와 뷰포트 폭
+차이를 스크립트로 재서 오버플로 여부를 판정했습니다.
+
+### /investment 네 폭 실측 (Task 1)
+
+| 폭(px) | overflow | 코드 | 구매가 | 손절가 | 목표가 | 표시 모드 |
+|---|---|---|---|---|---|---|
+| 375 | 0 | 노출 | 노출 | 노출 | 노출 | 카드 |
+| 900 | 0 | 노출 | 노출 | 노출 | 노출 | 카드 |
+| 1100 | 0 | 노출 | 노출 | 노출 | 노출 | 테이블(9열) |
+| 1280 | 0 | 노출 | 노출 | 노출 | 노출 | 테이블(9열) |
+
+네 폭 모두 오버플로 0, 숨겨졌던 값 4종이 전부 노출됩니다. `lg` 전환점 직전인 900px과
+직후인 1100px을 나란히 재서 컬럼 노출 지점이 어긋나지 않음을 확인했습니다.
+
+### /stocks 세 폭 실측 (Task 2)
+
+| 폭(px) | overflow | offenders |
+|---|---|---|
+| 640 | -6 | 없음 |
+| 768 | -6 | 없음 |
+| 1024 | -6 | 없음 |
+
+수정 전 768px에서 77px이던 오버플로가 세 폭 모두 음수로 바뀌었습니다. 음수는
+`scrollWidth`가 뷰포트보다 좁다는 뜻이라 오버플로가 없다는 의미입니다. 768px에서
+필터가 세 줄로 줄바꿈되고, 검색창·시장·정렬·신호 선택이 모두 화면 안에서 보이고
+조작 가능한 상태임을 눈으로 확인했습니다.
+
+### 죽은 컴포넌트 정리 결과
+
+소비처 재확인 결과 네 컴포넌트 모두 삭제 대상 기준(소비처 0)을 충족해 예외 없이
+전부 삭제했습니다.
+
+| 구분 | 목록 |
+|---|---|
+| 삭제한 컴포넌트 | `EmptyState`, `Card`, `PriceText`, `SectionTitle` |
+| `ui/`에 남은 컴포넌트 | `PageLayout`, `PageHeader`, `SourceBadge`, `SignalBadge`, `StackedList` |
+
+`Card`는 `EmptyState` 안에서만 쓰였고 그 `EmptyState`의 소비처가 0이었으므로
+`EmptyState`를 먼저 지운 뒤 `Card`를 지우는 순서로 진행했습니다.
+
+### 개선 전후 비교
+
+| 항목 | 개선 전 | 개선 후 |
+|---|---|---|
+| `/investment` 접근 가능한 값 | 4개(375px 기준) | 9개(전 폭) |
+| `/stocks` 768px 오버플로 | 77px | 0px 이하 |
+| 죽은 UI 컴포넌트 | 4개 | 0개 |
+
+`npx tsc --noEmit`은 기존에 알려진 `earnings-momentum-score.test.ts` 오류를 제외하면
+새 오류가 없습니다. `npm run test`는 287개 테스트가 모두 통과했고, `npm run lint`는
+기존과 같은 12 errors / 60 warnings 수준을 유지했습니다. `npm run build`는
+`Compiled successfully`로 끝났습니다. 375px·768px·1280px 세 폭에서 `/`, `/investment`,
+`/stocks`, `/my-portfolio`, `/signals` 다섯 화면을 모두 열어 가로 오버플로가 없음을
+확인했고 회귀는 발견되지 않았습니다.

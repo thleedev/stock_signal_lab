@@ -743,7 +743,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
       {/* 필터 바 */}
       <div className="card p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
+        {/* flex-wrap 이 없으면 640px 이상에서 네 자식이 한 줄에 강제되어
+            버튼 그룹의 min-content 폭 합계가 컨테이너를 넘칩니다. */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]" />
             <input
