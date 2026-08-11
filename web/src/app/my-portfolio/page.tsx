@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useStockModal } from "@/contexts/stock-modal-context";
 import { Search, X, Plus, Pencil, Check, BarChart3 } from "lucide-react";
 import { usePriceRefresh } from "@/hooks/use-price-refresh";
-import { PageLayout, PageHeader } from "@/components/ui";
+import { PageLayout, PageHeader, StackedList } from "@/components/ui";
 import { PortfolioTabs } from "./components/portfolio-tabs";
 import { TradeModal } from "./components/trade-modal";
 import { PerformanceChart } from "./components/performance-chart";
@@ -457,6 +457,100 @@ export default function MyPortfolioPage() {
         </div>
       ) : (
         <div className="card overflow-hidden">
+          <StackedList
+            items={holdings}
+            keyOf={(h) => String(h.trade_id)}
+            onItemClick={(h) => openStockModal(h.symbol, h.name)}
+            renderCard={(h) => {
+              const live = livePrices[h.symbol];
+              const currentPrice = live?.current_price ?? h.current_price;
+              const change = live?.price_change_pct ?? null;
+              const profitPct = ((currentPrice - h.buy_price) / h.buy_price) * 100;
+
+              const nearStopLoss = h.stop_price && currentPrice ? currentPrice <= h.stop_price : false;
+              const nearTarget = h.target_price && currentPrice ? currentPrice >= h.target_price : false;
+
+              const hasSellSignal =
+                h.latest_signal &&
+                (h.latest_signal.type === "SELL" || h.latest_signal.type === "SELL_COMPLETE");
+
+              return (
+                <div className="flex flex-col gap-1.5">
+                  {/* 윗줄: 종목명·코드, 현재가, 등락률, 수익률, 삭제 */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">
+                        {h.name} {hasSellSignal && "⚠️"}
+                      </div>
+                      <div className="text-[10px] text-[var(--muted)]">{h.symbol}</div>
+                      {hasSellSignal && (
+                        <div className="text-[10px] text-amber-400">AI 매도신호</div>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`font-medium tabular-nums ${priceColor(live?.price_change ?? null)}`}>
+                        {formatNumber(currentPrice)}
+                      </div>
+                      <div className={`text-xs tabular-nums ${priceColor(change)}`}>
+                        {formatPercent(change)}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 min-w-[64px]">
+                      <span className={`text-sm font-semibold tabular-nums ${profitPct >= 0 ? "text-red-400" : "text-blue-400"}`}>
+                        {profitPct >= 0 ? "+" : ""}{profitPct.toFixed(2)}%
+                      </span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleRemoveClick(h); }}
+                      className="p-1 rounded-lg text-[var(--muted)] hover:text-red-400 hover:bg-red-900/20 transition-colors shrink-0"
+                      title="삭제"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* 아랫줄: 매수가, 손절가, 목표가, 등급 — 편집 컨트롤 클릭이 카드 클릭과 겹치지 않도록 전파를 막습니다 */}
+                  <div
+                    className="flex items-center gap-3 flex-wrap text-xs"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-[var(--muted)]">
+                      매수가 <span className="tabular-nums text-[var(--foreground)]">{formatNumber(h.buy_price)}</span>
+                    </span>
+                    <span className="text-[var(--muted)] inline-flex items-center gap-0.5">
+                      손절가{" "}
+                      {renderEditablePrice(
+                        h,
+                        "stop_price",
+                        "손절가",
+                        nearStopLoss ? "text-blue-400 font-semibold" : "text-[var(--muted)]"
+                      )}
+                    </span>
+                    <span className="text-[var(--muted)] inline-flex items-center gap-0.5">
+                      목표가{" "}
+                      {renderEditablePrice(
+                        h,
+                        "target_price",
+                        "목표가",
+                        nearTarget ? "text-red-400 font-semibold" : "text-[var(--muted)]"
+                      )}
+                    </span>
+                    {typeof h.score_total === "number" && (
+                      <span className="text-[var(--muted)] inline-flex items-center gap-1">
+                        등급
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded font-bold tabular-nums ${getGradeStyle(h.score_total).badge}`}
+                          title={`${getGradeStyle(h.score_total).label} · ${Math.round(h.score_total)}점`}
+                        >
+                          {calcGrade(h.score_total)}
+                        </span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            }}
+          >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -570,6 +664,7 @@ export default function MyPortfolioPage() {
               </tbody>
             </table>
           </div>
+          </StackedList>
           <div className="text-center py-3 text-xs text-[var(--muted)]">
             총 {holdings.length}개 종목
           </div>
