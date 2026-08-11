@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Search, X, Plus, Pencil, Check } from "lucide-react";
 import type { StockCache, WatchlistItem } from "@/types/stock";
 import { usePriceRefresh } from "@/hooks/use-price-refresh";
+import { StackedList } from "@/components/ui";
 
 interface Props {
   initialWatchlist: WatchlistItem[];
@@ -45,6 +46,41 @@ export default function InvestmentClient({
 
   const symbols = useMemo(() => watchlist.map((w) => w.symbol), [watchlist]);
   const { prices: livePrices } = usePriceRefresh(symbols);
+
+  // 종목별 파생 지표. 카드와 테이블 행이 같은 계산 결과를 쓰도록 여기서 한 번만 계산합니다.
+  const rows = useMemo(
+    () =>
+      watchlist.map((item) => {
+        const stock = stockData[item.symbol];
+        const live = livePrices[item.symbol];
+        const currentPrice = live?.current_price ?? stock?.current_price;
+        const change = live?.price_change_pct ?? stock?.price_change_pct;
+        const buyPrice = item.buy_price;
+        const profitPct =
+          buyPrice && currentPrice ? ((currentPrice - buyPrice) / buyPrice) * 100 : null;
+
+        // 손절가/목표가 근접 경고
+        const stopLoss = item.stop_loss_price;
+        const target = item.target_price;
+        const nearStopLoss = stopLoss && currentPrice ? currentPrice <= stopLoss : false;
+        const nearTarget = target && currentPrice ? currentPrice >= target : false;
+
+        return {
+          item,
+          stock,
+          live,
+          currentPrice,
+          change,
+          buyPrice,
+          profitPct,
+          stopLoss,
+          target,
+          nearStopLoss,
+          nearTarget,
+        };
+      }),
+    [watchlist, stockData, livePrices]
+  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -317,6 +353,94 @@ export default function InvestmentClient({
         </div>
       ) : (
         <div className="card overflow-hidden">
+          <StackedList
+            items={rows}
+            keyOf={(row) => row.item.symbol}
+            breakpoint="lg"
+            renderCard={(row) => {
+              const { item, stock, live, currentPrice, change, profitPct, nearStopLoss, nearTarget } = row;
+              return (
+                <div
+                  className={`flex flex-col gap-1.5 -mx-3 -my-3 px-3 py-3 rounded-lg ${
+                    nearStopLoss ? "bg-blue-900/10" : nearTarget ? "bg-red-900/10" : ""
+                  }`}
+                >
+                  {/* 윗줄: 종목명·코드, 현재가·등락률, 수익률 */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        href={`/stock/${item.symbol}`}
+                        className="font-medium hover:text-[var(--accent)] truncate block"
+                      >
+                        {item.name}
+                      </Link>
+                      <div className="text-[10px] text-[var(--muted)]">코드 {item.symbol}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div
+                        className={`font-medium tabular-nums ${priceColor(live?.price_change ?? stock?.price_change ?? null)}`}
+                      >
+                        {formatNumber(currentPrice ?? null)}
+                      </div>
+                      <div className={`text-xs tabular-nums ${priceColor(change ?? null)}`}>
+                        {formatPercent(change ?? null)}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0 min-w-[64px]">
+                      {profitPct != null ? (
+                        <span
+                          className={`text-sm font-semibold tabular-nums ${profitPct >= 0 ? "text-red-400" : "text-blue-400"}`}
+                        >
+                          {profitPct >= 0 ? "+" : ""}
+                          {profitPct.toFixed(2)}%
+                        </span>
+                      ) : (
+                        <span className="text-xs text-[var(--border)]">-</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 아랫줄: 구매가, 손절가, 목표가, 액션 — 편집 컨트롤 클릭이 카드 클릭과 겹치지 않도록 전파를 막습니다 */}
+                  <div
+                    className="flex items-center gap-3 flex-wrap text-xs"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <span className="text-[var(--muted)] inline-flex items-center gap-0.5">
+                      구매가 {renderEditablePrice(item, "buy_price", "구매가")}
+                    </span>
+                    <span className="text-[var(--muted)] inline-flex items-center gap-0.5">
+                      손절가{" "}
+                      {renderEditablePrice(
+                        item,
+                        "stop_loss_price",
+                        "손절가",
+                        nearStopLoss ? "text-blue-400 font-semibold" : "text-[var(--muted)]"
+                      )}
+                    </span>
+                    <span className="text-[var(--muted)] inline-flex items-center gap-0.5">
+                      목표가{" "}
+                      {renderEditablePrice(
+                        item,
+                        "target_price",
+                        "목표가",
+                        nearTarget ? "text-red-400 font-semibold" : "text-[var(--muted)]"
+                      )}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeFromWatchlist(item.symbol);
+                      }}
+                      className="ml-auto p-1 rounded-lg text-[var(--muted)] hover:text-red-400 hover:bg-red-900/20 transition-colors"
+                      title="삭제"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            }}
+          >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -333,25 +457,7 @@ export default function InvestmentClient({
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {watchlist.map((item) => {
-                  const stock = stockData[item.symbol];
-                  const live = livePrices[item.symbol];
-                  const currentPrice = live?.current_price ?? stock?.current_price;
-                  const change = live?.price_change_pct ?? stock?.price_change_pct;
-                  const buyPrice = item.buy_price;
-                  const profitPct =
-                    buyPrice && currentPrice
-                      ? ((currentPrice - buyPrice) / buyPrice) * 100
-                      : null;
-
-                  // 손절가/목표가 근접 경고
-                  const stopLoss = item.stop_loss_price;
-                  const target = item.target_price;
-                  const nearStopLoss =
-                    stopLoss && currentPrice ? currentPrice <= stopLoss : false;
-                  const nearTarget =
-                    target && currentPrice ? currentPrice >= target : false;
-
+                {rows.map(({ item, stock, live, currentPrice, change, profitPct, nearStopLoss, nearTarget }) => {
                   return (
                     <tr
                       key={item.symbol}
@@ -416,6 +522,7 @@ export default function InvestmentClient({
               </tbody>
             </table>
           </div>
+          </StackedList>
           <div className="text-center py-3 text-xs text-[var(--muted)]">
             총 {watchlist.length}개 종목
           </div>
