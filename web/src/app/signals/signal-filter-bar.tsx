@@ -93,17 +93,21 @@ export function SignalFilterBar({ dates, selectedDate, activeSource }: SignalFil
   const activeDateKey = toDateKey(selectedDate);
 
   return (
-    <div className="flex items-center gap-2 flex-nowrap">
-      <ButtonGroup
-        options={DATE_OPTIONS}
-        active={activeDateKey}
-        onSelect={handleDateSelect}
-      />
-      <ButtonGroup
-        options={SOURCE_OPTIONS}
-        active={activeSource as SourceKey}
-        onSelect={handleSourceSelect}
-      />
+    // 좁은 화면에서 버튼 묶음이 페이지 전체를 밀어내지 않도록
+    // 바깥이 가로 스크롤을 맡고 안쪽만 줄바꿈을 막습니다.
+    <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
+      <div className="flex items-center gap-2 flex-nowrap w-max">
+        <ButtonGroup
+          options={DATE_OPTIONS}
+          active={activeDateKey}
+          onSelect={handleDateSelect}
+        />
+        <ButtonGroup
+          options={SOURCE_OPTIONS}
+          active={activeSource as SourceKey}
+          onSelect={handleSourceSelect}
+        />
+      </div>
     </div>
   );
 }

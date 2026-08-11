@@ -75,6 +75,15 @@ body {
   background: #475569;
 }
 
+/* 좁은 화면에서 가로 스크롤이 필요한 요소에 붙여 스크롤바만 숨긴다 (스크롤 동작은 유지) */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 /* 카드 공통 */
 .card {
   background: var(--card);
