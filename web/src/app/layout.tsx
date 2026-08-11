@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="min-h-screen">
             <Sidebar />
             <main className="md:pl-60 pb-20 md:pb-0">
-              <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+              <div className="max-w-[1600px] mx-auto px-3 sm:px-4 py-4 sm:py-6">
                 {children}
               </div>
             </main>
