@@ -241,9 +241,9 @@ const IndicatorCard = React.memo(function IndicatorCard({
 }) {
   const t = RISK_THRESHOLDS[ind.indicator_type];
   const spec = CATALOG[ind.indicator_type];
-  const changePct = ind.change_pct ?? 0;
-  const isUp = changePct > 0;
-  const isDown = changePct < 0;
+  const changePct = ind.change_pct;
+  const isUp = changePct !== null && changePct > 0;
+  const isDown = changePct !== null && changePct < 0;
   const thresholdLabel = level !== null ? getRiskThresholdLabel(ind.indicator_type, level, sampleDays) : null;
 
   // 결손 감지: page.tsx 는 최근 30일 조회에서 지표별 최신 1건만 남기므로,
@@ -283,9 +283,9 @@ const IndicatorCard = React.memo(function IndicatorCard({
         {formatValue(ind.indicator_type, ind.value)}
       </span>
 
-      {/* 변화율 */}
+      {/* 변화율: FOREIGN_NET/INSTITUTION_NET(5일 누적)은 등락률이 정의되지 않아 null — "+0.00%"로 치환하지 않고 "-"로 구분한다 */}
       <span className={`text-[11px] sm:text-xs tabular-nums ${isUp ? "text-red-400" : isDown ? "text-blue-400" : "text-[var(--muted)]"}`}>
-        {changePct > 0 ? "+" : ""}{changePct.toFixed(2)}%
+        {changePct === null ? "-" : `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`}
       </span>
 
       {/* 임계값 기준 */}

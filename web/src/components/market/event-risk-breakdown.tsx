@@ -16,9 +16,22 @@ function dDayLabel(daysUntil: number): string {
   return `D-${daysUntil}`;
 }
 
+/**
+ * KST(UTC+9) 기준 지금 이 순간. calculateEventRiskBreakdown 이 baseDate 를
+ * toISOString().slice(0,10) 으로 잘라 기준일을 삼으므로(UTC 기준), 그대로
+ * new Date() 를 넘기면 크론(cron/market-score/route.ts, KST 보정)과
+ * 기준일이 어긋난다 — 같은 보정을 여기서도 적용한다.
+ */
+function kstNow(): Date {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000);
+}
+
 export function EventRiskBreakdown({ events }: Props) {
   const [open, setOpen] = useState(false);
-  const breakdown = useMemo(() => calculateEventRiskBreakdown(events), [events]);
+  const breakdown = useMemo(
+    () => calculateEventRiskBreakdown(events, kstNow()),
+    [events],
+  );
   const { score, rawPenalty, cappedPenalty, capped, contributions } = breakdown;
 
   const summaryColor = score >= 80 ? "#10b981" : score >= 60 ? "#eab308" : score >= 40 ? "#f97316" : "#ef4444";

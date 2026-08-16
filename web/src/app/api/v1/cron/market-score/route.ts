@@ -215,7 +215,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: evError.message }, { status: 500 });
   }
 
-  const eventRiskScore = calculateEventRiskScore((events ?? []) as MarketEvent[]);
+  // baseDate 생략 시 UTC 기준으로 감쇠를 계산해 위 이벤트 조회 범위(KST)와 어긋난다 —
+  // kstDate() 와 같은 보정을 그대로 넘긴다.
+  const eventRiskScore = calculateEventRiskScore(
+    (events ?? []) as MarketEvent[],
+    new Date(Date.now() + 9 * 60 * 60 * 1000),
+  );
 
   // 3) 오늘자 행: 항상 새로 계산한 total_score / breakdown 사용
   const totalScore = weights.length > 0 ? computedTotal : 50;
