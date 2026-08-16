@@ -6,8 +6,6 @@ import { PageLayout, SourceBadge, SignalBadge } from "@/components/ui";
 import StockDetailClient from "@/components/stock/stock-detail-client";
 import { fetchNaverDailyPrices } from "@/lib/naver-stock-api";
 
-export const revalidate = 3600;
-
 export default async function StockDetailPage({
   params,
 }: {

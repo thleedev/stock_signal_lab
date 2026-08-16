@@ -5,8 +5,6 @@ import { PageLayout, PageHeader } from "@/components/ui";
 import InvestmentClient from "@/components/investment/investment-client";
 import type { StockCache } from "@/types/stock";
 
-export const revalidate = 60;
-
 export default async function InvestmentPage() {
   const supabase = createServiceClient();
 

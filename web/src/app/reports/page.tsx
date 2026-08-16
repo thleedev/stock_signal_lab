@@ -16,8 +16,6 @@ const SECTION_ICONS: Record<string, string> = {
   "전략 제안": "🎯",
 };
 
-export const revalidate = 60;
-
 export default async function ReportsPage({
   searchParams,
 }: {

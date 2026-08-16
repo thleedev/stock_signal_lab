@@ -10,8 +10,6 @@ import { InvestmentSummaryCard } from "@/components/dashboard/investment-summary
 import { VirtualPortfolioSection } from "@/components/dashboard/virtual-portfolio-section";
 import { SourcePortfolioCard } from "@/components/dashboard/source-portfolio-card";
 
-export const revalidate = 60;
-
 export default async function DashboardPage() {
   const supabase = createServiceClient();
 
