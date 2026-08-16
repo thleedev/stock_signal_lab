@@ -86,7 +86,9 @@ export async function runPricesOnly(): Promise<{ collected: number }> {
         price_change: parseNum(item.compareToPreviousClosePrice),
         price_change_pct: parseFloat(item.fluctuationsRatio) || 0,
         volume: parseNum(item.accumulatedTradingVolume),
-        market_cap: parseNum(item.marketValue) * 1_000_000,
+        // 네이버 marketValue 는 억원 단위입니다. 원으로 바꾸려면 1e8 을 곱해야
+        // 하는데 1e6 을 곱해 실제의 100분의 1로 저장되고 있었습니다.
+        market_cap: parseNum(item.marketValue) * 100_000_000,
         updated_at: now,
       }));
 

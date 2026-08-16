@@ -46,16 +46,21 @@ export interface StockPriceData {
   market_cap: number;
 }
 
+/** 억원을 원으로 바꾸는 계수입니다. */
+const WON_PER_EOK = 100_000_000;
+
 function parseNumber(str: string): number {
   if (!str || str === '-') return 0;
   return parseInt(str.replace(/,/g, ''), 10) || 0;
 }
 
+/** 네이버 marketValue 를 원 단위로 바꿉니다. 원본은 억원 단위 정수입니다. */
 function parseMarketCap(str: string): number {
   if (!str) return 0;
-  // "1,124조 7,312억" → 억 단위로 변환
-  // 또는 "11,247,312" (순수 숫자) → 그대로 사용
-  return parseNumber(str);
+  // 삼성전자 예: "16,048,035" → 16,048,035억원 → 1,604.8조원
+  // stock_cache 와 같은 원 단위로 맞춰야 시가총액 정렬에서 두 출처가 섞여도
+  // 순서가 뒤집히지 않습니다.
+  return parseNumber(str) * WON_PER_EOK;
 }
 
 async function fetchPage(market: 'KOSPI' | 'KOSDAQ', page: number): Promise<NaverStockItem[]> {
