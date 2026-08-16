@@ -1,147 +1,109 @@
 /**
- * 투자 시황 절대 임계값 기반 위험도 계산
+ * 투자 시황 절대 임계값 + 상대 분위수 기반 위험도 계산
  *
  * 레벨: 0=안전, 1=주의, 2=위험, 3=극위험
  * 레벨가중치: 0, 1, 3, 6 (비선형 - 극위험에 민감하게 반응)
+ *
+ * 임계값 테이블은 카탈로그(shared/market/catalog.ts)에서 파생합니다.
+ * 이전에는 이 파일이 독립 선언을 들고 있어 배치 티커표·DB 가중치와
+ * 어긋났습니다 — 예를 들어 HY_SPREAD 는 FRED 가 percent(2.71)를 주는데
+ * 이 파일은 bps(450) 임계값을 들고 있어 실측치가 상시 레벨 0 으로
+ * 고정되는 사고가 있었습니다.
+ *
+ * 파생 지표(drawdown_52w·ma200_diff)의 판정은 365일 원시 배열이 아니라
+ * 배치(.github/scripts/batch/step13-indicator-stats.ts)가 선계산한
+ * market_indicator_stats 롤링 통계를 씁니다. 원시 배열을 화면·크론이 매 요청
+ * 다시 읽던 이전 구현은 PostgREST 기본 max_rows(1000)에 잘려, 여러 지표가
+ * 그 상한을 나눠 갖는 바람에 각 지표가 실제로는 70~90 영업일 창만 받고도
+ * 길이 가드(50개 이상)를 통과해 "52주 고점"이 조용히 3개월 고점이 되는
+ * 사고로 이어졌습니다. 선계산 통계는 배치가 페이지네이션으로 전량을 읽어
+ * 만들므로 이 문제가 없습니다.
  */
+
+import { activeIndicators } from '@shared/market/catalog';
 
 export type RiskLevel = 0 | 1 | 2 | 3;
 
 export interface RiskThreshold {
   label: string;
-  /** 높을수록 위험(1) vs 낮을수록 위험(-1) vs 양극단 위험(0, center 기준) */
-  direction: 1 | -1 | 0;
-  /** [주의 하한, 위험 하한, 극위험 하한] — direction=0이면 center 기준 거리 */
+  /** 높을수록 위험(1) vs 낮을수록 위험(-1) */
+  direction: 1 | -1;
+  /** [주의 하한, 위험 하한, 극위험 하한] */
   thresholds: [number, number, number];
-  /** direction=0일 때 기준 중앙값 (기본 50) */
-  center?: number;
   /** 위험 지수 계산 시 이 지표의 중요도 가중치 */
   weight: number;
   /**
-   * 절대 raw 값 대신 history 기반 파생값(%)으로 평가.
+   * 원값 대신 선계산 통계 기반 파생값(%)으로 평가.
    * - drawdown_52w: 52주 고점 대비 낙폭(%) — 음수일수록 깊은 조정
    * - ma200_diff:   200일 이동평균 대비 이격도(%) — 양수일수록 과열
-   * 파생 평가가 설정된 지표는 history가 부족하면 위험도 계산에서 제외된다.
+   * 파생 평가가 설정된 지표는 해당 통계(high_52w/ma_200d)가 없으면
+   * 위험도 계산에서 제외된다.
    */
   derive?: 'drawdown_52w' | 'ma200_diff';
 }
 
-export const RISK_THRESHOLDS: Record<string, RiskThreshold> = {
-  VIX: {
-    label: 'VIX (미국 공포지수)',
-    direction: 1,
-    thresholds: [20, 25, 30],
-    weight: 3,
-  },
-  VKOSPI: {
-    label: 'VKOSPI (한국 공포지수)',
-    direction: 1,
-    thresholds: [22, 28, 35],
-    weight: 3,
-  },
-  USD_KRW: {
-    label: '원/달러 환율',
-    direction: 1,
-    thresholds: [1380, 1430, 1480],
-    weight: 3,
-  },
-  DXY: {
-    label: '달러 인덱스',
-    direction: 1,
-    thresholds: [100, 104, 108],
-    weight: 2,
-  },
-  US_10Y: {
-    label: '미국 10년물 금리',
-    direction: 1,
-    thresholds: [4.0, 4.5, 5.0],
-    weight: 2,
-  },
-  WTI: {
-    label: 'WTI 원유',
-    direction: 1,
-    thresholds: [75, 90, 100],
-    weight: 2,
-  },
-  KOSPI: {
-    label: 'KOSPI 52주 고점 대비',
-    direction: -1,
-    thresholds: [-7, -15, -25],
-    weight: 2,
-    derive: 'drawdown_52w',
-  },
-  KOSDAQ: {
-    label: 'KOSDAQ 52주 고점 대비',
-    direction: -1,
-    thresholds: [-10, -20, -30],
-    weight: 1,
-    derive: 'drawdown_52w',
-  },
-  CNN_FEAR_GREED: {
-    label: 'CNN 공포탐욕지수',
-    direction: 0,
-    thresholds: [10, 25, 30],
-    center: 50,
-    weight: 2,
-  },
-  EWY: {
-    label: 'EWY 52주 고점 대비',
-    direction: -1,
-    thresholds: [-7, -15, -25],
-    weight: 1,
-    derive: 'drawdown_52w',
-  },
-  GOLD: {
-    label: '금 200일 이격도',
-    direction: 1,
-    thresholds: [10, 20, 30],
-    weight: 1,
-    derive: 'ma200_diff',
-  },
-  HY_SPREAD: {
-    label: 'HY 스프레드 (하이일드)',
-    direction: 1,
-    thresholds: [450, 550, 700],
-    weight: 3,
-  },
-  YIELD_CURVE: {
-    label: '장단기 금리차 (10Y-2Y)',
-    direction: -1,
-    thresholds: [50, 0, -50],
-    weight: 2,
-  },
-};
+/**
+ * 임계값 테이블은 카탈로그에서 파생합니다. 카탈로그의 direction 은 항상
+ * 1|-1 이고(양극단 판정 지표는 카탈로그에 없음), 활성 지표만 담습니다 —
+ * 카탈로그에서 비활성(VKOSPI·KR_3Y) 처리하거나 삭제(CNN_FEAR_GREED·
+ * FEAR_GREED)한 지표는 여기 자동으로 빠지므로 getRiskLevel 이 이들에
+ * 대해 null 을 반환합니다.
+ */
+export const RISK_THRESHOLDS: Record<string, RiskThreshold> = Object.fromEntries(
+  activeIndicators().map((s) => [
+    s.key,
+    {
+      label: s.label,
+      direction: s.direction,
+      thresholds: s.thresholds.levels,
+      weight: s.weight,
+      derive: s.derive,
+    },
+  ]),
+);
 
 /** 레벨별 가중치 (비선형: 극위험에 민감) */
 const LEVEL_WEIGHTS: Record<RiskLevel, number> = { 0: 0, 1: 1, 2: 3, 3: 6 };
 
 /**
- * derive 설정이 있으면 history 기반 파생값(%)으로 변환.
- * history는 정렬 무관, 길이만 충분하면 됨 (drawdown은 50, ma200_diff는 50).
- * 파생 불가(history 부족, ma=0 등)면 null 반환.
+ * market_indicator_stats(배치 step13) 선계산 롤링 통계.
+ * as_of 는 통계 신선도 판단용이며 판정 계산 자체에는 쓰이지 않는다.
+ */
+export interface IndicatorStats {
+  high_52w: number | null;
+  low_52w: number | null;
+  ma_200d: number | null;
+  pct_rank_252d: number | null;
+  sample_days: number;
+  as_of: string;
+}
+
+/**
+ * derive 설정이 있으면 통계 기반 파생값(%)으로 변환.
+ *
+ * drawdown_52w = ((value - high_52w) / high_52w) * 100
+ * ma200_diff   = ((value - ma_200d) / ma_200d) * 100
+ *
+ * 필요한 통계가 없거나(stats 자체가 없음 · 해당 필드가 null) 기준값이
+ * 산술적으로 무의미하면(고점이 0 이하, 이평이 0) null 을 반환한다.
  */
 export function deriveValue(
   type: string,
   value: number,
-  history: number[] | undefined
+  stats: IndicatorStats | undefined,
 ): number | null {
   const t = RISK_THRESHOLDS[type];
   if (!t?.derive) return value;
-  if (!history || history.length < 50) return null;
+  if (!stats) return null;
 
   if (t.derive === 'drawdown_52w') {
-    let max = value;
-    for (const v of history) if (v > max) max = v;
-    if (max <= 0) return null;
-    return ((value - max) / max) * 100;
+    const high = stats.high_52w;
+    if (high == null || high <= 0) return null;
+    return ((value - high) / high) * 100;
   }
   if (t.derive === 'ma200_diff') {
-    const window = history.slice(0, 200);
-    if (window.length < 50) return null;
-    let sum = 0;
-    for (const v of window) sum += v;
-    const ma = sum / window.length;
-    if (ma === 0) return null;
+    const ma = stats.ma_200d;
+    if (ma == null || ma === 0) return null;
     return ((value - ma) / ma) * 100;
   }
   return null;
@@ -150,30 +112,23 @@ export function deriveValue(
 /**
  * 단일 지표의 위험 레벨 계산
  * value가 null/undefined이면 null 반환 (계산에서 제외)
- * derive 설정이 있는 지표는 history가 필요하며, 부족하면 null 반환.
+ * derive 설정이 있는 지표는 stats 가 필요하며, 필요한 필드가 없으면 null 반환.
  */
 export function getRiskLevel(
   type: string,
   value: number | null | undefined,
-  history?: number[]
+  stats?: IndicatorStats,
 ): RiskLevel | null {
   if (value == null) return null;
   const t = RISK_THRESHOLDS[type];
   if (!t) return null;
 
-  const evalValue = t.derive ? deriveValue(type, value, history) : value;
+  const evalValue = t.derive ? deriveValue(type, value, stats) : value;
   if (evalValue === null) return null;
 
   const [l1, l2, l3] = t.thresholds;
 
-  if (t.direction === 0) {
-    // 양극단 위험: center 기준 거리로 판단 (극공포 & 극탐욕 모두 위험)
-    const dist = Math.abs(evalValue - (t.center ?? 50));
-    if (dist >= l3) return 3;
-    if (dist >= l2) return 2;
-    if (dist >= l1) return 1;
-    return 0;
-  } else if (t.direction === 1) {
+  if (t.direction === 1) {
     if (evalValue >= l3) return 3;
     if (evalValue >= l2) return 2;
     if (evalValue >= l1) return 1;
@@ -210,13 +165,7 @@ export function getRiskThresholdLabel(type: string, level: RiskLevel): string {
     return `200일선 +${l1}% 미만`;
   }
 
-  const c = t.center ?? 50;
-  if (t.direction === 0) {
-    if (level === 3) return `${c - l3} 미만 또는 ${c + l3} 초과`;
-    if (level === 2) return `${c - l2}~${c - l3} 또는 ${c + l2}~${c + l3}`;
-    if (level === 1) return `${c - l1}~${c - l2} 또는 ${c + l1}~${c + l2}`;
-    return `${c - l1}~${c + l1} (중립)`;
-  } else if (t.direction === 1) {
+  if (t.direction === 1) {
     if (level === 3) return `${l3.toLocaleString()} 이상`;
     if (level === 2) return `${l2.toLocaleString()}~${l3.toLocaleString()}`;
     if (level === 1) return `${l1.toLocaleString()}~${l2.toLocaleString()}`;
@@ -238,94 +187,99 @@ export interface RiskIndexResult {
   validCount: number;
   /** 위험(2) 이상 지표 수 */
   dangerCount: number;
+  /** 판정에 반영된 가중치 합 / 활성 지표 가중치 합 (0~1) */
+  coverage: number;
+  /** 값이 없거나 파생 계산에 필요한 통계가 없어 판정에서 빠진 활성 지표 키 */
+  missing: string[];
 }
 
 /**
- * 252일 롤링 분포 기반 상대 위험 레벨
+ * 배치가 선계산한 252일 백분위(pct_rank_252d) 기반 상대 위험 레벨.
+ *
  * direction=1: 상위 percentile일수록 위험 (≥75=주의, ≥90=위험, ≥97=극위험)
  * direction=-1: 하위 percentile일수록 위험 (≤25=주의, ≤10=위험, ≤3=극위험)
- * direction=0: 중앙값 거리 기준 (절대 함수와 동일하게 center 거리 percentile)
  *
- * history: 해당 지표의 과거 값 배열 (정렬 무관, 최소 30개 이상 필요)
+ * pct_rank_252d 는 0~1 범위이고, current 자신이 모집단에 포함되어 정확히
+ * 0 이 될 수 없다(shared/market/stats.ts pctRank 의 정의 — count 최솟값이
+ * 1 이므로 결과 최솟값은 1/values.length). 기존 임계값은 0~100 백분위
+ * 기준이므로 100 을 곱해 단위를 맞춘다.
+ *
+ * derive 지표(drawdown_52w·ma200_diff)는 파생값 자체가 이미 기준(52주
+ * 고점·200일선) 대비 상대치이므로 percentile 보강을 적용하지 않는다 —
+ * 원시값의 백분위와 파생값의 임계값을 이중으로 겹쳐 매기지 않기 위함이다.
  */
 export function getRelativeRiskLevel(
   type: string,
   value: number | null | undefined,
-  history: number[] | undefined
+  stats?: IndicatorStats,
 ): RiskLevel | null {
   if (value == null) return null;
-  if (!history || history.length < 30) return null;
   const t = RISK_THRESHOLDS[type];
   if (!t) return null;
-  // derive 지표는 이미 파생값 자체가 상대적이므로 분위수 보강을 적용하지 않음
   if (t.derive) return null;
+  if (!stats || stats.pct_rank_252d == null) return null;
 
-  // value 기준 percentile (0~100) 계산
-  const sorted = [...history].sort((a, b) => a - b);
-  const n = sorted.length;
-  let count = 0;
-  for (const v of sorted) {
-    if (v <= value) count++;
-    else break;
-  }
-  const percentile = (count / n) * 100;
+  const percentile = stats.pct_rank_252d * 100;
 
   if (t.direction === 1) {
     if (percentile >= 97) return 3;
     if (percentile >= 90) return 2;
     if (percentile >= 75) return 1;
     return 0;
-  } else if (t.direction === -1) {
+  } else {
     if (percentile <= 3) return 3;
     if (percentile <= 10) return 2;
     if (percentile <= 25) return 1;
-    return 0;
-  } else {
-    // 양극단: |value - center| 의 분포에서 현재 거리의 percentile
-    const center = t.center ?? 50;
-    const dists = sorted.map((v) => Math.abs(v - center)).sort((a, b) => a - b);
-    const dCurrent = Math.abs(value - center);
-    let dCount = 0;
-    for (const d of dists) {
-      if (d <= dCurrent) dCount++;
-      else break;
-    }
-    const dp = (dCount / dists.length) * 100;
-    if (dp >= 97) return 3;
-    if (dp >= 90) return 2;
-    if (dp >= 75) return 1;
     return 0;
   }
 }
 
 /**
  * 전체 위험 지수 계산 (0~100, 높을수록 위험)
- * 데이터 없는 지표는 분자/분모 모두에서 제외
  *
- * history(252일치 등)를 함께 전달하면 절대 임계값과 상대 분위수의
- * 더 위험한 쪽을 채택하는 하이브리드 모드로 동작한다.
+ * statsByKey 를 함께 전달하면 절대 임계값과 상대 분위수의 더 위험한 쪽을
+ * 채택하는 하이브리드 모드로 동작하고, drawdown_52w·ma200_diff 파생 지표
+ * (KOSPI·KOSDAQ·EWY·GOLD) 판정도 가능해진다. 생략하면 파생 지표는 통계가
+ * 없어 전량 missing 으로 빠진다 — "판정 불가"를 명시적으로 드러내기
+ * 위함이며, 값이 있는데도 조용히 안전(레벨 0)으로 집계하지 않는다.
+ *
+ * coverage 는 값·통계가 있어 실제로 판정에 반영된 지표의 가중치 합을
+ * 활성 지표 전체 가중치 합으로 나눈 비율이다(0~1). validCount/dangerCount
+ * 같은 "개수" 지표와 달리 지표별 중요도(weight)를 반영하므로, 무거운
+ * 지표 여러 개가 한꺼번에 빠지는 상황을 가벼운 지표 몇 개가 빠지는
+ * 상황보다 더 낮은 coverage 로 정확히 드러낸다.
  */
 export function calculateRiskIndex(
   values: Record<string, number | null | undefined>,
-  history?: Record<string, number[] | undefined>
+  statsByKey?: Record<string, IndicatorStats | undefined>,
 ): RiskIndexResult {
   let weightedSum = 0;
   let maxPossible = 0;
   let validCount = 0;
   let dangerCount = 0;
-  const breakdown: Record<string, { level: RiskLevel; value: number; absoluteLevel: RiskLevel; relativeLevel: RiskLevel | null }> = {};
+  let coveredWeight = 0;
+  let totalWeight = 0;
+  const missing: string[] = [];
+  const breakdown: RiskIndexResult['breakdown'] = {};
 
   for (const [type, threshold] of Object.entries(RISK_THRESHOLDS)) {
-    const value = values[type];
-    const absoluteLevel = getRiskLevel(type, value, history?.[type]);
-    if (absoluteLevel === null || value == null) continue;
+    totalWeight += threshold.weight;
 
-    const relativeLevel = history ? getRelativeRiskLevel(type, value, history[type]) : null;
+    const value = values[type];
+    const stats = statsByKey?.[type];
+    const absoluteLevel = getRiskLevel(type, value, stats);
+    if (absoluteLevel === null || value == null) {
+      missing.push(type);
+      continue;
+    }
+
+    const relativeLevel = getRelativeRiskLevel(type, value, stats);
     const level = (relativeLevel != null
       ? (Math.max(absoluteLevel, relativeLevel) as RiskLevel)
       : absoluteLevel);
 
     validCount++;
+    coveredWeight += threshold.weight;
     weightedSum += LEVEL_WEIGHTS[level] * threshold.weight;
     maxPossible += LEVEL_WEIGHTS[3] * threshold.weight; // 6 × weight
     breakdown[type] = { level, value, absoluteLevel, relativeLevel };
@@ -336,7 +290,14 @@ export function calculateRiskIndex(
     ? Math.round((weightedSum / maxPossible) * 10000) / 100
     : 0;
 
-  return { riskIndex, breakdown, validCount, dangerCount };
+  return {
+    riskIndex,
+    breakdown,
+    validCount,
+    dangerCount,
+    coverage: totalWeight > 0 ? coveredWeight / totalWeight : 0,
+    missing,
+  };
 }
 
 export interface RiskInterpretation {

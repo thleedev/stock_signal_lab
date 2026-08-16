@@ -5,7 +5,8 @@ import {
   calculateCombinedScore,
   calculateMarketScore,
 } from '@/lib/market-score';
-import { calculateRiskIndex } from '@/lib/market-thresholds';
+import { calculateRiskIndex, type IndicatorStats } from '@/lib/market-thresholds';
+import { mean, pctRank } from '@shared/market/stats';
 import type { MarketEvent } from '@/types/market-event';
 import type { IndicatorWeight } from '@/types/market';
 
@@ -102,8 +103,30 @@ export async function GET(request: NextRequest) {
     minMaxMap[t].current = valueMap[t];
   }
 
+  // calculateRiskIndex 는 365일 원시 배열이 아니라 지표별 선계산 통계
+  // (IndicatorStats)를 받는다(market-thresholds.ts 참고). 이 라우트는
+  // loadAllIndicators 가 이미 페이지네이션으로 전량을 읽어 두므로,
+  // market_indicator_stats 배치(step13)와 같은 계산(high/low_52w·200일
+  // 이평·252일 백분위)을 historyByType(날짜 내림차순, [0]=현재값)으로
+  // 직접 만들어 넘긴다. 이 값을 넘기지 않으면 KOSPI/KOSDAQ/EWY/GOLD 같은
+  // drawdown_52w/ma200_diff 파생 지표가 통계 없음으로 missing 처리되어
+  // 위험 지수 계산에서 빠진다.
+  const statsByType: Record<string, IndicatorStats> = {};
+  for (const [t, values] of Object.entries(historyByType)) {
+    const current = values[0];
+    const window200 = values.slice(0, 200);
+    statsByType[t] = {
+      high_52w: values.length > 0 ? Math.max(...values) : null,
+      low_52w: values.length > 0 ? Math.min(...values) : null,
+      ma_200d: window200.length >= 50 ? mean(window200) : null,
+      pct_rank_252d: values.length >= 30 ? pctRank(current, values) : null,
+      sample_days: values.length,
+      as_of: today,
+    };
+  }
+
   const { riskIndex, breakdown: riskBreakdown, dangerCount, validCount } =
-    calculateRiskIndex(valueMap, historyByType);
+    calculateRiskIndex(valueMap, statsByType);
 
   // 1-1) total_score 계산 (가중치 + 90일 정규화)
   const { data: weightRows } = await supabase.from('indicator_weights').select('*');
