@@ -5,8 +5,15 @@
  * 양쪽 모듈 해석 규칙이 달라 이 파일은 다른 파일을 import 하지 않습니다.
  *
  * unit 은 "저장 단위"입니다. 수집 시점 변환을 하지 않고 소스가 주는 값을
- * 그대로 저장하며, 임계값을 저장 단위에 맞춥니다. FRED 가 주는 percent 값에
- * bps 임계값을 적용해 판정이 사문화된 사고를 구조적으로 막기 위함입니다.
+ * 그대로 저장하며, DB 와 화면 원값 표시는 이 단위를 따릅니다.
+ *
+ * thresholds.unit 은 "판정 단위"입니다. derive 가 없으면 unit 과 같습니다.
+ * derive 가 있으면 판정은 원값이 아니라 파생값으로 하므로 percent 입니다 —
+ * web/src/lib/market-thresholds.ts 의 deriveValue() 가 drawdown_52w·ma200_diff
+ * 모두 ((value-기준)/기준)*100 으로 항상 percent 를 반환하기 때문입니다.
+ * 이 둘을 같은 값으로 오인하면 FRED 가 주는 percent 값에 bps 임계값을
+ * 적용하거나, GOLD 처럼 원자산 단위 임계값이 파생값(percent)과 어긋나
+ * 지표가 상시 최고 위험 레벨에 고정되는 사고로 이어집니다.
  */
 
 export type Unit = 'index' | 'percent' | 'percent_point' | 'krw' | 'usd' | 'won_100m';
@@ -29,10 +36,15 @@ export interface IndicatorSpec {
   enabled: boolean;
   source: SourceSpec;
   fallback?: SourceSpec;
+  /** 저장 단위. DB 에 들어가는 원값과 화면 원값 표시 단위 */
   unit: Unit;
   /** 값이 클수록 위험이면 1, 작을수록 위험이면 -1 */
   direction: 1 | -1;
-  /** [주의, 위험, 극위험] 경계. 단위는 thresholds.unit 이며 unit 과 같아야 한다 */
+  /**
+   * [주의, 위험, 극위험] 경계.
+   * thresholds.unit 은 "판정 단위"로, derive 가 없으면 unit 과 같다.
+   * derive 가 있으면 판정은 파생값(percent)으로 하므로 'percent' 다.
+   */
   thresholds: { unit: Unit; levels: [number, number, number] };
   display: { suffix: string; digits: number };
   weight: number;
@@ -136,7 +148,8 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     source: { kind: 'yahoo', ticker: 'GC=F' },
     unit: 'usd',
     direction: 1,
-    thresholds: { unit: 'usd', levels: [10, 20, 30] },
+    // 판정은 ma200_diff 파생값(percent) 기준. 저장은 금 시세(usd) 그대로.
+    thresholds: { unit: 'percent', levels: [10, 20, 30] },
     display: { suffix: '', digits: 2 },
     weight: 1,
     derive: 'ma200_diff',
@@ -150,7 +163,8 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     source: { kind: 'yahoo', ticker: 'EWY' },
     unit: 'usd',
     direction: -1,
-    thresholds: { unit: 'usd', levels: [-7, -15, -25] },
+    // 판정은 drawdown_52w 파생값(percent) 기준. 저장은 종가(usd) 그대로.
+    thresholds: { unit: 'percent', levels: [-7, -15, -25] },
     display: { suffix: '', digits: 2 },
     weight: 1,
     derive: 'drawdown_52w',
@@ -167,7 +181,8 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     fallback: { kind: 'yahoo', ticker: '^KS11' },
     unit: 'index',
     direction: -1,
-    thresholds: { unit: 'index', levels: [-7, -15, -25] },
+    // 판정은 drawdown_52w 파생값(percent) 기준. 저장은 지수값(index) 그대로.
+    thresholds: { unit: 'percent', levels: [-7, -15, -25] },
     display: { suffix: '', digits: 2 },
     weight: 2,
     derive: 'drawdown_52w',
@@ -182,7 +197,8 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     fallback: { kind: 'yahoo', ticker: '^KQ11' },
     unit: 'index',
     direction: -1,
-    thresholds: { unit: 'index', levels: [-10, -20, -30] },
+    // 판정은 drawdown_52w 파생값(percent) 기준. 저장은 지수값(index) 그대로.
+    thresholds: { unit: 'percent', levels: [-10, -20, -30] },
     display: { suffix: '', digits: 2 },
     weight: 1,
     derive: 'drawdown_52w',

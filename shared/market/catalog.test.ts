@@ -8,9 +8,29 @@ describe('지표 카탈로그', () => {
     }
   });
 
-  it('임계값 단위가 저장 단위와 같다', () => {
+  it('파생 지표가 아니면 임계값 단위와 저장 단위가 같다', () => {
     for (const spec of Object.values(CATALOG)) {
+      if (spec.derive) continue;
       expect(spec.thresholds.unit).toBe(spec.unit);
+    }
+  });
+
+  it('파생 지표의 임계값 단위는 percent 다', () => {
+    // deriveValue 는 drawdown_52w·ma200_diff 모두 ((value-max)/max)*100 으로
+    // 항상 percent 를 반환한다. 원자산 단위로 두면 GOLD 처럼 임계값이
+    // 일상 변동폭 아래로 내려가 지표가 상시 최고 레벨에 고정된다.
+    for (const spec of Object.values(CATALOG)) {
+      if (!spec.derive) continue;
+      expect(spec.thresholds.unit).toBe('percent');
+    }
+  });
+
+  it('파생 지표의 임계값은 percent 로서 타당한 범위다', () => {
+    for (const spec of Object.values(CATALOG)) {
+      if (!spec.derive) continue;
+      for (const level of spec.thresholds.levels) {
+        expect(Math.abs(level)).toBeLessThanOrEqual(100);
+      }
     }
   });
 
