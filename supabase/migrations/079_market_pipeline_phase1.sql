@@ -7,6 +7,19 @@
 -- 3) 지표 롤링 통계 테이블 신설
 --    252일 분위수·52주 고점을 매 요청 계산하다 PostgREST 1000행 상한에 잘려
 --    실제로는 약 70~90일 창으로 산출되던 문제를 배치 선계산으로 옮긴다.
+--
+-- 적용 순서 주의: step6-market-data.ts 재작성이 먼저 배포되어야 한다.
+--   배치 스크립트가 여전히 KR_3Y, FEAR_GREED, KORU 를 매일 upsert 한다.
+--   이 마이그레이션만 먼저 적용하면 다음 배치 실행에서 세 지표 행이 다시 생겨난다.
+--
+-- 백업 (선택 사항, 적용 전 실행)
+--   CREATE TABLE market_indicators_079_backup AS
+--     SELECT * FROM market_indicators
+--     WHERE indicator_type IN ('KR_3Y', 'FEAR_GREED', 'KORU');
+--
+-- 복구 불가능한 이유
+--   세 지표 모두 서로 다른 자산과 소스가 같은 키에 섞여 있어,
+--   행만 보고는 구분할 수 없다.
 
 ALTER TABLE market_indicators
   ADD COLUMN IF NOT EXISTS source VARCHAR(20),
