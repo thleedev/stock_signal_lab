@@ -6,6 +6,7 @@ import { getLastNWeekdays, getKstDayRange, getLastNDaysRange } from "@/lib/date-
 import { getEffectiveThemeDate, fetchThemeMap } from "@/lib/theme-utils";
 import SignalColumns from "./signal-columns";
 import { extractSignalPrice, toActiveSignal, type ActiveSignalRow } from "@/lib/signal-constants";
+import { fetchSectorMap, mergeSectors } from "@/lib/signal-sector";
 import { SignalFilterBar } from "./signal-filter-bar";
 import RecommendationView from "@/components/signals/RecommendationView";
 import { HotThemesBanner } from "@/components/signals/HotThemesBanner";
@@ -188,12 +189,27 @@ async function fetchSignals(
         .range(0, INITIAL - 1),
     ]);
 
-    buySignals = (buyRows ?? []).map(
+    const rawBuy = (buyRows ?? []).map(
       (s) => toActiveSignal(s as unknown as ActiveSignalRow, "buy") as unknown as Record<string, string>
     );
-    sellSignals = (sellRows ?? []).map(
+    const rawSell = (sellRows ?? []).map(
       (s) => toActiveSignal(s as unknown as ActiveSignalRow, "sell") as unknown as Record<string, string>
     );
+
+    // stock_cache 에는 업종이 없어 업종 뷰가 "기타" 한 덩어리로 나왔습니다.
+    // stock_info 에서 채웁니다. /api/v1/signals/active 도 같은 함수를 씁니다.
+    const sectorMap = await fetchSectorMap(supabase, [
+      ...rawBuy.map((s) => s.symbol),
+      ...rawSell.map((s) => s.symbol),
+    ]);
+    buySignals = mergeSectors(
+      rawBuy as unknown as { symbol: string; sector: string }[],
+      sectorMap
+    ) as unknown as typeof buySignals;
+    sellSignals = mergeSectors(
+      rawSell as unknown as { symbol: string; sector: string }[],
+      sectorMap
+    ) as unknown as typeof sellSignals;
     buyTotal = buyCount ?? buySignals.length;
     sellTotal = sellCount ?? sellSignals.length;
     isActiveMode = true;

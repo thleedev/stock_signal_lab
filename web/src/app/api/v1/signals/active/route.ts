@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { toActiveSignal, type ActiveSignalRow } from '@/lib/signal-constants';
+import { fetchSectorMap, mergeSectors } from '@/lib/signal-sector';
 import { parseActiveParams } from './params';
 
 export const dynamic = 'force-dynamic';
@@ -44,7 +45,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const items = (data ?? []).map((row) => toActiveSignal(row as unknown as ActiveSignalRow, type));
+  const raw = (data ?? []).map((row) => toActiveSignal(row as unknown as ActiveSignalRow, type));
+
+  // stock_cache 에 업종이 없어 stock_info 에서 채웁니다.
+  // 페이지의 최초 200행과 같은 함수를 써야 이어 붙인 행이 어긋나지 않습니다.
+  const sectorMap = await fetchSectorMap(supabase, raw.map((s) => s.symbol));
+  const items = mergeSectors(raw, sectorMap);
   const total = count ?? 0;
 
   return NextResponse.json({ items, total, hasMore: offset + items.length < total });
