@@ -60,9 +60,6 @@ async function loadSeries(key: string, since: string): Promise<{ date: string; v
   return out;
 }
 
-/** 지표 적재가 실제로 시작된 날짜. market_indicators 최초 관측일이 이 날짜다. */
-const COLLECTION_START = '2026-04-06';
-
 /** 적재 결손 감지 시 관측치 하한을 "기대 영업일 수"의 이 비율로 잡는다. */
 const MIN_SAMPLE_RATIO = 0.8;
 
@@ -89,18 +86,39 @@ function businessDaysBetween(fromISO: string, toISO: string): number {
  * 적재 결손 감지 기준 — "데이터가 아직 짧은 것"과 "관측치가 비정상적으로
  * 적은 것"을 가른다.
  *
- * sample_days 가 200 미만이면 무조건 실패로 보면, 지표 적재가
- * COLLECTION_START(2026-04-06)에 시작돼 as_of 시점 영업일 수가 아직 200에
- * 못 미치는 정상 상태(2026-08-17 기준 약 96 영업일, 즉 "100 영업일 안팎")
- * 에서도 이 배치가 매일 실패한다. 반대로 sample_days 가 짧을 때 로그만
- * 남기면 GitHub Actions 로그 보존 기간이 지나는 순간 증거가 사라진다.
+ * sample_days 가 200 미만이면 무조건 실패로 보면, 지표 적재가 시작된 지
+ * 얼마 안 돼 as_of 시점 영업일 수가 아직 200에 못 미치는 정상 상태에서도
+ * 이 배치가 매일 실패한다. 반대로 sample_days 가 짧을 때 로그만 남기면
+ * GitHub Actions 로그 보존 기간이 지나는 순간 증거가 사라진다.
  *
- * 기준: COLLECTION_START 부터 as_of 까지 지날 수 있는 영업일 수(위 함수,
- * 과대추정)를 252일로 상한 씌운 뒤 그 80% 를 밑돌면 실패로 본다. 적재가
- * 갓 시작된 지표는 "지날 수 있는 영업일 수" 자체가 작아 임계값도 함께
- * 낮아지므로 초기 구간에서 오탐이 나지 않는다. 2026-08-17 기준 실측
- * 개장일은 91~92일(Python `holidays` 라이브러리로 검산)이고 이 함수의
- * 임계값은 76 이라 15~16일 여유가 있어, 현재로서는 오탐이 없다.
+ * 기준: firstObserved(이 지표의 최초 관측일) 부터 as_of 까지 지날 수 있는
+ * 영업일 수(아래 함수, 과대추정)를 252일로 상한 씌운 뒤 그 80% 를 밑돌면
+ * 실패로 본다. 적재가 갓 시작된 지표는 "지날 수 있는 영업일 수" 자체가
+ * 작아 임계값도 함께 낮아지므로 초기 구간에서 오탐이 나지 않는다.
+ *
+ * **지표별 최초 관측일을 쓰는 이유(고정 COLLECTION_START 를 걷어낸 근거,
+ * 최종 리뷰 C1)**. 이전 구현은 모든 지표가 같은 고정일(2026-04-06)에
+ * 적재를 시작했다고 가정했다. 이 브랜치가 새로 도입한 KR_VOL_20D 나,
+ * FRED_API_KEY 미설정 시 표본 0 에서 시작하는 HY_SPREAD·YIELD_CURVE 처럼
+ * 실제 최초 관측일이 그보다 늦은 지표는 "경과 영업일"이 실제보다 훨씬 크게
+ * 잡혀, 표본이 1건뿐인 첫날에도 하한이 76(2026-08-17 기준)에 근접해 거의
+ * 영구히 실패로 잡힌다(상한 252 에 걸려서야 통과 — 약 9개월 후). 지표별
+ * 최초 관측일을 쓰면 새 지표는 "관측치 1건, 경과 1영업일, 하한
+ * floor(1×0.8)=0" 으로 자연히 통과하고, 기존 지표는 이전과 동일한 하한을
+ * 받는다 — 하한이 지표마다 실제 적재 이력을 기준으로 움직이므로 결손
+ * 감지 능력은 그대로 유지된다.
+ *
+ * firstObserved 는 별도 조회를 추가하지 않는다. 호출부(runStep13...)가
+ * loadSeries() 로 이미 읽어 둔 series(date 내림차순)의 마지막 원소
+ * (series[series.length-1].date, 즉 로드된 범위 안에서 가장 오래된 관측일)를
+ * 그대로 쓴다. loadSeries() 의 since(400일 전, 호출부 참고) 창은 이 저장소의
+ * 모든 지표(가장 오래된 것도 2026-04-06 개시, 400일에 한참 못 미침)를 넉넉히
+ * 덮으므로 이 값은 사실상 진짜 최초 관측일과 같다. 지표가 400일보다 오래돼
+ * since 경계에 걸리는 경우에도 businessDaysBetween(경계일, asOf) 는 이미
+ * 252 를 넘겨 아래 Math.min 캡에 걸리므로 결과가 달라지지 않는다 — 즉 이
+ * 근사는 어떤 경우에도 진짜 최초 관측일 기준과 같은 하한을 낸다. 지표별
+ * 조회를 한 번 더 추가하지 않고 이미 로드한 데이터로 정확한 값을 얻으므로
+ * 추가 DB 왕복 비용이 없다.
  *
  * 이 임계값이 잡는 것과 잡지 못하는 것을 분명히 해 둔다.
  *
@@ -115,12 +133,13 @@ function businessDaysBetween(fromISO: string, toISO: string): number {
  * 이 임계값의 실제 역할은 그 특정 버그의 재발 감지가 아니라, 배치 중단이나
  * 소스 장애가 누적돼 특정 지표의 최근 관측치가 예상보다 훨씬 적게 쌓인
  * 일반적 적재 결손을 잡는 것이다. 80%·15~16일 마진은 그 목적에는 타당하나,
- * 임계값 76 은 옛 절단 버그가 냈던 70~90일 구간과 겹친다 — 그 구간 안에서
- * 새로 발생하는 절단이 있다면 이 임계값을 그대로 통과하므로, 옛 버그와
- * 같은 모양의 절단을 잡아내는 안전판으로 이 임계값을 신뢰해서는 안 된다.
+ * 기존 지표(2026-04-06 개시)의 임계값 76 은 옛 절단 버그가 냈던 70~90일
+ * 구간과 겹친다 — 그 구간 안에서 새로 발생하는 절단이 있다면 이 임계값을
+ * 그대로 통과하므로, 옛 버그와 같은 모양의 절단을 잡아내는 안전판으로 이
+ * 임계값을 신뢰해서는 안 된다.
  */
-function minExpectedSamples(asOf: string): number {
-  const elapsed = businessDaysBetween(COLLECTION_START, asOf);
+function minExpectedSamples(firstObserved: string, asOf: string): number {
+  const elapsed = businessDaysBetween(firstObserved, asOf);
   const expected = Math.min(elapsed, MAX_EXPECTED_DAYS);
   return Math.floor(expected * MIN_SAMPLE_RATIO);
 }
@@ -145,7 +164,6 @@ export async function runStep13IndicatorStats(
   const errors: string[] = [];
   const since = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
   const rows: StatsRow[] = [];
-  const minExpected = minExpectedSamples(opts.date);
 
   // FOREIGN_NET·INSTITUTION_NET(naver_investor 소스)는 market_indicators 가
   // 아니라 market_investor_daily 에 적재된다(step12-investor-daily 담당).
@@ -164,7 +182,10 @@ export async function runStep13IndicatorStats(
         errors.push(`step13 ${spec.key}: 관측치 없음`);
         continue;
       }
-      // date 내림차순이므로 [0] 이 최신값이다 (파일 상단 정렬 규약 참고).
+      // date 내림차순이므로 [0] 이 최신값, [length-1] 이 이 창 안에서 가장
+      // 오래된(=최초) 관측일이다 (파일 상단 정렬 규약 참고).
+      const firstObserved = series[series.length - 1].date;
+      const minExpected = minExpectedSamples(firstObserved, opts.date);
       const values = series.map((s) => s.value);
       const current = values[0];
       const window252 = values.slice(0, 252);
@@ -188,14 +209,14 @@ export async function runStep13IndicatorStats(
         // 데이터가 아직 짧은 것이 아니라(경과 영업일 대비 기대치 이하이므로),
         // 적재 결손이나 조회 절단일 가능성이 커 배치 실패로 드러낸다.
         errors.push(
-          `step13 ${spec.key}: 관측치 ${series.length}일 (기대 최소 ${minExpected}일, 경과 영업일 기준) — 적재 결손 또는 조회 절단 의심`,
+          `step13 ${spec.key}: 관측치 ${series.length}일 (기대 최소 ${minExpected}일, 최초 관측일 ${firstObserved} 기준 경과 영업일) — 적재 결손 또는 조회 절단 의심`,
         );
       } else if (series.length < 200) {
         // 기대치(minExpected) 이상이면 200일 미달이어도 "적재가 아직 짧을
         // 뿐인 정상 상태"이므로 실패로 담지 않고 로그만 남긴다.
         log(
           'step13',
-          `${spec.key} 관측치 ${series.length}일 — 252일 창 미달(적재 개시 이후 경과일 기준 정상, 기대 최소 ${minExpected}일 충족)`,
+          `${spec.key} 관측치 ${series.length}일 — 252일 창 미달(최초 관측일 ${firstObserved} 기준 정상, 기대 최소 ${minExpected}일 충족)`,
         );
       }
     } catch (err) {
