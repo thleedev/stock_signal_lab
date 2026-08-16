@@ -114,6 +114,17 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     weight: 2,
     maxStaleDays: 5,
   },
+  // DXY 는 폴백을 두지 않는다(최종 리뷰 I5). 설계 §5.1 은 주 소스를 FRED
+  // DTWEXBGS(폴백 Yahoo DX-Y.NYB)로 정했지만, 두 소스는 스케일이 다르다 —
+  // DX-Y.NYB 는 100 대, DTWEXBGS(광의 실효환율지수)는 120 대다. 아래
+  // thresholds([100,104,108])는 DX-Y.NYB 스케일 전용이라, 주 소스를
+  // DTWEXBGS 로 바꾸면 이 임계값이 그대로 어긋난다 — 이 카탈로그가 없애려던
+  // "저장 단위와 판정 단위 불일치" 사고(Ruling R4)와 같은 종류다. 그렇다고
+  // DTWEXBGS 를 폴백으로만 끼워 넣어도, 주 소스(Yahoo) 장애 시 폴백값이
+  // 다른 스케일로 들어와 같은 사고가 난다. Yahoo 가 설계 §5.2 실측대로
+  // 429 로 막히면 DXY 는 결손으로 처리되는 쪽이, 잘못된 스케일로 판정하는
+  // 쪽보다 낫다. 나중에 DTWEXBGS 로 주 소스를 옮기려면 이 thresholds 를
+  // DTWEXBGS 실측값 기준으로 다시 잡아야 한다.
   DXY: {
     key: 'DXY',
     label: '달러 인덱스',
@@ -133,6 +144,11 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     layer: 'global',
     enabled: true,
     source: { kind: 'yahoo', ticker: 'CL=F' },
+    // FRED DCOILWTICO 는 Yahoo CL=F 와 같은 usd/배럴 스케일이라 폴백으로
+    // 안전하다(최종 리뷰 I5). Yahoo 가 쿠키 없이 호출 시 429 로 막히는
+    // 사고(설계 §5.2 실측)에서 이 지표를 구제한다. DXY 와 달리 단위 변환이
+    // 필요 없어 thresholds 를 그대로 둔다.
+    fallback: { kind: 'fred', seriesId: 'DCOILWTICO' },
     unit: 'usd',
     direction: 1,
     thresholds: { unit: 'usd', levels: [75, 90, 100] },
@@ -140,6 +156,13 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     weight: 2,
     maxStaleDays: 4,
   },
+  // GOLD·EWY 도 폴백 없이 Yahoo 단독이다(최종 리뷰 I5 검토). FRED 에
+  // 금 현물 무료 시계열(GOLDAMGBD228NLBM 등)이 있었으나 ICE Benchmark
+  // Administration 저작권 제한으로 무키 CSV 경로가 최신 값을 주지 않아
+  // WTI(DCOILWTICO)와 같은 신뢰도로 쓸 수 없다. EWY 는 개별 ETF 티커라
+  // FRED 류 매크로 소스에 대응 지표 자체가 없다 — 설계 §5.1 도 두 지표의
+  // 폴백을 처음부터 "없음"으로 명시했다. 무리해서 다른 스케일 소스를
+  // 끼워 넣지 않는다.
   GOLD: {
     key: 'GOLD',
     label: '금 200일 이격도',
