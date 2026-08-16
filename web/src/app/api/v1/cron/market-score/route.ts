@@ -14,6 +14,22 @@ import type { IndicatorWeight } from '@/types/market';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
+/**
+ * KST(UTC+9) 기준 오늘부터 daysOffset 일 후(음수면 이전) 날짜.
+ *
+ * UTC 로 "오늘"을 구하면 KST 00~09시에 하루 어긋난다. `market-open` 스케줄
+ * (`30 22 * * 0-4`, UTC 22:30 = KST 익일 07:30)이 정확히 이 구간에서 돈다 —
+ * UTC 로는 아직 전날이라 이 라우트가 전날자 market_score_history 행을
+ * "오늘"로 착각해 마감 확정 값을 덮어쓴다(최종 리뷰 C2). 이 파일의 날짜
+ * 계산은 모두 이 함수를 거쳐 기준을 KST 하나로 통일한다.
+ * web/src/app/market/page.tsx 의 kstDate() 와 같은 관용구다.
+ */
+function kstDate(daysOffset = 0): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000 + daysOffset * 86400000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** PostgREST 1000행 상한을 넘겨 90일~365일 윈도우 지표를 전부 읽는다 */
 async function loadAllIndicators(
   supabase: ReturnType<typeof createServiceClient>,
@@ -54,18 +70,12 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createServiceClient();
-  const today = new Date().toISOString().slice(0, 10);
-  const in30 = new Date();
-  in30.setDate(in30.getDate() + 30);
-  const in30Str = in30.toISOString().slice(0, 10);
+  const today = kstDate(0);
+  const in30Str = kstDate(30);
 
   // 1) 365일 윈도우 지표 (현재값 + 90일 min/max + 252일 history)
-  const since = new Date();
-  since.setDate(since.getDate() - 365);
-  const sinceStr = since.toISOString().slice(0, 10);
-  const ninetyAgo = new Date();
-  ninetyAgo.setDate(ninetyAgo.getDate() - 90);
-  const ninetyAgoStr = ninetyAgo.toISOString().slice(0, 10);
+  const sinceStr = kstDate(-365);
+  const ninetyAgoStr = kstDate(-90);
 
   // 365일 × 12종 지표는 4천행을 넘겨 PostgREST 1000행 상한에 걸린다.
   // 페이지네이션으로 전부 읽지 않으면 90일 min/max·252일 history 가 조용히 짧아진다.
