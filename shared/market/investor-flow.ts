@@ -33,7 +33,13 @@ export interface InvestorFlow5d {
 }
 
 /**
- * rows 는 date 내림차순(최신이 [0])이어야 한다.
+ * rows 는 순서를 가정하지 않는다 — 이 함수가 date 내림차순으로 직접
+ * 정렬한 뒤 최신 5행을 취한다. 정렬을 호출부(웹 조회의 `.order('date',
+ * {ascending:false})`, 배치의 동일 옵션)에만 맡기면, 두 조회 중 하나가
+ * 나중에 `ascending:true`로 바뀌어도 이 함수는 그 사실을 모른 채 가장
+ * 오래된 5행을 조용히 합산한다 — 화면·크론 로직을 이 파일 하나로
+ * 공유하는 목적 자체가 무너진다. 정렬을 함수 내부 책임으로 두면 호출부가
+ * 어떤 순서로 넘기든 결과가 같아져 그 실수에 애초에 영향을 받지 않는다.
  *
  * 5행 미만이면 null 을 반환해 판정 대상에서 제외한다 — 3일치만으로 5일
  * 누적 임계값과 비교하면 위험을 과소평가하기 때문이다. 5행을 초과해
@@ -42,7 +48,8 @@ export interface InvestorFlow5d {
  */
 export function sumInvestorFlow5d(rows: InvestorDailyRow[]): InvestorFlow5d | null {
   if (rows.length < 5) return null;
-  const window = rows.slice(0, 5);
+  const sorted = [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const window = sorted.slice(0, 5);
   return {
     date: window[0].date,
     foreignNet: window.reduce((sum, r) => sum + Number(r.foreign_net ?? 0), 0),

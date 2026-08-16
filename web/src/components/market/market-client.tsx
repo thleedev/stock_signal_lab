@@ -188,7 +188,7 @@ function RiskAlertBanner({
             빠질 수 있어(coverage 0.833 등) "무엇이 빠졌는지"는 항상 따로
             알려야 한다 — 안 그러면 회귀가 재발해도 이 배너가 침묵한다. */}
         {missing.length > 0 && (
-          <p className="text-[11px] sm:text-xs text-amber-500 mt-1">
+          <p className="text-[11px] sm:text-xs text-[var(--warning)] mt-1">
             결손 {missing.length}종: {missing.slice(0, 4).join(", ")}{missing.length > 4 ? " 외" : ""}
           </p>
         )}
@@ -271,7 +271,7 @@ const IndicatorCard = React.memo(function IndicatorCard({
         <span className="text-xs sm:text-sm font-medium">{t?.label ?? ind.indicator_type}</span>
         <span className="text-[11px] sm:text-xs text-[var(--muted)] ml-1 sm:ml-1.5">{ind.indicator_type}</span>
         <span
-          className={`block text-[10px] tabular-nums ${isStale ? "text-amber-500 font-medium" : "text-[var(--muted)]"}`}
+          className={`block text-[10px] tabular-nums ${isStale ? "text-[var(--warning)] font-medium" : "text-[var(--muted)]"}`}
           title={isStale ? `카탈로그 갱신 주기(${spec?.maxStaleDays}일)를 넘겼습니다` : undefined}
         >
           {ind.date}{isStale && ` · ${staleDays}일 지연`}

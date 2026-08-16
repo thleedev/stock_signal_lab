@@ -114,15 +114,27 @@ export async function GET(request: NextRequest) {
   // 위험 지수를 낸다 — 외국인·기관이 대량 순매도하는 국면일수록 그 괴리가
   // 커진다(리스크가 화면에는 반영되고 크론이 쓰는 대시보드·추이 차트에는
   // 반영되지 않는다).
+  //
+  // 이 조회 실패는 500 으로 라우트 전체를 죽이지 않는다 — 로그만 남기고
+  // investorFlow 를 null 로 둔 채 진행한다. Naver 차단·일시 장애로 이
+  // 조회만 실패하는 일은 드물지 않다. 여기서 500 을 반환하면 그날
+  // market_score_history 행 자체가 안 만들어져, 이 조회와 무관한
+  // event_risk_score(market_events 기반)까지 함께 잃는다 — 바로 아래
+  // 커버리지 게이트 주석이 "과도한 손실"이라 부르는 것과 정확히 같은
+  // 결과를, 이 조회의 500 반환이 스스로 만들고 있었다. 화면(page.tsx)도
+  // 같은 오류를 로그만 남기고 진행하므로 실패 처리를 일치시킨다 — investorFlow
+  // 가 null 이면 FOREIGN_NET/INSTITUTION_NET 은 missing 으로 빠지고
+  // coverage 가 그만큼(가중치 5/30) 낮아져, 결손이 숨겨지지 않고 coverage
+  // 로 드러난다.
   const { data: investorDaily, error: investorError } = await supabase
     .from('market_investor_daily')
     .select('date, foreign_net, institution_net')
     .order('date', { ascending: false })
     .limit(5);
   if (investorError) {
-    return NextResponse.json({ error: investorError.message }, { status: 500 });
+    console.error('[cron/market-score] market_investor_daily 조회 실패:', investorError.message);
   }
-  const investorFlow = sumInvestorFlow5d(investorDaily || []);
+  const investorFlow = investorError ? null : sumInvestorFlow5d(investorDaily || []);
   if (investorFlow) {
     valueMap.FOREIGN_NET = investorFlow.foreignNet;
     valueMap.INSTITUTION_NET = investorFlow.institutionNet;
