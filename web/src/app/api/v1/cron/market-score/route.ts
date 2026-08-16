@@ -12,6 +12,28 @@ import type { IndicatorWeight } from '@/types/market';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
+/** PostgREST 1000행 상한을 넘겨 90일~365일 윈도우 지표를 전부 읽는다 */
+async function loadAllIndicators(
+  supabase: ReturnType<typeof createServiceClient>,
+  since: string,
+) {
+  const PAGE = 1000;
+  const out: { indicator_type: string; value: number; date: string }[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('market_indicators')
+      .select('indicator_type, value, date')
+      .gte('date', since)
+      .order('date', { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`market_indicators 조회 실패: ${error.message}`);
+    if (!data || data.length === 0) break;
+    out.push(...(data as typeof out));
+    if (data.length < PAGE) break;
+  }
+  return out;
+}
+
 /**
  * 시황 점수 보강 cron
  * - calculateRiskIndex(절대 임계값 기반 위험 지수)
@@ -41,20 +63,20 @@ export async function GET(request: NextRequest) {
   ninetyAgo.setDate(ninetyAgo.getDate() - 90);
   const ninetyAgoStr = ninetyAgo.toISOString().slice(0, 10);
 
-  const { data: rawIndicators, error: indError } = await supabase
-    .from('market_indicators')
-    .select('indicator_type, value, date')
-    .gte('date', sinceStr)
-    .order('date', { ascending: false });
-
-  if (indError) {
-    return NextResponse.json({ error: indError.message }, { status: 500 });
+  // 365일 × 12종 지표는 4천행을 넘겨 PostgREST 1000행 상한에 걸린다.
+  // 페이지네이션으로 전부 읽지 않으면 90일 min/max·252일 history 가 조용히 짧아진다.
+  let rawIndicators: { indicator_type: string; value: number; date: string }[];
+  try {
+    rawIndicators = await loadAllIndicators(supabase, sinceStr);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
   const valueMap: Record<string, number> = {};
   const minMaxMap: Record<string, { current: number; min90d: number; max90d: number }> = {};
   const historyByType: Record<string, number[]> = {};
-  for (const row of rawIndicators ?? []) {
+  for (const row of rawIndicators) {
     const t = row.indicator_type as string;
     const v = Number(row.value);
     if (!Number.isFinite(v)) continue;

@@ -33,13 +33,25 @@ interface IndicatorRow {
   prev_value: number | null;
   change_pct: number | null;
   date: string;
+  source: string | null;
+  collected_at: string | null;
+}
+
+/** market_indicator_stats(Task 8) 배치 선계산 롤링 통계. as_of 는 통계 신선도 판단용. */
+interface IndicatorStats {
+  high_52w: number | null;
+  low_52w: number | null;
+  ma_200d: number | null;
+  pct_rank_252d: number | null;
+  sample_days: number;
+  as_of: string;
 }
 
 interface Props {
   indicators: IndicatorRow[];
+  statsByKey: Record<string, IndicatorStats>;
   scoreHistory: Pick<MarketScoreHistory, "date" | "total_score" | "event_risk_score" | "combined_score" | "risk_index">[];
   events: MarketEvent[];
-  historyByType?: Record<string, number[]>;
 }
 
 // ─── 아이콘 매핑 ────────────────────────────────────────
@@ -254,7 +266,10 @@ function RiskHistoryChart({ history }: {
 
 // ─── 메인 컴포넌트 ──────────────────────────────────────
 
-export function MarketClient({ indicators: initialIndicators, scoreHistory, events, historyByType }: Props) {
+export function MarketClient({ indicators: initialIndicators, statsByKey, scoreHistory, events }: Props) {
+  // statsByKey 는 판정 함수(getRiskLevel/calculateRiskIndex)를 통계 기반으로 바꾸는
+  // 다음 태스크에서 소비한다. 이번 태스크는 화면 데이터 경로 연결까지가 범위다.
+  void statsByKey;
   const [indicators, setIndicators] = useState(initialIndicators);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -297,6 +312,8 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
               prev_value: rt.prev_value,
               change_pct: rt.change_pct,
               date: new Date().toISOString().slice(0, 10),
+              source: "realtime",
+              collected_at: new Date().toISOString(),
             });
           }
         }
@@ -350,10 +367,13 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
     return m;
   }, [indicators]);
 
-  // 위험 지수 계산 (절대 임계값 + 252일 분위수 하이브리드)
+  // 위험 지수 계산 (절대 임계값 기준).
+  // 중간 상태: 252일 history 인자를 생략했다 — 상대 분위수 하이브리드와
+  // drawdown_52w/ma200_diff 파생 지표 판정은 statsByKey 로 옮기는 다음 태스크 범위다.
+  // 그때까지 KOSPI/KOSDAQ/EWY/GOLD 등 파생 판정 지표는 배지 없이 표시된다.
   const { riskIndex, breakdown, validCount, dangerCount } = useMemo(
-    () => calculateRiskIndex(valueMap, historyByType),
-    [valueMap, historyByType]
+    () => calculateRiskIndex(valueMap),
+    [valueMap]
   );
 
   // 이벤트 리스크
@@ -447,7 +467,7 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
         <h2 className="text-lg font-semibold mb-3">지표별 위험 현황</h2>
         <div className="card divide-y divide-[var(--border)] overflow-hidden">
           {sortedIndicators.map((ind) => {
-            const level = breakdown[ind.indicator_type]?.level ?? getRiskLevel(ind.indicator_type, ind.value, historyByType?.[ind.indicator_type]);
+            const level = breakdown[ind.indicator_type]?.level ?? getRiskLevel(ind.indicator_type, ind.value);
             return (
               <IndicatorCard key={ind.indicator_type} ind={ind} level={level} />
             );
