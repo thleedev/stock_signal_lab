@@ -41,13 +41,12 @@ describe('20일 실현변동성', () => {
     expect(b!).toBeGreaterThan(a!);
   });
 
-  it('연율화된 퍼센트 값을 낸다', () => {
-    // 일간 1% 진폭이 반복되면 연율화 변동성은 10% 를 넘는다
+  it('표본표준편차 기준으로 연율화한다', () => {
+    // 로그수익률 ±ln(1.01) 20개, 평균 0.
+    // 분모 n-1(19) → 16.21%, 분모 n(20) → 15.80%.
+    // 허용폭을 넓게 잡으면 이 둘을 구분하지 못한다.
     const series = Array.from({ length: 21 }, (_, i) => (i % 2 === 0 ? 100 : 101));
-    const v = realizedVol20d(series);
-    expect(v).not.toBeNull();
-    expect(v!).toBeGreaterThan(10);
-    expect(v!).toBeLessThan(30);
+    expect(realizedVol20d(series)).toBeCloseTo(16.21, 1);
   });
 
   it('0 이하 종가가 섞이면 null 을 낸다', () => {
@@ -71,6 +70,13 @@ describe('52주 낙폭', () => {
   it('이력이 50개 미만이면 null 을 낸다', () => {
     expect(drawdown52w(100, Array(49).fill(100))).toBeNull();
   });
+
+  it('drawdown52w 는 최근 252개만 본다', () => {
+    // 오래된 48개에 500 이 있으나 52주 윈도 밖이다.
+    // 윈도잉이 있으면 max=100 → 0%, 없으면 max=500 → -80%
+    const hist = [...Array(48).fill(500), ...Array(252).fill(100)];
+    expect(drawdown52w(100, hist)).toBeCloseTo(0, 6);
+  });
 });
 
 describe('200일 이격도', () => {
@@ -85,5 +91,13 @@ describe('200일 이격도', () => {
 
   it('평균이 0 이면 null 을 낸다', () => {
     expect(ma200Diff(100, Array(60).fill(0))).toBeNull();
+  });
+
+  it('ma200Diff 는 최근 200개를 본다 (오름차순 배열의 끝)', () => {
+    // 오래된 200개는 50, 최근 200개는 100.
+    // slice(-200) 이면 평균 100 → (110-100)/100*100 = 10
+    // slice(0,200) 이면 평균 50  → (110-50)/50*100  = 120
+    const hist = [...Array(200).fill(50), ...Array(200).fill(100)];
+    expect(ma200Diff(110, hist)).toBeCloseTo(10, 6);
   });
 });

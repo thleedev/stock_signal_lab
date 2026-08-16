@@ -2,6 +2,11 @@
  * 지표 파생 계산.
  *
  * 이 파일은 다른 파일을 import 하지 않습니다 (배치·웹 공유 제약).
+ *
+ * 시계열 정렬 규약: 이 파일의 모든 함수는 입력 배열이 시간 오름차순
+ * (오래된 값 → 최신값)이라고 가정합니다. sources/ 의 parseYahooChart·
+ * parseNaverSiseJson·parseFredCsv 가 모두 이 순서로 값을 쌓으므로,
+ * "최근 N개"는 항상 배열의 끝(slice(-N))에서 가져옵니다.
  */
 
 const TRADING_DAYS_PER_YEAR = 252;
@@ -35,19 +40,28 @@ export function realizedVol20d(closes: number[]): number | null {
   return Math.sqrt(variance) * Math.sqrt(TRADING_DAYS_PER_YEAR) * 100;
 }
 
-/** 52주 고점 대비 낙폭(%). 음수일수록 깊은 조정. */
+/**
+ * 52주 고점 대비 낙폭(%). 음수일수록 깊은 조정.
+ *
+ * history 는 시간 오름차순(오래된 값 → 최신값)이며 최근 252거래일(52주)만 봅니다.
+ */
 export function drawdown52w(current: number, history: number[]): number | null {
   if (history.length < 50) return null;
+  const window = history.slice(-252);
   let max = current;
-  for (const v of history) if (v > max) max = v;
+  for (const v of window) if (v > max) max = v;
   if (max <= 0) return null;
   return ((current - max) / max) * 100;
 }
 
-/** 200일 이동평균 대비 이격도(%). */
+/**
+ * 200일 이동평균 대비 이격도(%).
+ *
+ * history 는 시간 오름차순(오래된 값 → 최신값)이며 최근 200개를 봅니다.
+ */
 export function ma200Diff(current: number, history: number[]): number | null {
   if (history.length < 50) return null;
-  const window = history.slice(0, 200);
+  const window = history.slice(-200);
   const sum = window.reduce((a, b) => a + b, 0);
   const ma = sum / window.length;
   if (ma === 0) return null;
