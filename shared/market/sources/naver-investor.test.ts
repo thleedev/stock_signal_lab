@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseInvestorHtml } from './naver-investor';
+import { parseInvestorHtml, toNum } from './naver-investor';
 
 // 2026-08-17 curl -s --max-time 20 -H "User-Agent: Mozilla/5.0"
 //   "https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=20260814"
@@ -113,5 +113,27 @@ describe('네이버 수급 HTML 파싱', () => {
     // date2 앵커가 없는 페이지는 어떤 형태든 파싱 대상이 아니므로 이 케이스로
     // 대표한다.
     expect(parseInvestorHtml('<html><body>일시적인 오류입니다.</body></html>')).toEqual([]);
+  });
+});
+
+describe('toNum 부호 변환', () => {
+  // 2026-08-17 실측 응답은 ASCII 하이픈만 썼다. 아래 두 케이스는 실측에서
+  // 나오지 않은 방어 분기(&minus;·유니코드 마이너스)를 직접 검증한다.
+  it('HTML 엔티티 &minus; 를 음수로 변환한다', () => {
+    expect(toNum('&minus;19,820')).toBe(-19820);
+  });
+
+  it('유니코드 마이너스(U+2212)를 음수로 변환한다', () => {
+    expect(toNum('−19,820')).toBe(-19820);
+  });
+
+  it('ASCII 하이픈과 쉼표가 섞인 값을 변환한다', () => {
+    expect(toNum('-19,820')).toBe(-19820);
+    expect(toNum('30,387')).toBe(30387);
+  });
+
+  it('숫자로 변환할 수 없으면 null 을 낸다', () => {
+    expect(toNum('-')).toBeNull();
+    expect(toNum('N/A')).toBeNull();
   });
 });
