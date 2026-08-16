@@ -17,21 +17,6 @@ export async function GET() {
     name: string;
   }> = {};
 
-  // CNN Fear & Greed 비동기 fetch
-  const cnnPromise = fetch(
-    'https://production.dataviz.cnn.io/index/fearandgreed/graphdata/',
-    { signal: AbortSignal.timeout(5000) }
-  ).then(async (res) => {
-    if (!res.ok) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const json: any = await res.json();
-    const score = json?.fear_and_greed?.score;
-    if (typeof score === 'number' && score >= 0 && score <= 100) {
-      return Math.round(score * 100) / 100;
-    }
-    return null;
-  }).catch(() => null);
-
   // Yahoo Finance 병렬 호출
   const entries = Object.entries(YAHOO_TICKERS);
   const quoteResults = await Promise.allSettled(
@@ -49,17 +34,6 @@ export async function GET() {
       prev_value: quote.previousClose,
       change_pct: quote.changePct,
       name: quote.name,
-    };
-  }
-
-  // CNN Fear & Greed 결과 추가
-  const cnnScore = await cnnPromise;
-  if (cnnScore !== null) {
-    results['CNN_FEAR_GREED'] = {
-      value: cnnScore,
-      prev_value: null,
-      change_pct: 0,
-      name: 'CNN Fear & Greed Index',
     };
   }
 

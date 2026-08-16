@@ -9,16 +9,18 @@ export type IndicatorType =
   | 'KOSDAQ'
   | 'GOLD'
   | 'DXY'
-  | 'KR_3Y'
-  | 'KORU'
   | 'EWY'
-  | 'FEAR_GREED'
-  | 'VKOSPI'
-  | 'CNN_FEAR_GREED'
   | 'HY_SPREAD'
-  | 'YIELD_CURVE';
+  | 'YIELD_CURVE'
+  | 'KR_VOL_20D'
+  | 'FOREIGN_NET'
+  | 'INSTITUTION_NET';
 
-// Yahoo Finance 티커 매핑
+/**
+ * @deprecated 지표 정의는 shared/market/catalog.ts 가 단일 출처입니다.
+ * 이 표는 realtime 라우트가 카탈로그로 옮겨 갈 때까지만 남깁니다.
+ * KR_3Y(122630.KS = KODEX 레버리지)와 VKOSPI(^VKOSPI 404)는 제거했습니다.
+ */
 export const YAHOO_TICKERS: Record<string, string> = {
   VIX: '^VIX',
   USD_KRW: 'KRW=X',
@@ -28,10 +30,7 @@ export const YAHOO_TICKERS: Record<string, string> = {
   KOSDAQ: '^KQ11',
   GOLD: 'GC=F',
   DXY: 'DX-Y.NYB',
-  KR_3Y: '122630.KS', // KODEX 레버리지 대용 (한국 3년물 직접 티커 없음)
-  KORU: 'KORU',
   EWY: 'EWY',
-  VKOSPI: '^VKOSPI',
 };
 
 // 단일 데이터 포인트일 때 사용할 절대 범위 (min/max 90일 대체)
@@ -44,10 +43,7 @@ export const ABSOLUTE_RANGES: Record<string, { min: number; max: number }> = {
   KOSDAQ: { min: 500, max: 1100 },
   GOLD: { min: 1600, max: 3000 },
   DXY: { min: 90, max: 115 },
-  KR_3Y: { min: 1.0, max: 5.0 },
-  KORU: { min: 3, max: 40 },
   EWY: { min: 35, max: 85 },
-  FEAR_GREED: { min: 0, max: 100 },
 };
 
 export interface MarketIndicator {

@@ -38,12 +38,14 @@ async function loadAllIndicators(
 
 /**
  * 시황 점수 보강 cron
+ * - calculateMarketScore(가중치 + 90일 정규화 기반 total_score/breakdown)
  * - calculateRiskIndex(절대 임계값 기반 위험 지수)
- * - calculateEventRiskScore(향후 7일 이벤트 가중)
+ * - calculateEventRiskScore(향후 30일 이벤트 가중)
  * - calculateCombinedScore(total_score × 0.7 + event_risk × 0.3)
  *
- * fetch-market-indicators 스크립트가 total_score/breakdown을 먼저 채우고,
- * 본 cron은 그 위에 event_risk_score/risk_index/combined_score를 덮어쓴다.
+ * 지표 원본 수집은 .github/scripts/batch/step6-market-data.ts 가 담당하고,
+ * 이 cron은 그 위에 total_score/breakdown/event_risk_score/risk_index/
+ * combined_score를 계산해 덮어쓴다.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
