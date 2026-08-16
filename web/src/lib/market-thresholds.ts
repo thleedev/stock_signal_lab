@@ -79,22 +79,53 @@ export interface IndicatorStats {
 }
 
 /**
+ * 파생 판정(drawdown_52w·ma200_diff) 최소 표본일수.
+ *
+ * 50 미만이면 "52주 고점"·"200일선"이라는 이름 자체가 성립하지 않을
+ * 만큼 창이 짧아 판정하지 않는다. step13 배치가 200일 이평·252일
+ * 분위수에 이미 같은 50 하한을 쓰고 있어(.github/scripts/batch/
+ * step13-indicator-stats.ts) 그 값을 그대로 맞췄다. 이전 history 배열
+ * 기반 구현에도 같은 하한(history.length < 50 → null)이 있었는데,
+ * 통계 기반으로 전환하며 한 차례 빠졌던 것을 복원한다.
+ *
+ * 50 이상이면 판정하되, 실제 창 길이가 52주(252영업일)·200일에 못
+ * 미칠 수 있다 — 예를 들어 지표 적재가 시작된 지 92일째라면 high_52w
+ * 는 사실 "92일 고점"이다. getRiskThresholdLabel 이 그 실제 일수를
+ * 라벨에 반영한다. 계산 자체를 막지 않는 이유는, 지표를 아예 빼면
+ * 커버리지만 낮아지고 사용자는 그 지표에 대해 아무 정보도 못 보기
+ * 때문이다 — 92일 고점 대비 낙폭도 52주 고점만큼은 아니어도 유용하다.
+ */
+const MIN_DERIVE_SAMPLE_DAYS = 50;
+
+/**
+ * derive 판정에 실제로 쓰인 창 길이(영업일).
+ * drawdown_52w 는 최대 252영업일, ma200_diff 는 최대 200일 창을 쓴다.
+ * 표본이 그보다 적으면(적재 개시 초기 등) 있는 만큼만 쓴다.
+ */
+function deriveWindowDays(derive: 'drawdown_52w' | 'ma200_diff', sampleDays: number): number {
+  const cap = derive === 'drawdown_52w' ? 252 : 200;
+  return Math.min(sampleDays, cap);
+}
+
+/**
  * derive 설정이 있으면 통계 기반 파생값(%)으로 변환.
  *
  * drawdown_52w = ((value - high_52w) / high_52w) * 100
  * ma200_diff   = ((value - ma_200d) / ma_200d) * 100
  *
- * 필요한 통계가 없거나(stats 자체가 없음 · 해당 필드가 null) 기준값이
- * 산술적으로 무의미하면(고점이 0 이하, 이평이 0) null 을 반환한다.
+ * 필요한 통계가 없거나(stats 자체가 없음 · 해당 필드가 null · 표본이
+ * MIN_DERIVE_SAMPLE_DAYS 미만) 기준값이 산술적으로 무의미하면(고점이
+ * 0 이하, 이평이 0) null 을 반환한다.
  */
 export function deriveValue(
   type: string,
   value: number,
   stats: IndicatorStats | undefined,
 ): number | null {
+  if (!Number.isFinite(value)) return null;
   const t = RISK_THRESHOLDS[type];
   if (!t?.derive) return value;
-  if (!stats) return null;
+  if (!stats || stats.sample_days < MIN_DERIVE_SAMPLE_DAYS) return null;
 
   if (t.derive === 'drawdown_52w') {
     const high = stats.high_52w;
@@ -111,7 +142,9 @@ export function deriveValue(
 
 /**
  * 단일 지표의 위험 레벨 계산
- * value가 null/undefined이면 null 반환 (계산에서 제외)
+ * value가 null/undefined/비유한값(NaN·Infinity)이면 null 반환(계산에서 제외).
+ * NaN 을 거르지 않으면 모든 대소 비교가 false 를 내 direction=1 지표는
+ * 항상 레벨 0(안전)으로 잘못 판정된다.
  * derive 설정이 있는 지표는 stats 가 필요하며, 필요한 필드가 없으면 null 반환.
  */
 export function getRiskLevel(
@@ -119,12 +152,12 @@ export function getRiskLevel(
   value: number | null | undefined,
   stats?: IndicatorStats,
 ): RiskLevel | null {
-  if (value == null) return null;
+  if (value == null || !Number.isFinite(value)) return null;
   const t = RISK_THRESHOLDS[type];
   if (!t) return null;
 
   const evalValue = t.derive ? deriveValue(type, value, stats) : value;
-  if (evalValue === null) return null;
+  if (evalValue === null || !Number.isFinite(evalValue)) return null;
 
   const [l1, l2, l3] = t.thresholds;
 
@@ -144,25 +177,34 @@ export function getRiskLevel(
 /**
  * 임계값 설명 문자열 반환 (UI 표시용)
  * 예: "1,450원 초과" / "2,600 이상"
+ *
+ * sampleDays 를 주면 derive 지표(drawdown_52w·ma200_diff)의 라벨이 실제
+ * 창 길이를 반영한다 — 표본이 252/200일에 못 미치는데도 "52주 고점"·
+ * "200일선"이라고 단정하면 사용자가 낙폭의 기준 기간을 잘못 읽는다.
+ * 생략하면(호출부가 통계를 모르는 경우) 기존처럼 52주/200일로 표기한다.
  */
-export function getRiskThresholdLabel(type: string, level: RiskLevel): string {
+export function getRiskThresholdLabel(type: string, level: RiskLevel, sampleDays?: number): string {
   const t = RISK_THRESHOLDS[type];
   if (!t) return '';
   const [l1, l2, l3] = t.thresholds;
 
   if (t.derive === 'drawdown_52w') {
     // direction=-1, thresholds 음수 (예: -7, -15, -25)
-    if (level === 3) return `52주 고점 대비 ${l3}% 이하`;
-    if (level === 2) return `52주 고점 대비 ${l3}~${l2}%`;
-    if (level === 1) return `52주 고점 대비 ${l2}~${l1}%`;
-    return `52주 고점 대비 ${l1}% 이상`;
+    const windowDays = sampleDays != null ? deriveWindowDays('drawdown_52w', sampleDays) : 252;
+    const windowLabel = windowDays >= 252 ? '52주' : `최근 ${windowDays}영업일`;
+    if (level === 3) return `${windowLabel} 고점 대비 ${l3}% 이하`;
+    if (level === 2) return `${windowLabel} 고점 대비 ${l3}~${l2}%`;
+    if (level === 1) return `${windowLabel} 고점 대비 ${l2}~${l1}%`;
+    return `${windowLabel} 고점 대비 ${l1}% 이상`;
   }
   if (t.derive === 'ma200_diff') {
     // direction=1, thresholds 양수 (예: 10, 20, 30)
-    if (level === 3) return `200일선 +${l3}% 이상`;
-    if (level === 2) return `200일선 +${l2}~+${l3}%`;
-    if (level === 1) return `200일선 +${l1}~+${l2}%`;
-    return `200일선 +${l1}% 미만`;
+    const windowDays = sampleDays != null ? deriveWindowDays('ma200_diff', sampleDays) : 200;
+    const windowLabel = windowDays >= 200 ? '200일선' : `${windowDays}일선`;
+    if (level === 3) return `${windowLabel} +${l3}% 이상`;
+    if (level === 2) return `${windowLabel} +${l2}~+${l3}%`;
+    if (level === 1) return `${windowLabel} +${l1}~+${l2}%`;
+    return `${windowLabel} +${l1}% 미만`;
   }
 
   if (t.direction === 1) {
@@ -213,7 +255,7 @@ export function getRelativeRiskLevel(
   value: number | null | undefined,
   stats?: IndicatorStats,
 ): RiskLevel | null {
-  if (value == null) return null;
+  if (value == null || !Number.isFinite(value)) return null;
   const t = RISK_THRESHOLDS[type];
   if (!t) return null;
   if (t.derive) return null;
@@ -233,6 +275,42 @@ export function getRelativeRiskLevel(
     return 0;
   }
 }
+
+/**
+ * 커버리지 임계값 — 이 미만이면 소비처(화면 배너·크론 저장)가 점수를
+ * 내지 않는다. market-client.tsx 와 cron/market-score/route.ts 가 각자
+ * 리터럴로 들고 있으면 둘이 따로 움직일 수 있어 여기 한곳에서만 export
+ * 한다.
+ *
+ * 활성 지표 전체 가중치 합은 30이다(shared/market/catalog.ts 실측 —
+ * 카탈로그가 바뀌면 이 숫자와 아래 계산도 다시 검산해야 한다). 0.7
+ * 미만, 즉 가중치 9 초과 손실에서 이 게이트가 걸린다.
+ *
+ * 폴백이 있는 지표(VIX·US_10Y·KOSPI·KOSDAQ·USD_KRW, 다섯 종)는 1차
+ * 소스가 죽어도 2차 소스로 채워질 수 있어 "그 소스가 죽어도 잃지
+ * 않는다"고 본다. 그 결과 데이터 제공자 하나가 통째로 끊겨도 실제
+ * 손실 가중치는:
+ *   - FRED 전체 다운:  HY_SPREAD(3) + YIELD_CURVE(2)          = 5
+ *   - Yahoo 전체 다운: DXY(2)+WTI(2)+GOLD(1)+EWY(1)            = 6 (최댓값)
+ *   - Naver(수급) 다운: FOREIGN_NET(3) + INSTITUTION_NET(2)    = 5
+ * 세 경우 모두 9를 넘지 않는다 — 단일 데이터 제공자 장애만으로는 이
+ * 게이트가 걸리지 않는다. (이전 버전 주석은 폴백을 빠뜨리고 "소스
+ * 하나가 죽으면 30% 이상 잃는다"고 잘못 서술했다 — 실제로는 위 계산이
+ * 보여주듯 최대 20%다.)
+ *
+ * 이 값이 실제로 걸리는 시나리오는 서로 다른 제공자 여러 개가 동시에
+ * 죽거나(예: Yahoo+FRED = 11), 배치 자체가 돌지 않아 당일 지표가
+ * 통째로 비거나, Supabase 조회 자체가 실패해 응답이 빈 배열로 오는
+ * 경우다.
+ *
+ * 이 값을 바꾸려는 사람은 (1) 위 손실 계산이 그때 카탈로그의 가중치·
+ * 폴백 구성과 여전히 맞는지, (2) 실제로 관측되는 결손이 개별 지표
+ * 단위인지 제공자 단위인지 배치 단위인지, (3) 낮추면 부분 결손
+ * 상태에서도 점수가 나와 이 저장소가 고치려던 문제 — 지표 0개에서
+ * "안전 · 적극 매수 가능"을 초록으로 표시하던 거짓 안전 신호 — 로
+ * 되돌아갈 위험이 있다는 점을 함께 검토해야 한다.
+ */
+export const COVERAGE_THRESHOLD = 0.7;
 
 /**
  * 전체 위험 지수 계산 (0~100, 높을수록 위험)

@@ -1,5 +1,6 @@
 import { createServiceClient } from "@/lib/supabase";
 import { MarketClient } from "@/components/market/market-client";
+import { sumInvestorFlow5d } from "@shared/market/investor-flow";
 
 export const dynamic = "force-dynamic";
 
@@ -76,17 +77,15 @@ export default async function MarketPage() {
   });
 
   // 수급 5일 누적: 카탈로그(shared/market/catalog.ts) 의 FOREIGN_NET/INSTITUTION_NET
-  // 임계값([-5000,-12000,-25000] 등, 억원)은 5일 누적 기준이다. 5행 미만이면
-  // 3일치만으로 5일 누적 임계값과 비교하게 되어 위험을 과소평가하므로 아예 넣지 않는다.
+  // 임계값([-5000,-12000,-25000] 등, 억원)은 5일 누적 기준이다. 합산·판정 가능 여부
+  // 규칙은 shared/market/investor-flow.ts 하나로 크론(cron/market-score/route.ts)과
+  // 공유한다 — 각자 다른 합산 로직을 쓰면 같은 날 다른 위험 지수가 나온다.
   // prev_value/change_pct 는 정의되지 않는 값이라 null 로 둔다.
-  if ((investorDaily || []).length >= 5) {
-    const rows = investorDaily!;
-    const latestDate = rows[0].date as string;
-    const foreignSum = rows.reduce((sum, r) => sum + Number(r.foreign_net ?? 0), 0);
-    const institutionSum = rows.reduce((sum, r) => sum + Number(r.institution_net ?? 0), 0);
+  const investorFlow = sumInvestorFlow5d(investorDaily || []);
+  if (investorFlow) {
     indicators.push(
-      { indicator_type: "FOREIGN_NET", value: foreignSum, prev_value: null, change_pct: null, date: latestDate, source: null, collected_at: null },
-      { indicator_type: "INSTITUTION_NET", value: institutionSum, prev_value: null, change_pct: null, date: latestDate, source: null, collected_at: null },
+      { indicator_type: "FOREIGN_NET", value: investorFlow.foreignNet, prev_value: null, change_pct: null, date: investorFlow.date, source: null, collected_at: null },
+      { indicator_type: "INSTITUTION_NET", value: investorFlow.institutionNet, prev_value: null, change_pct: null, date: investorFlow.date, source: null, collected_at: null },
     );
   }
 

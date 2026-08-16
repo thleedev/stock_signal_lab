@@ -5,8 +5,9 @@ import {
   calculateCombinedScore,
   calculateMarketScore,
 } from '@/lib/market-score';
-import { calculateRiskIndex, type IndicatorStats } from '@/lib/market-thresholds';
+import { calculateRiskIndex, COVERAGE_THRESHOLD, type IndicatorStats } from '@/lib/market-thresholds';
 import { mean, pctRank } from '@shared/market/stats';
+import { sumInvestorFlow5d } from '@shared/market/investor-flow';
 import type { MarketEvent } from '@/types/market-event';
 import type { IndicatorWeight } from '@/types/market';
 
@@ -103,6 +104,30 @@ export async function GET(request: NextRequest) {
     minMaxMap[t].current = valueMap[t];
   }
 
+  // 수급 5일 누적(FOREIGN_NET/INSTITUTION_NET) — market_investor_daily 는
+  // market_indicators 와 분리된 테이블이라 loadAllIndicators 로는 잡히지
+  // 않는다. 합산 규칙은 shared/market/investor-flow.ts 로 web/src/app/
+  // market/page.tsx 와 공유한다. 카탈로그 전환 이전에는 RISK_THRESHOLDS 가
+  // 하드코딩이라 이 두 지표가 판정 대상이 아니어서 이 조회가 없어도
+  // 화면·크론이 같은 값을 냈다. 카탈로그 전환으로 두 지표(가중치 3+2)가
+  // 판정에 들어오면서, 이 조회를 빼먹으면 화면과 크론이 같은 날 다른
+  // 위험 지수를 낸다 — 외국인·기관이 대량 순매도하는 국면일수록 그 괴리가
+  // 커진다(리스크가 화면에는 반영되고 크론이 쓰는 대시보드·추이 차트에는
+  // 반영되지 않는다).
+  const { data: investorDaily, error: investorError } = await supabase
+    .from('market_investor_daily')
+    .select('date, foreign_net, institution_net')
+    .order('date', { ascending: false })
+    .limit(5);
+  if (investorError) {
+    return NextResponse.json({ error: investorError.message }, { status: 500 });
+  }
+  const investorFlow = sumInvestorFlow5d(investorDaily || []);
+  if (investorFlow) {
+    valueMap.FOREIGN_NET = investorFlow.foreignNet;
+    valueMap.INSTITUTION_NET = investorFlow.institutionNet;
+  }
+
   // calculateRiskIndex 는 365일 원시 배열이 아니라 지표별 선계산 통계
   // (IndicatorStats)를 받는다(market-thresholds.ts 참고). 이 라우트는
   // loadAllIndicators 가 이미 페이지네이션으로 전량을 읽어 두므로,
@@ -125,8 +150,27 @@ export async function GET(request: NextRequest) {
     };
   }
 
-  const { riskIndex, breakdown: riskBreakdown, dangerCount, validCount } =
+  const { riskIndex, breakdown: riskBreakdown, dangerCount, validCount, coverage, missing } =
     calculateRiskIndex(valueMap, statsByType);
+
+  // 커버리지 미달이면 risk_index 를 저장하지 않는다(null). 컬럼은 이미
+  // nullable(마이그레이션 032, DEFAULT NULL)이라 스키마 변경이 필요 없다.
+  //
+  // 저장 자체를 걸러야 하는 이유 — 이 컬럼을 대시보드 첫 화면 배너
+  // (web/src/app/page.tsx → dashboard-risk-banner.tsx)와 /market 의 30일
+  // 추이 차트(RiskHistoryChart)가 그대로 읽는다. coverage 를 무시하고
+  // riskIndex(배치가 죽은 날은 0에 가까워짐)를 그대로 저장하면, 이번
+  // 태스크가 /market 배너에서 고친 "지표 결손을 안전으로 그리는" 결함이
+  // 이 컬럼을 거쳐 다른 화면 두 곳에 그대로 남는다. null 은 이미 두
+  // 소비처 모두가 "판정 불가"로 다루도록 되어 있다 — RiskHistoryChart 는
+  // `risk_index ?? null` 로 회색 막대를 그리고, dashboard-risk-banner.tsx
+  // 는 이번 라운드에서 null 을 별도 중립 상태로 렌더링하도록 고쳤다.
+  //
+  // total_score/breakdown/event_risk_score/combined_score 는 별도 계산
+  // 경로(calculateMarketScore, indicator_weights 기반)라 이 게이트와
+  // 무관하게 계속 저장한다 — risk_index 산정 근거의 부족이지 시황 점수
+  // 전체의 부족은 아니기 때문이다.
+  const storedRiskIndex = coverage >= COVERAGE_THRESHOLD ? riskIndex : null;
 
   // 1-1) total_score 계산 (가중치 + 90일 정규화)
   const { data: weightRows } = await supabase.from('indicator_weights').select('*');
@@ -165,7 +209,7 @@ export async function GET(request: NextRequest) {
         weights_snapshot: weightsSnapshot,
         event_risk_score: eventRiskScore,
         combined_score: combinedScore,
-        risk_index: riskIndex,
+        risk_index: storedRiskIndex,
       },
       { onConflict: 'date' }
     );
@@ -177,7 +221,12 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     success: true,
     date: today,
-    risk_index: riskIndex,
+    risk_index: storedRiskIndex,
+    // coverage/missing 은 DB 에 저장하지 않는다(스키마 변경 없이 관측
+    // 목적으로만 응답에 싣는다) — risk_index 가 null 로 나온 이유를
+    // 모니터링에서 바로 확인할 수 있게 한다.
+    coverage,
+    missing,
     event_risk_score: eventRiskScore,
     combined_score: combinedScore,
     total_score: totalScore,

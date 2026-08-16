@@ -3,8 +3,10 @@ import {
   calculateRiskIndex,
   getRiskLevel,
   getRelativeRiskLevel,
+  getRiskThresholdLabel,
   deriveValue,
   RISK_THRESHOLDS,
+  COVERAGE_THRESHOLD,
   type IndicatorStats,
 } from '@/lib/market-thresholds';
 
@@ -26,9 +28,10 @@ describe('위험 지수 커버리지', () => {
     const r = calculateRiskIndex({});
     expect(r.coverage).toBe(0);
     expect(r.validCount).toBe(0);
-    // market-client.tsx RiskAlertBanner 는 coverage < 0.7 이면 점수 대신
-    // 산출 불가를 표시한다 — 지표 0개는 항상 이 조건을 만족해야 한다.
-    expect(r.coverage).toBeLessThan(0.7);
+    // market-client.tsx RiskAlertBanner 와 cron/market-score/route.ts 는
+    // coverage < COVERAGE_THRESHOLD 면 점수 대신 산출 불가를 표시/저장하지
+    // 않는다 — 지표 0개는 항상 이 조건을 만족해야 한다.
+    expect(r.coverage).toBeLessThan(COVERAGE_THRESHOLD);
   });
 
   it('결손 지표가 missing 에 담긴다', () => {
@@ -38,14 +41,18 @@ describe('위험 지수 커버리지', () => {
   });
 
   it('커버리지는 가중치 합 기준이다', () => {
-    // VIX weight 만 있을 때 coverage 는 (VIX.weight / 활성 지표 가중치 합) 이어야
-    // 하며, 이는 "지표 개수 기준"(1/활성지표수)과는 다른 값이다 — 두 방식이
-    // 우연히 같아지지 않도록 gt/lt 대신 정확한 비율로 고정한다.
-    const totalWeight = Object.values(RISK_THRESHOLDS).reduce((s, t) => s + t.weight, 0);
-    const activeCount = Object.keys(RISK_THRESHOLDS).length;
+    // VIX weight=3, 활성 지표 가중치 합=30(shared/market/catalog.ts 실측 —
+    // 아래 활성 지표 14종·가중치 목록 참고). 지표 개수 기준(1/14 ≈ 0.0714)과
+    // 값이 달라야 "가중치 기준"임을 실제로 검증한 것이다. 이 기대값을
+    // RISK_THRESHOLDS 에서 다시 계산해서 만들면 카탈로그 가중치가 잘못
+    // 바뀌어도 테스트가 항상 자기 자신과 비교해 통과하므로, 카탈로그
+    // 실측값을 손으로 고정한다 — 카탈로그가 바뀌면 이 숫자도 함께 바뀌어야
+    // 하고, 그 변경은 리뷰에서 드러나야 한다.
     const r = calculateRiskIndex({ VIX: 15 });
-    expect(r.coverage).toBeCloseTo(RISK_THRESHOLDS.VIX.weight / totalWeight, 10);
-    expect(r.coverage).not.toBeCloseTo(1 / activeCount, 10);
+    expect(RISK_THRESHOLDS.VIX.weight).toBe(3);
+    expect(Object.values(RISK_THRESHOLDS).reduce((s, t) => s + t.weight, 0)).toBe(30);
+    expect(r.coverage).toBeCloseTo(3 / 30, 10);
+    expect(r.coverage).not.toBeCloseTo(1 / 14, 10);
   });
 
   it('비활성 지표는 커버리지 분모에 들어가지 않는다', () => {
@@ -153,5 +160,74 @@ describe('상대 분위수(pct_rank_252d)', () => {
   it('derive 지표는 percentile 보강을 적용하지 않는다', () => {
     // 파생값(52주 고점·200일선 대비) 자체가 이미 상대치이므로 이중 적용하지 않는다.
     expect(getRelativeRiskLevel('KOSPI', 2500, stats({ high_52w: 3000, pct_rank_252d: 0.99 }))).toBeNull();
+  });
+});
+
+describe('파생 판정 최소 표본(MIN_DERIVE_SAMPLE_DAYS)', () => {
+  it('표본이 50일 미만이면 high_52w 가 있어도 판정하지 않는다', () => {
+    // 3일치 고점을 "52주 고점"으로 판정하면 적재 개시 직후 지표가 상시
+    // 최고 위험(또는 최고 안전) 레벨에 고정된다.
+    expect(deriveValue('KOSPI', 150, stats({ high_52w: 200, sample_days: 3 }))).toBeNull();
+    expect(getRiskLevel('KOSPI', 150, stats({ high_52w: 200, sample_days: 3 }))).toBeNull();
+  });
+
+  it('표본이 정확히 50일이면 판정한다(하한 포함)', () => {
+    expect(deriveValue('KOSPI', 150, stats({ high_52w: 200, sample_days: 50 }))).toBe(-25);
+  });
+
+  it('표본이 49일이면 판정하지 않는다(하한 미만)', () => {
+    expect(deriveValue('KOSPI', 150, stats({ high_52w: 200, sample_days: 49 }))).toBeNull();
+  });
+});
+
+describe('파생 판정 라벨의 실제 창 길이 표기', () => {
+  it('표본이 252일 이상이면 "52주"로 표기한다', () => {
+    const label = getRiskThresholdLabel('KOSPI', 2, 252);
+    expect(label).toContain('52주');
+  });
+
+  it('표본이 252일 미만이면 실제 영업일수를 표기한다', () => {
+    // 적재 개시 92일째: "52주 고점"이라고 단정하면 실제로는 3~4개월
+    // 고점 대비 낙폭인데도 사용자가 52주 기준으로 오독한다.
+    const label = getRiskThresholdLabel('KOSPI', 2, 92);
+    expect(label).toContain('92영업일');
+    expect(label).not.toContain('52주');
+  });
+
+  it('ma200_diff 도 동일하게 실제 일수를 표기한다', () => {
+    const full = getRiskThresholdLabel('GOLD', 1, 200);
+    expect(full).toContain('200일선');
+    const partial = getRiskThresholdLabel('GOLD', 1, 80);
+    expect(partial).toContain('80일선');
+    expect(partial).not.toContain('200일선');
+  });
+
+  it('sampleDays 를 생략하면 기존처럼 52주/200일로 표기한다', () => {
+    expect(getRiskThresholdLabel('KOSPI', 2)).toContain('52주');
+    expect(getRiskThresholdLabel('GOLD', 1)).toContain('200일선');
+  });
+});
+
+describe('비유한값(NaN·Infinity) 방어', () => {
+  it('NaN 은 판정 대상에서 제외한다(레벨 0 으로 잘못 집계되지 않는다)', () => {
+    // Number.isFinite 가드가 없으면 모든 대소 비교가 false 가 되어
+    // direction=1 지표는 NaN 을 "레벨 0(안전)"으로 오판정한다.
+    expect(getRiskLevel('VIX', NaN)).toBeNull();
+    expect(getRiskLevel('YIELD_CURVE', NaN)).toBeNull();
+  });
+
+  it('Infinity 도 판정 대상에서 제외한다', () => {
+    expect(getRiskLevel('VIX', Infinity)).toBeNull();
+    expect(getRiskLevel('VIX', -Infinity)).toBeNull();
+  });
+
+  it('NaN 인 지표는 calculateRiskIndex 에서 missing 에 담긴다', () => {
+    const r = calculateRiskIndex({ VIX: NaN });
+    expect(r.missing).toContain('VIX');
+    expect(r.breakdown.VIX).toBeUndefined();
+  });
+
+  it('getRelativeRiskLevel 도 비유한값을 거른다', () => {
+    expect(getRelativeRiskLevel('VIX', NaN, stats({ pct_rank_252d: 0.99 }))).toBeNull();
   });
 });

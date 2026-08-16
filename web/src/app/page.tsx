@@ -109,7 +109,11 @@ export default async function DashboardPage() {
   const stockbotData = calcReturn(stockbotSnap as { total_value: number; cash: number; holdings: unknown[] } | null);
   const quantData = calcReturn(quantSnap as { total_value: number; cash: number; holdings: unknown[] } | null);
 
-  const riskIndex = latestScore?.risk_index ?? 0;
+  // risk_index 는 nullable(마이그레이션 032)이고, 크론(cron/market-score/
+  // route.ts)이 지표 커버리지 미달 시 의도적으로 null 을 저장한다. `?? 0`
+  // 폴백은 "판정 불가"와 "0(가장 안전)"을 구분하지 못해, 배치가 죽은 날도
+  // DashboardRiskBanner 가 초록 "안전"으로 그리는 결함으로 이어졌다.
+  const riskIndex = latestScore?.risk_index ?? null;
   const marketScore = latestScore?.total_score ?? 50;
   const eventRiskScore = latestScore?.event_risk_score ?? 100;
 
