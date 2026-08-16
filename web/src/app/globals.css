@@ -93,6 +93,26 @@ body {
   display: none;
 }
 
+/*
+ * hover 로만 드러나는 조작 요소에 붙입니다.
+ * 마우스가 있는 기기에서는 hover 전까지 숨겨 화면을 정돈하고,
+ * hover 가 없는 터치 기기에서는 항상 보입니다. 터치에서 숨기면
+ * 그 기능에 닿을 방법이 아예 없어집니다.
+ */
+.hover-affordance {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.group\/edit:hover .hover-affordance,
+.hover-affordance:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .hover-affordance {
+    opacity: 1;
+  }
+}
+
 /* 카드 공통 */
 .card {
   background: var(--card);

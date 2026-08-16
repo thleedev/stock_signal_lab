@@ -288,7 +288,7 @@ export default function InvestmentClient({
         </span>
         <button
           onClick={(e) => { e.preventDefault(); startEdit(item.symbol, field, value); }}
-          className="p-0.5 rounded text-[var(--muted)] hover:text-[var(--accent)] opacity-0 group-hover/edit:opacity-100 transition-opacity"
+          className="p-0.5 rounded text-[var(--muted)] hover:text-[var(--accent)] hover-affordance"
         >
           <Pencil className="w-2.5 h-2.5" />
         </button>
