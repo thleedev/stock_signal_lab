@@ -33,17 +33,35 @@ interface Collected {
   series?: number[];
 }
 
+/**
+ * KST(UTC+9) 기준 날짜(YYYY-MM-DD). 실행 머신 타임존에 의존하지 않습니다.
+ * .github/scripts/batch/step11-lassi-signals.ts 의 kstToday() 와 같은 관용구입니다.
+ *
+ * 후속 태스크에서 07:30 KST(=UTC 전날 22:30) 개장 전 배치가 추가될 예정이라,
+ * UTC 기준으로 날짜를 구하면 그 시각에 하루 이른 날짜가 나와 조회 상한이
+ * 전날로 당겨집니다. 이 배치의 목적이 간밤 미국장을 당일 판단에 반영하는
+ * 것이라 UTC 기준이면 그 목적 자체가 무력화됩니다.
+ */
+function kstDateOf(now: Date): string {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 function daysAgo(n: number): string {
-  return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  return kstDateOf(new Date(Date.now() - n * 86400000));
 }
 
 async function collectOne(spec: IndicatorSpec, source = spec.source): Promise<Collected> {
-  const to = new Date().toISOString().slice(0, 10);
+  const to = kstDateOf(new Date());
 
   if (source.kind === 'fred') {
     const points = await fetchFredSeries(source.seriesId, daysAgo(40), to);
     points.sort((a, b) => a.date.localeCompare(b.date));
     const last = latestOf(points);
+    // fetchFredSeries 는 points.length === 0 이면 이미 예외를 던지므로 여기 도달한
+    // points 는 항상 1개 이상이고, latestOf 는 빈 배열에서만 null 을 낸다. 즉 이
+    // 분기는 실행되지 않는다. non-null 단언 대신 방어적으로 남겨 둔다 —
+    // latestOf 반환형이 FredPoint | null 이라 단언 없이는 last.value 접근에
+    // tsc 오류가 나고, latestOf 를 shared/market/ 밖에서 수정할 수 없다.
     if (!last) throw new Error(`${spec.key}: FRED 관측치 없음`);
     const prev = points.length >= 2 ? points[points.length - 2].value : null;
     return { date: last.date, value: last.value, prev, source: 'fred' };
@@ -104,9 +122,17 @@ export async function runStep6MarketData(): Promise<{ errors: string[]; collecte
         return { spec, got: await collectOne(spec) };
       } catch (primaryErr) {
         if (!spec.fallback) throw primaryErr;
-        log('step6', `${spec.key} 주 소스 실패, 폴백 시도: ${(primaryErr as Error).message}`);
-        const got = await collectOne(spec, spec.fallback);
-        return { spec, got };
+        const primaryMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+        log('step6', `${spec.key} 주 소스 실패, 폴백 시도: ${primaryMsg}`);
+        try {
+          return { spec, got: await collectOne(spec, spec.fallback) };
+        } catch (fallbackErr) {
+          const fallbackMsg =
+            fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+          // 두 사유를 합쳐야 같은 원인으로 둘 다 죽었는지, 서로 다른 원인인지 구분할 수 있다.
+          // 폴백 예외만 던지면 최초 실패 사유는 log() 로만 남고 errors 배열에서는 사라진다.
+          throw new Error(`주 소스: ${primaryMsg} / 폴백: ${fallbackMsg}`);
+        }
       }
     }),
   );
