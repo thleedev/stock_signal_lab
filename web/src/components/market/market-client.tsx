@@ -380,7 +380,12 @@ export function MarketClient({ indicators: initialIndicators, statsByKey, scoreH
           };
         });
 
-        // 실시간에만 있는 새 지표 추가 (CNN_FEAR_GREED 등)
+        // 실시간에만 있는 새 지표를 추가하는 방어적 병합 로직. 과거에는
+        // CNN_FEAR_GREED(소스 차단)·FEAR_GREED(VIX 역산 합성)가 이 경로로
+        // 카탈로그에 없는 카드를 띄웠다 — 설계 §5.3 제거 대상이라 카탈로그·
+        // realtime 라우트 양쪽에서 없앴다(최종 리뷰 I2). 지금은 해당하는
+        // 예가 없지만, 카탈로그에 없는 실시간 지표가 다시 추가될 경우를
+        // 대비해 병합 로직 자체는 남겨 둔다.
         const existingTypes = new Set(updated.map(i => i.indicator_type));
         for (const [type, rt] of Object.entries(realtimeMap)) {
           if (!existingTypes.has(type)) {

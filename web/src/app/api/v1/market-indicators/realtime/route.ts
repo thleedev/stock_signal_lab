@@ -37,19 +37,6 @@ export async function GET() {
     };
   }
 
-  // VIX 기반 Fear & Greed 계산
-  if (results['VIX']) {
-    const vix = results['VIX'].value;
-    // 간단 역정규화: VIX 10~50 → Fear&Greed 100~0
-    const fearGreed = Math.max(0, Math.min(100, 100 - ((vix - 10) / 40) * 100));
-    results['FEAR_GREED'] = {
-      value: Math.round(fearGreed * 100) / 100,
-      prev_value: null,
-      change_pct: 0,
-      name: 'Fear & Greed (VIX기반)',
-    };
-  }
-
   return NextResponse.json({
     success: true,
     timestamp: new Date().toISOString(),
