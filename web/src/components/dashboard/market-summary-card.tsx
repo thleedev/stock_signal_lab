@@ -10,7 +10,8 @@ interface MarketEvent {
 
 interface Props {
   marketScore: number;
-  eventRiskScore: number;
+  /** null 이면 이벤트 점수 산출 불가(page.tsx 참고) — 결손을 낙관값으로 대체하지 않는다 */
+  eventRiskScore: number | null;
   nextEvent: MarketEvent | null;
 }
 
@@ -28,7 +29,7 @@ function dDayLabel(dateStr: string): string {
 
 export function MarketSummaryCard({ marketScore, eventRiskScore, nextEvent }: Props) {
   const mInterp = getScoreInterpretation(marketScore);
-  const eInterp = getScoreInterpretation(eventRiskScore);
+  const eInterp = eventRiskScore != null ? getScoreInterpretation(eventRiskScore) : null;
 
   return (
     <Link
@@ -49,9 +50,13 @@ export function MarketSummaryCard({ marketScore, eventRiskScore, nextEvent }: Pr
         </div>
         <div className="flex items-center justify-between">
           <span className="text-xs text-[var(--muted)]">이벤트</span>
-          <span className="text-sm font-bold" style={{ color: eInterp.color }}>
-            {Math.round(eventRiskScore)} · {eInterp.label}
-          </span>
+          {eventRiskScore != null && eInterp ? (
+            <span className="text-sm font-bold" style={{ color: eInterp.color }}>
+              {Math.round(eventRiskScore)} · {eInterp.label}
+            </span>
+          ) : (
+            <span className="text-sm font-bold text-[var(--muted)]">산출 불가</span>
+          )}
         </div>
       </div>
 
