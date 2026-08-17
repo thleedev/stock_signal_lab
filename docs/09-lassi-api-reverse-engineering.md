@@ -2,7 +2,7 @@
 
 > 조사일: 2026-08-03  
 > 목적: 영웅문 Accessibility 스크래핑을 대체할 네트워크 경로 확보  
-> 상태: **서버 수집 확정** — Thinkpool API 확인 · `/api/v1/cron/lassi-signals` 구현 · GitHub Actions `daily-batch.yml` 스케줄 연결 · Android 접근성 라씨 경로 비활성 (2026-08-06)
+> 상태: **서버 수집 가동 중** — Thinkpool API 확인 · `/api/v1/cron/lassi-signals` 구현 · GitHub Actions `daily-batch.yml` 스케줄 연결 · Android 접근성 라씨 경로 비활성 (2026-08-06) · 스케줄 자동 비활성화 복구 및 `keepalive.yml` 방어 추가 (2026-08-07)
 
 ---
 
@@ -377,6 +377,16 @@ curl -s "http://localhost:3000/api/v1/cron/lassi-signals?dry_run=1&force=1" \
 호출 실패는 `step5`·`step7` 과 같이 `summary.errors` 에 기록만 하고 배치를 중단시키지 않습니다.
 
 **날짜 가드는 배치가 맡습니다.** 씽크풀은 당일 목록만 제공하고 서버는 수집 시각을 `timestamp` 로 기록하므로, `workflow_dispatch` 로 과거 일자를 지정해 재실행하면 지정일이 아니라 재실행일 자 신호가 한 벌 더 쌓입니다. UNIQUE 키가 `signal_date_kst(timestamp)` 라 원본 일자 행과 충돌하지 않아 스코어링과 AI 리포트가 이중 집계합니다. `runStep11LassiSignals` 는 기준일이 KST 오늘이 아니면 `force` 여부와 무관하게 호출 자체를 생략합니다.
+
+### 스케줄 자동 비활성화 — 실제 중단과 방어 (2026-08-07)
+
+**스케줄 연결만으로는 부족합니다.** GitHub Actions 는 저장소에 60일간 커밋이 없으면 스케줄 워크플로우를 자동으로 끕니다(`state=disabled_inactivity`). 워크플로우 실행 이력은 활동으로 치지 않으므로, `daily-batch` 가 매일 성공해도 커밋이 없으면 꺼집니다. 2026-06-04 부터 2026-08-06 까지 약 63일의 커밋 공백이 이 조건에 걸려 **2026-08-03 실행을 마지막으로 배치가 멈췄습니다.** 알림이 없어 나흘 뒤에야 발견했고, 그 사이 8월 4일 라씨 신호가 유실됐습니다. 씽크풀은 당일 목록만 제공하므로 소급 복구가 불가능합니다.
+
+Android 접근성 라씨 경로를 비활성화한 뒤에는 서버 크론이 유일한 라씨 수집 경로이므로, 스케줄러가 꺼지면 SMS 폴백만 남고 사실상 수집이 끊깁니다.
+
+방어는 `.github/workflows/keepalive.yml` 이 두 겹으로 맡습니다. 매월 1일·15일 06:00 KST 에 실행되어 `daily-batch` 상태를 조회하고 `active` 가 아니면 API 로 다시 켜며, 마지막 커밋이 30일 이상 지났으면 빈 커밋을 푸시해 무활동 타이머를 되돌립니다. 커밋이 생기면 `daily-batch` 와 `keepalive` 가 함께 살아남으므로 keepalive 자신이 꺼져 무력화되는 상황도 막힙니다. 실행 주기와 30일 조건을 합치면 늦어도 44일 근처에서 타이머가 초기화되어 60일 한도에 닿지 않습니다.
+
+복구는 `gh workflow enable "Daily Batch"` 로 스케줄을 되살리고, 당일 몫은 `gh workflow run "Daily Batch" -f mode=full` 로 채웁니다. `full` 은 step11 을 `force=1` 로 호출하므로 수집 시간대 밖에서도 당일 신호를 확정합니다.
 
 ### 수집 품질 방어 장치
 

@@ -60,6 +60,13 @@ next-env.d.ts
 # Screenshots
 screenshots/
 
+# 작업용 임시 산출물 (세션별 중간 파일)
+_workspace/
+
+# Python 캐시 (tools/traffic-capture)
+__pycache__/
+*.pyc
+
 # System files
 # 디자인 토큰 규칙만 버전 관리합니다. CLAUDE.md 가 필수 준수로 참조하기 때문입니다.
 # .claude/ 로 디렉터리를 통째로 제외하면 하위 파일을 되살릴 수 없으므로 .claude/* 를 씁니다.
