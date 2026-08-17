@@ -26,7 +26,7 @@ jobs:
   keepalive:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Daily Batch 상태 확인 및 재활성화
         env:
