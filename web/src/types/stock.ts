@@ -2,6 +2,8 @@
 export interface SourceSignal {
   type: string | null;
   price: number | null;
+  /** 신호 발생 시각(signals.timestamp). 목록 조회 경로에서만 채웁니다 */
+  date?: string | null;
 }
 
 // 종목 캐시 타입

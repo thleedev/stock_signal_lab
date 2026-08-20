@@ -60,7 +60,7 @@ export default async function StocksPage() {
   ])];
 
   // 이름 보완 + 신호 조회를 병렬 처리
-  const signalMap: Record<string, Record<string, { type: string; price: number | null }>> = {};
+  const signalMap: Record<string, Record<string, { type: string; price: number | null; date: string | null }>> = {};
 
   if (uniqueSymbols.length > 0) {
     const [{ data: stockInfoNames }, { data: signalRows }] = await Promise.all([
@@ -90,6 +90,7 @@ export default async function StocksPage() {
           signalMap[sym][src] = {
             type: row.signal_type,
             price: extractSignalPrice(row.raw_data as Record<string, unknown> | null),
+            date: (row.timestamp as string) ?? null,
           };
         }
       }
@@ -104,7 +105,7 @@ export default async function StocksPage() {
   const favorites = (rawFavorites ?? []).map(fixName);
   const stocks = (rawStocks ?? []).map(fixName);
 
-  const emptySignal = { type: null, price: null };
+  const emptySignal = { type: null, price: null, date: null };
   const mergeSignals = (list: typeof stocks) =>
     list.map((s) => ({
       ...s,

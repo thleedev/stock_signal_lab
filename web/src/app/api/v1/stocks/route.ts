@@ -4,9 +4,9 @@ import { extractSignalPrice } from '@/lib/signal-constants';
 
 export const dynamic = 'force-dynamic';
 
-type SignalEntry = { type: string; price: number | null };
+type SignalEntry = { type: string; price: number | null; date: string | null };
 type SignalMap = Record<string, Record<string, SignalEntry>>;
-const EMPTY_SIGNAL: SignalEntry = { type: null as unknown as string, price: null };
+const EMPTY_SIGNAL: SignalEntry = { type: null as unknown as string, price: null, date: null };
 
 function buildSignalMap(rows: Array<Record<string, unknown>> | null): SignalMap {
   const map: SignalMap = {};
@@ -20,6 +20,7 @@ function buildSignalMap(rows: Array<Record<string, unknown>> | null): SignalMap 
       map[sym][src] = {
         type: row.signal_type as string,
         price: extractSignalPrice(row.raw_data as Record<string, unknown> | null),
+        date: (row.timestamp as string) ?? null,
       };
     }
   }
@@ -198,7 +199,7 @@ export async function GET(request: NextRequest) {
     q = q.in('symbol', buySymbols);
   }
 
-  const dbColumn = (sortBy === 'high90d' || sortBy === 'change_1m') ? 'high_90d_pct' : sortBy;
+  const dbColumn = sortBy === 'high90d' ? 'high_90d_pct' : sortBy;
   q = q.order(dbColumn, { ascending: !sortDir }).range(offset, offset + limit - 1);
   const { data, count, error } = await q;
   if (error) {

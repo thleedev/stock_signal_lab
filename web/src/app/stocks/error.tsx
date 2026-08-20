@@ -19,7 +19,7 @@ export default function StocksError({
       <p className="text-sm text-[var(--muted)]">{error.message}</p>
       <button
         onClick={reset}
-        className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90"
+        className="h-11 px-4 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:bg-[var(--accent-light)]"
       >
         다시 시도
       </button>

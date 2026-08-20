@@ -25,6 +25,11 @@ interface StackedListProps<T> {
   renderCard: (item: T) => React.ReactNode;
   /** 카드를 눌렀을 때의 동작 */
   onItemClick?: (item: T, e: React.MouseEvent) => void;
+  /**
+   * 카드 껍데기에 덧붙일 클래스. 테이블 행이 배경색·구분선으로 표시하던 구분
+   * (예: /stocks 의 즐겨찾기 구간)을 카드에서도 같은 방식으로 표시할 때 씁니다.
+   */
+  cardClassName?: (item: T) => string;
   /** 데스크톱에서 그대로 보여줄 기존 테이블 */
   children: React.ReactNode;
   /**
@@ -63,6 +68,7 @@ export function StackedList<T>({
   renderCard,
   onItemClick,
   children,
+  cardClassName,
   breakpoint = "md",
 }: StackedListProps<T>) {
   return (
@@ -73,7 +79,7 @@ export function StackedList<T>({
           <div
             key={keyOf(item)}
             onClick={onItemClick ? (e) => onItemClick(item, e) : undefined}
-            className={`px-3 py-3 ${onItemClick ? "cursor-pointer hover:bg-[var(--card-hover)]" : ""}`}
+            className={`px-3 py-3 ${onItemClick ? "cursor-pointer hover:bg-[var(--card-hover)]" : ""} ${cardClassName?.(item) ?? ""}`}
           >
             {renderCard(item)}
           </div>

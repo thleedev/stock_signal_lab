@@ -75,7 +75,7 @@ function SortableTab({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-1">
+    <div ref={setNodeRef} style={style} className="flex items-center gap-1 shrink-0">
       {isEditing ? (
         <input
           ref={inputRef}
@@ -87,7 +87,7 @@ function SortableTab({
             if (e.key === "Escape") { setIsEditing(false); setEditName(group.name); }
           }}
           onBlur={handleRenameConfirm}
-          className="w-24 px-2 py-1 text-sm bg-[var(--card)] border border-[#6366f1] rounded-lg outline-none"
+          className="w-24 h-11 sm:h-auto px-2 py-1 text-sm bg-[var(--card)] border border-[var(--accent)] rounded-lg outline-none"
         />
       ) : (
         <button
@@ -100,22 +100,24 @@ function SortableTab({
             setIsEditing(true);
             setEditName(group.name);
           }}
-          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+          className={`flex items-center gap-1 h-11 sm:h-auto px-3 sm:py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
             isActive
-              ? "bg-[#6366f1] text-white"
+              ? "bg-[var(--accent)] text-white"
               : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
           }`}
         >
           {group.name}
         </button>
       )}
-      {!group.is_default && (
+      {/* 삭제는 선택된 그룹에서만 노출합니다. 좁은 화면에서 모든 탭에 X 가 붙으면
+          탭 폭이 16px 씩 늘고, 탭을 누르려다 삭제를 누르는 오조작이 생깁니다. */}
+      {!group.is_default && isActive && (
         <button
           onClick={onDelete}
-          className="p-0.5 rounded hover:bg-red-900/40 text-[var(--muted)] hover:text-red-400 transition-colors"
+          className="flex items-center justify-center w-11 h-11 sm:w-auto sm:h-auto sm:p-0.5 rounded hover:bg-red-900/40 text-[var(--muted)] hover:text-red-400 transition-colors"
           title="그룹 삭제"
         >
-          <X className="w-3 h-3" />
+          <X className="w-4 h-4 sm:w-3 sm:h-3" />
         </button>
       )}
     </div>
@@ -138,7 +140,11 @@ export default function WatchlistGroupTabs({
   const [addError, setAddError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  // 탭 목록이 가로 스크롤 컨테이너라 distance 기준은 스와이프와 충돌합니다.
+  // 길게 눌러야 정렬이 시작되도록 delay 기준으로 바꿉니다.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
+  );
 
   const defaultGroup = groups.find((g) => g.is_default);
   const customGroups = groups.filter((g) => !g.is_default);
@@ -176,15 +182,16 @@ export default function WatchlistGroupTabs({
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap justify-between">
-      {/* 탭 목록 */}
-      <div className="flex items-center gap-1 flex-wrap">
+    <div className="flex items-center gap-2">
+      {/* 탭 목록 — 그룹이 늘어도 줄바꿈하지 않고 가로로 스크롤합니다.
+          wrap 이면 8그룹에서 3줄이 되고 핀 버튼이 마지막 줄로 밀립니다. */}
+      <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto scrollbar-hide">
         {/* [전체] 탭 — 고정 */}
         <button
           onClick={() => onTabChange("all")}
-          className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+          className={`shrink-0 h-11 sm:h-auto px-3 sm:py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
             activeTab === "all"
-              ? "bg-[#6366f1] text-white"
+              ? "bg-[var(--accent)] text-white"
               : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
           }`}
         >
@@ -195,9 +202,9 @@ export default function WatchlistGroupTabs({
         {defaultGroup && (
           <button
             onClick={() => onTabChange(defaultGroup.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
+            className={`shrink-0 h-11 sm:h-auto px-3 sm:py-1.5 rounded-lg text-sm whitespace-nowrap transition-colors ${
               activeTab === defaultGroup.id
-                ? "bg-[#6366f1] text-white"
+                ? "bg-[var(--accent)] text-white"
                 : "text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)]"
             }`}
           >
@@ -224,7 +231,7 @@ export default function WatchlistGroupTabs({
         {/* [+] 버튼 또는 인라인 입력 */}
         {canAdd && (
           adding ? (
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               <input
                 ref={inputRef}
                 autoFocus
@@ -236,14 +243,14 @@ export default function WatchlistGroupTabs({
                 }}
                 onBlur={handleAddConfirm}
                 placeholder="그룹명"
-                className="w-24 px-2 py-1 text-sm bg-[var(--card)] border border-[var(--border)] rounded-lg outline-none focus:border-[#6366f1]"
+                className="w-24 h-11 sm:h-auto px-2 py-1 text-sm bg-[var(--card)] border border-[var(--border)] rounded-lg outline-none focus:border-[var(--accent)]"
               />
               {addError && <span className="text-xs text-red-400">{addError}</span>}
             </div>
           ) : (
             <button
               onClick={() => setAdding(true)}
-              className="p-1.5 rounded-lg text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)] transition-colors"
+              className="flex items-center justify-center shrink-0 w-11 h-11 sm:w-auto sm:h-auto sm:p-1.5 rounded-lg text-[var(--muted)] hover:bg-[var(--card-hover)] hover:text-[var(--foreground)] transition-colors"
               title="그룹 추가"
             >
               <Plus className="w-4 h-4" />
@@ -256,7 +263,7 @@ export default function WatchlistGroupTabs({
       <button
         onClick={onPinToggle}
         title={pinFavorites ? "즐겨찾기 상단 고정 해제" : "즐겨찾기 상단 고정"}
-        className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${
+        className={`flex items-center justify-center w-11 h-11 sm:w-auto sm:h-auto sm:p-1.5 rounded-lg transition-colors flex-shrink-0 ${
           pinFavorites
             ? "text-yellow-400 hover:bg-[var(--card-hover)]"
             : "text-[var(--muted)] hover:bg-[var(--card-hover)]"

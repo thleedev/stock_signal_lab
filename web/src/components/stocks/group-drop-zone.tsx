@@ -24,14 +24,14 @@ function DroppableGroupButton({
       ref={setNodeRef}
       className={`flex items-center gap-2 px-4 py-3 rounded-xl border-2 transition-all cursor-pointer min-w-[100px] justify-center ${
         isOver
-          ? "border-[#6366f1] bg-[#6366f1]/20 scale-105"
+          ? "border-[var(--accent)] bg-[var(--accent)]/20 scale-105"
           : isAlreadyIn
-          ? "border-[#6366f1]/50 bg-[var(--card)]"
-          : "border-[var(--border)] bg-[var(--card)] hover:border-[#6366f1]/50"
+          ? "border-[var(--accent)]/50 bg-[var(--card)]"
+          : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--accent)]/50"
       }`}
     >
-      {isAlreadyIn && <Check className="w-4 h-4 text-[#6366f1]" />}
-      <span className={`text-sm font-medium ${isAlreadyIn ? "text-[#6366f1]" : "text-[var(--foreground)]"}`}>
+      {isAlreadyIn && <Check className="w-4 h-4 text-[var(--accent)]" />}
+      <span className={`text-sm font-medium ${isAlreadyIn ? "text-[var(--accent)]" : "text-[var(--foreground)]"}`}>
         {group.name}
       </span>
     </div>

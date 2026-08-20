@@ -3,14 +3,14 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Star, Search, ArrowUpDown, ArrowUp, ArrowDown, Loader2, Briefcase, Pin, PinOff, GripVertical } from "lucide-react";
+import { Star, Search, ArrowUp, ArrowDown, ChevronDown, Loader2, Briefcase, GripVertical } from "lucide-react";
 import { useGlobalPriceRefresh, type LivePriceMap } from "@/hooks/use-global-price-refresh";
 import { useBatchRefresh } from "@/hooks/use-batch-refresh";
 import { PriceUpdateBadge } from "@/components/common/price-update-badge";
 import type { StockCache, SourceSignal } from "@/types/stock";
 import type { WatchlistGroup } from "@/types/stock";
-import { PageLayout, PageHeader, StackedList } from "@/components/ui";
-import { SOURCE_LABELS_SHORT, SIGNAL_COLORS, SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
+import { PageLayout, PageHeader, StackedList, SignalBadge } from "@/components/ui";
+import { SOURCE_LABELS_SHORT, SOURCE_DOTS, SIGNAL_COLORS, SIGNAL_TYPE_LABELS } from "@/lib/signal-constants";
 import StockActionMenu from "@/components/common/stock-action-menu";
 import WatchlistGroupTabs, { type TabId } from "@/components/stocks/watchlist-group-tabs";
 import GroupSelectPopup from "@/components/stocks/group-select-popup";
@@ -90,13 +90,13 @@ const SORT_MAP: Record<string, string> = {
   market_cap: "market_cap",
   change: "price_change_pct",
   high90d: "high90d",
-  change_1m: "change_1m",
   volume: "volume",
   per: "per",
   gap: "gap",
 };
 
-function SignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
+/** 테이블 셀 전용 배지 — 배지 아래 신호가를 세로로 붙입니다(컬럼 폭이 좁아 가로로 못 넣습니다) */
+function TableSignalBadge({ sig, source }: { sig: SourceSignal; source: string }) {
   if (!sig.type) {
     return <span className="text-[10px] text-[var(--border)]">-</span>;
   }
@@ -143,7 +143,10 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
   const router = useRouter();
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [market, setMarket] = useState(searchParams.get("market") || "전체");
-  const [sortBy, setSortBy] = useState(searchParams.get("sort") || "gap");
+  // 알 수 없는 정렬 키(제거된 change_1m 이 담긴 북마크 등)는 기본값으로 되돌립니다.
+  // select 에 없는 값이 들어가면 정렬 상자가 빈칸으로 열립니다.
+  const sortParam = searchParams.get("sort");
+  const [sortBy, setSortBy] = useState(sortParam && SORT_MAP[sortParam] ? sortParam : "gap");
   const [sortDir, setSortDir] = useState<"asc" | "desc">(
     (searchParams.get("dir") as "asc" | "desc") || "asc"
   );
@@ -396,27 +399,38 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     return { favs, nonFavs };
   }, [stocks, mergedStocks, sortFn, pinFavorites, pinMounted]);
 
+  // 등락률 자리에 90일고점비를 대신 보여줄지. 테이블 헤더·행·카드가 같은 값을 써야
+  // 헤더는 90일고점비인데 값은 등락률인 어긋남이 생기지 않습니다.
+  const showHigh90d = sortBy === "high90d";
+
   // 모바일 카드(StackedList)용 목록 — 즐겨찾기 여부와 showHigh90d 를 함께 담아
   // 데스크톱 테이블의 같은 구간(favs/nonFavs)이 쓰는 조건을 그대로 따라갑니다.
   const combinedCardItems = useMemo<DisplayItem[]>(
     () => [
-      ...displayStocks.favs.map((s) => ({ stock: s, isFav: true, showHigh90d: sortBy === "high90d" })),
+      ...displayStocks.favs.map((s, i) => ({
+        stock: s,
+        isFav: true,
+        showHigh90d,
+        isLastFav: i === displayStocks.favs.length - 1,
+      })),
       ...displayStocks.nonFavs.map((s) => ({
         stock: s,
         isFav: favSet.has(s.symbol),
-        showHigh90d: sortBy === "high90d" || sortBy === "change_1m",
+        showHigh90d,
+        isLastFav: false,
       })),
     ],
-    [displayStocks, favSet, sortBy]
+    [displayStocks, favSet, showHigh90d]
   );
   const favCardItems = useMemo<DisplayItem[]>(
     () =>
       mergedStocks.favs.map((s) => ({
         stock: s,
         isFav: true,
-        showHigh90d: sortBy === "high90d" || sortBy === "change_1m",
+        showHigh90d,
+        isLastFav: false,
       })),
-    [mergedStocks, sortBy]
+    [mergedStocks, showHigh90d]
   );
 
   // 전체탭은 항상 전체DB 뷰, 또는 관심종목 없고 query 없을 때
@@ -622,10 +636,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
   const handleRowClick = useCallback((e: React.MouseEvent, stock: StockCache) => {
     if ((e.target as HTMLElement).closest("button")) return;
-    setActionMenu({
-      stock,
-      position: { x: Math.min(e.clientX, window.innerWidth - 220), y: Math.min(e.clientY, window.innerHeight - 250) },
-    });
+    // 화면 밖으로 나가지 않게 미는 일은 메뉴가 자기 실제 크기를 재서 처리합니다.
+    // 여기서 상수(220/250)로 빼면 그룹 수에 따라 달라지는 메뉴 높이와 어긋납니다.
+    setActionMenu({ stock, position: { x: e.clientX, y: e.clientY } });
   }, []);
 
   // 최근 fetch된 live price 캐시 (새 페이지 로드 시 적용)
@@ -678,6 +691,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
 
   const { refreshing, isStale, updateTime: priceUpdateTime, refresh: refreshPrices } =
     useGlobalPriceRefresh({
+      initialUpdateTime: lastPriceUpdate,
       onPricesRefreshed: applyPrices,
     });
 
@@ -693,7 +707,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
         <th className="px-2 py-3 text-left w-[52px]"></th>
         <th className="px-2 py-3 text-left">종목명</th>
         <th className="px-2 py-3 text-right w-[88px]">현재가</th>
-        <th className="px-2 py-3 text-right w-[72px]">{sortBy === "high90d" || sortBy === "change_1m" ? "90일고점비" : "등락률"}</th>
+        <th className="px-2 py-3 text-right w-[72px]">{showHigh90d ? "90일고점비" : "등락률"}</th>
         <th className="hidden sm:table-cell px-2 py-3 text-right w-[64px]">Gap</th>
         <th className="hidden md:table-cell px-2 py-3 text-left w-[72px]">코드</th>
         <th className="hidden md:table-cell px-2 py-3 text-right w-[88px]">거래량</th>
@@ -717,6 +731,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       <PageHeader
         title="종목"
         subtitle="관심종목 그룹 관리 및 전체 종목 조회"
+        hideSubtitleOnMobile
         action={
           <PriceUpdateBadge
             priceUpdateLabel={priceUpdateTime}
@@ -744,8 +759,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
       {/* 필터 바 */}
       <div className="card p-4">
         {/* flex-wrap 이 없으면 640px 이상에서 네 자식이 한 줄에 강제되어
-            버튼 그룹의 min-content 폭 합계가 컨테이너를 넘칩니다. */}
-        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
+            버튼 그룹의 min-content 폭 합계가 컨테이너를 넘칩니다.
+            좁은 화면은 검색 / 시장 / (정렬+신호) 세 줄로 고정합니다. */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--muted)]" />
             <input
@@ -753,17 +769,17 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
               placeholder="종목명/코드 검색"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)]"
+              className="w-full h-11 sm:h-auto pl-9 pr-3 sm:py-2 rounded-lg border border-[var(--border)] bg-[var(--background)] text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
+          <div className="flex items-center gap-1 h-11 sm:h-auto rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
             <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">시장</span>
             {["전체", "KOSPI", "KOSDAQ", "ETF"].map((m) => (
               <button
                 key={m}
                 onClick={() => setMarket(m)}
-                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                className={`flex-1 sm:flex-none h-full sm:h-auto px-2 sm:px-2.5 sm:py-1.5 rounded-md text-xs font-medium transition-colors ${
                   market === m
                     ? "bg-[var(--accent)] text-white"
                     : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]"
@@ -774,46 +790,54 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             ))}
           </div>
 
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
-            <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">정렬</span>
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              className="px-2 py-1.5 rounded-md text-xs font-medium bg-transparent text-[var(--foreground)] focus:outline-none appearance-none cursor-pointer"
-            >
-              <option value="name">이름</option>
-              <option value="market_cap">시가총액</option>
-              <option value="change">등락률</option>
-              <option value="change_1m">1달등락</option>
-              <option value="high90d">90일고점비</option>
-              <option value="volume">거래량</option>
-              <option value="per">PER</option>
-              <option value="gap">Gap</option>
-            </select>
-            <button
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
-              title={sortDir === "asc" ? "오름차순" : "내림차순"}
-            >
-              {sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
-            <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">신호</span>
-            {([["all", "전체"], ["signal", "신호"]] as const).map(([value, label]) => (
+          {/* 정렬과 신호는 좁은 화면에서 한 줄을 나눠 씁니다. sm 이상에서는
+              contents 로 껍데기를 없애 기존의 4개 형제 배치를 그대로 둡니다. */}
+          <div className="flex items-center gap-2 sm:contents">
+            <div className="flex items-center gap-1 flex-1 sm:flex-none min-w-0 h-11 sm:h-auto rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
+              <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">정렬</span>
+              <div className="relative flex-1 min-w-0 h-full">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full h-full sm:h-auto pl-2 pr-6 sm:py-1.5 rounded-md text-xs font-medium bg-transparent text-[var(--foreground)] focus:outline-none appearance-none cursor-pointer"
+                >
+                  <option value="name">이름</option>
+                  <option value="market_cap">시가총액</option>
+                  <option value="change">등락률</option>
+                  <option value="high90d">90일고점비</option>
+                  <option value="volume">거래량</option>
+                  <option value="per">PER</option>
+                  <option value="gap">Gap</option>
+                </select>
+                {/* appearance-none 이라 기본 화살표가 없습니다. 없으면 선택 가능한
+                    상자로 보이지 않아 정렬 기준을 바꿀 수 있다는 걸 알기 어렵습니다. */}
+                <ChevronDown className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--muted)]" />
+              </div>
               <button
-                key={value}
-                onClick={() => setSignalFilter(value)}
-                className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                  signalFilter === value
-                    ? "bg-[var(--accent)] text-white"
-                    : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]"
-                }`}
+                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                className="flex items-center justify-center shrink-0 w-11 h-full sm:w-auto sm:h-auto sm:p-1.5 rounded-md text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] transition-colors"
+                title={sortDir === "asc" ? "오름차순" : "내림차순"}
               >
-                {label}
+                {sortDir === "asc" ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
               </button>
-            ))}
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0 h-11 sm:h-auto rounded-lg border border-[var(--border)] bg-[var(--background)] px-1">
+              <span className="text-[10px] text-[var(--muted)] font-medium px-1.5 shrink-0">신호</span>
+              {([["all", "전체"], ["signal", "신호"]] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setSignalFilter(value)}
+                  className={`h-full sm:h-auto px-3 sm:px-2.5 sm:py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    signalFilter === value
+                      ? "bg-[var(--accent)] text-white"
+                      : "text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -826,6 +850,9 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
             items={combinedCardItems}
             keyOf={(item) => item.stock.symbol}
             breakpoint="lg"
+            cardClassName={(item) =>
+              `${item.isFav ? "bg-yellow-900/5" : ""} ${item.isLastFav ? "border-b-2 border-yellow-600/30" : ""}`
+            }
             renderCard={(item) => (
               <StockCard
                 stock={item.stock}
@@ -851,7 +878,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                           isFav={true}
                           gapSource={gapSource}
                           isInPortfolio={portSet.has(stock.symbol)}
-                          showHigh90d={sortBy === "high90d"}
+                          showHigh90d={showHigh90d}
                           onToggleFavorite={(s) => handleStarClick(s)}
                           onRowClick={handleRowClick}
                         />
@@ -877,7 +904,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                         isFav={favSet.has(stock.symbol)}
                         gapSource={gapSource}
                         isInPortfolio={portSet.has(stock.symbol)}
-                        showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
+                        showHigh90d={showHigh90d}
                         onToggleFavorite={(s) => handleStarClick(s)}
                         onRowClick={handleRowClick}
                       />
@@ -918,6 +945,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
               items={favCardItems}
               keyOf={(item) => item.stock.symbol}
               breakpoint="lg"
+              cardClassName={(item) => (item.isFav ? "bg-yellow-900/5" : "")}
               renderCard={(item) => (
                 <StockCard
                   stock={item.stock}
@@ -941,7 +969,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
                         isFav={true}
                         gapSource={gapSource}
                         isInPortfolio={portSet.has(stock.symbol)}
-                        showHigh90d={sortBy === "high90d" || sortBy === "change_1m"}
+                        showHigh90d={showHigh90d}
                         onToggleFavorite={(s) => handleStarClick(s)}
                         onRowClick={handleRowClick}
                       />
@@ -987,7 +1015,7 @@ export default function StockListClient({ initialStocks, favorites, watchlistSym
     {/* DragOverlay -- must be inside DndContext */}
     <DragOverlay>
       {draggingStock && (
-        <div className="bg-[var(--card)] border border-[#6366f1] rounded-lg px-4 py-2.5 shadow-2xl text-sm font-medium">
+        <div className="bg-[var(--card)] border border-[var(--accent)] rounded-lg px-4 py-2.5 shadow-2xl text-sm font-medium">
           {draggingStock.name}
           <span className="ml-2 text-xs text-[var(--muted)]">{draggingStock.symbol}</span>
         </div>
@@ -1100,13 +1128,13 @@ const StockRow = memo(function StockRow({ stock, isFav, gapSource, isInPortfolio
         {stock.per != null ? stock.per.toFixed(1) : "-"}
       </td>
       <td className="hidden lg:table-cell px-1 py-2.5 text-center w-[60px]">
-        <SignalBadge sig={signals.quant} source="quant" />
+        <TableSignalBadge sig={signals.quant} source="quant" />
       </td>
       <td className="hidden lg:table-cell px-1 py-2.5 text-center w-[60px]">
-        <SignalBadge sig={signals.lassi} source="lassi" />
+        <TableSignalBadge sig={signals.lassi} source="lassi" />
       </td>
       <td className="hidden lg:table-cell px-1 py-2.5 text-center w-[68px]">
-        <SignalBadge sig={signals.stockbot} source="stockbot" />
+        <TableSignalBadge sig={signals.stockbot} source="stockbot" />
       </td>
     </tr>
   );
@@ -1117,20 +1145,104 @@ interface DisplayItem {
   stock: StockCache;
   isFav: boolean;
   showHigh90d: boolean;
+  /** 즐겨찾기 구간의 마지막 카드. 테이블의 노란 구분선을 카드에서도 같게 그립니다 */
+  isLastFav: boolean;
 }
 
-/** 신호 소스 라벨 + 배지 쌍. 신호가 없으면 자리를 차지하지 않도록 렌더링하지 않습니다. */
-function CardSignal({ sig, source }: { sig: SourceSignal; source: SourceKey }) {
-  if (!sig.type) return null;
+/**
+ * 시가총액을 조/억 단위로 줄입니다. stock_cache.market_cap 은 원 단위입니다.
+ * 원 단위 그대로 쓰면 16자리라 카드 한 줄을 혼자 다 씁니다.
+ */
+function formatMarketCap(n: number | null): string | null {
+  if (n == null || n <= 0) return null;
+  if (n >= 1e12) return `${(n / 1e12).toFixed(1)}조`;
+  if (n >= 1e8) return `${Math.round(n / 1e8).toLocaleString("ko-KR")}억`;
+  return n.toLocaleString("ko-KR");
+}
+
+/**
+ * 카드용 거래량 표기. 원 숫자는 최대 11자리(예: 11,749,610,712)라
+ * 360px 카드에서 잘립니다. 만·억 단위로 줄이고 정확한 값은 title 로 남깁니다.
+ */
+function formatVolumeShort(n: number | null): string | null {
+  if (n == null) return null;
+  if (n >= 1e8) return `${(n / 1e8).toFixed(1)}억`;
+  if (n >= 1e6) return `${Math.round(n / 1e4).toLocaleString("ko-KR")}만`;
+  if (n >= 1e4) return `${(n / 1e4).toFixed(1)}만`;
+  return n.toLocaleString("ko-KR");
+}
+
+/** 신호 발생일. 신호 조회에 기간 하한이 없어 해가 다른 신호가 섞이므로 연도가 다르면 연도를 붙입니다 */
+function formatSignalDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return d.getFullYear() === new Date().getFullYear()
+    ? `${mm}/${dd}`
+    : `${String(d.getFullYear()).slice(2)}/${mm}/${dd}`;
+}
+
+/**
+ * 카드 지표 한 칸. 라벨 바로 뒤에 값을 붙이고, 칸 폭은 고정합니다.
+ * 라벨 문자열은 카드마다 같으므로 값의 시작 x 도 카드마다 같아집니다.
+ * 값이 없어도 "-" 로 칸을 유지합니다. 값 없는 항목을 지우면 뒤 항목이 앞으로 당겨져
+ * 카드마다 같은 지표가 다른 x 에 놓입니다. 이것이 목록이 어긋나 보이던 원인입니다.
+ * 값을 칸 오른쪽 끝에 붙이면 그 값이 다음 칸 라벨과 붙어 한 덩어리로 읽힙니다.
+ */
+function MetricCell({
+  label,
+  dot,
+  title,
+  children,
+}: {
+  label: string;
+  dot?: string;
+  title?: string;
+  children?: React.ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-[var(--muted)]">{SOURCE_LABELS_SHORT[source]}</span>
-      <SignalBadge sig={sig} source={source} />
-    </div>
+    <span className="flex items-baseline gap-1 min-w-0" title={title}>
+      <span className="flex items-center gap-1 shrink-0 text-[var(--muted)]">
+        {dot && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />}
+        {label}
+      </span>
+      <span className="tabular-nums truncate">
+        {children ?? <span className="text-[var(--border)]">-</span>}
+      </span>
+    </span>
   );
 }
 
-/** 모바일 카드 (768px 또는 1024px 미만, StackedList breakpoint 참조). StockRow와 같은 표시 로직을 재사용합니다. */
+/**
+ * 카드 신호 한 소스. 신호가 없는 소스는 렌더하지 않습니다.
+ * 지표행이 별도 grid 라 이 줄의 폭이 아래 지표의 x 를 밀지 않습니다.
+ */
+function CardSignal({ sig, source }: { sig: SourceSignal; source: SourceKey }) {
+  if (!sig.type) return null;
+  const date = formatSignalDate(sig.date);
+  return (
+    <span className="inline-flex items-center gap-1 min-w-0">
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SOURCE_DOTS[source]}`} />
+      <span className="text-[var(--muted)] shrink-0">{SOURCE_LABELS_SHORT[source]}</span>
+      <SignalBadge type={sig.type} />
+      {sig.price != null && sig.price > 0 && (
+        <span className="text-[var(--muted)] tabular-nums whitespace-nowrap">
+          {formatNumber(sig.price)}
+          {date ? ` · ${date}` : ""}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * 모바일 카드 (1024px 미만 — 두 호출부 모두 StackedList breakpoint="lg" 이고
+ * 테이블의 마지막 컬럼도 lg:table-cell 이라 두 지점이 맞습니다).
+ * 그룹 이동은 카드를 눌러 뜨는 StockActionMenu 로 합니다(드래그 핸들은 테이블 전용).
+ * StockRow 와 같은 표시 로직을 재사용합니다.
+ */
 interface StockCardProps {
   stock: StockCache;
   isFav: boolean;
@@ -1143,74 +1255,85 @@ interface StockCardProps {
 const StockCard = memo(function StockCard({ stock, isFav, gapSource, isInPortfolio, showHigh90d, onToggleFavorite }: StockCardProps) {
   const gapResult = calcGap(stock, gapSource);
   const gap = gapResult?.gap ?? null;
+  const gapSrc = gapResult?.source ?? null;
   const signals = stock.signals ?? {
     lassi: { type: null, price: null },
     stockbot: { type: null, price: null },
     quant: { type: null, price: null },
   };
 
-  const hasBottomRow =
-    signals.quant?.type != null ||
-    signals.lassi?.type != null ||
-    signals.stockbot?.type != null ||
-    gap != null ||
-    stock.volume != null ||
-    stock.per != null;
+  const hasSignalRow =
+    signals.quant?.type != null || signals.lassi?.type != null || signals.stockbot?.type != null;
+  const cap = formatMarketCap(stock.market_cap);
 
   return (
-    <div className="flex flex-col gap-1.5">
-      {/* 윗줄: 즐겨찾기, 종목명/코드, 현재가, 등락률 */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite(stock); }}
-          className="p-0.5 hover:scale-110 transition-transform shrink-0"
-        >
-          <Star
-            className={`w-4 h-4 ${
-              isFav ? "text-yellow-400 fill-yellow-400" : "text-[var(--border)] hover:text-yellow-400"
-            }`}
-          />
-        </button>
-        {isInPortfolio && (
-          <Briefcase className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/20 shrink-0" />
-        )}
-        <div className="flex-1 min-w-0">
-          <span className="font-medium block truncate">{stock.name}</span>
-          <span className="text-[10px] text-[var(--muted)]">{stock.symbol}</span>
+    // 3열 [별][이름][가격]. 아랫줄은 col-start-2 라 종목명과 시작 x 가 항상 같습니다.
+    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 gap-y-1.5">
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleFavorite(stock); }}
+        className="p-2 sm:p-0.5 hover:scale-110 transition-transform shrink-0"
+      >
+        <Star
+          className={`w-4 h-4 ${
+            isFav ? "text-yellow-400 fill-yellow-400" : "text-[var(--border)] hover:text-yellow-400"
+          }`}
+        />
+      </button>
+
+      <div className="min-w-0">
+        <span className="block truncate text-sm font-medium">{stock.name}</span>
+        {/* 보유 표시는 코드 줄에 둡니다. 이름 앞에 두면 보유 여부에 따라
+            종목명 시작 x 가 움직여 아랫줄과 어긋납니다. */}
+        <span className="flex items-center gap-1 min-w-0 text-xs text-[var(--muted)]">
+          {isInPortfolio && (
+            <Briefcase className="w-3 h-3 shrink-0 text-emerald-400 fill-emerald-400/20" />
+          )}
+          <span className="truncate">
+            {stock.symbol}
+            {stock.market ? ` · ${stock.market}` : ""}
+            {cap ? ` · ${cap}` : ""}
+          </span>
+        </span>
+      </div>
+
+      <div className="min-w-[76px] shrink-0 text-right">
+        <div className={`text-sm font-medium tabular-nums ${priceColor(stock.price_change)}`}>
+          {formatNumber(stock.current_price)}
         </div>
-        <div className="text-right shrink-0">
-          <div className={`font-medium tabular-nums ${priceColor(stock.price_change)}`}>
-            {formatNumber(stock.current_price)}
-          </div>
-          <div className={`text-xs tabular-nums ${priceColor(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}`}>
-            {showHigh90d && <span className="text-[9px] text-[var(--muted)] mr-1">90일고점비</span>}
-            {formatPercent(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}
-          </div>
+        <div className={`text-xs tabular-nums ${priceColor(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}`}>
+          {formatPercent(showHigh90d ? stock.high_90d_pct : stock.price_change_pct)}
         </div>
       </div>
 
-      {/* 아랫줄: 알파캐치·라씨·스톡봇 신호, Gap, 거래량, PER — 값 없는 항목은 생략 */}
-      {hasBottomRow && (
-        <div className="flex items-center gap-3 flex-wrap pl-6 text-[10px]">
+      {/* 신호줄 — 세 소스가 모두 비면 줄 자체를 만들지 않습니다 */}
+      {hasSignalRow && (
+        <div className="col-start-2 col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           <CardSignal sig={signals.quant} source="quant" />
           <CardSignal sig={signals.lassi} source="lassi" />
           <CardSignal sig={signals.stockbot} source="stockbot" />
-          {gap != null && (
-            <span className="text-[var(--muted)]">
-              Gap{" "}
-              <span className={gap >= 0 ? "text-red-400" : "text-blue-400"}>
-                {gap >= 0 ? "+" : ""}{gap.toFixed(1)}%
-              </span>
-            </span>
-          )}
-          {stock.volume != null && (
-            <span className="text-[var(--muted)]">거래량 {formatNumber(stock.volume)}</span>
-          )}
-          {stock.per != null && (
-            <span className="text-[var(--muted)]">PER {stock.per.toFixed(1)}</span>
-          )}
         </div>
       )}
+
+      {/* 지표줄 — Gap·거래량·PER 은 값이 없어도 칸을 유지해 카드마다 x 가 같습니다 */}
+      <div className="col-start-2 col-span-2 grid grid-cols-[5.25rem_1fr_4.25rem] gap-x-3 text-xs">
+        <MetricCell
+          label="Gap"
+          dot={gapSrc ? SOURCE_DOTS[gapSrc] : undefined}
+          title={gapSrc ? `${SOURCE_LABELS_SHORT[gapSrc] ?? gapSrc} 신호가 대비` : undefined}
+        >
+          {gap != null ? (
+            <span className={gap >= 0 ? "text-red-400" : "text-blue-400"}>
+              {gap >= 0 ? "+" : ""}{gap.toFixed(1)}%
+            </span>
+          ) : null}
+        </MetricCell>
+        <MetricCell label="거래량" title={stock.volume != null ? `거래량 ${formatNumber(stock.volume)}주` : undefined}>
+          {formatVolumeShort(stock.volume)}
+        </MetricCell>
+        <MetricCell label="PER">
+          {stock.per != null ? stock.per.toFixed(1) : null}
+        </MetricCell>
+      </div>
     </div>
   );
 });

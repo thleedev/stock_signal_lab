@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Star, StarOff, Briefcase, ExternalLink, X, Check } from "lucide-react";
 import type { WatchlistGroup } from "@/types/stock";
@@ -52,6 +52,23 @@ export default function StockActionMenu({
   const [adding, setAdding] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [clamped, setClamped] = useState<{ left: number; top: number } | null>(null);
+
+  /**
+   * 메뉴를 실제 크기로 재서 화면 안으로 밀어 넣습니다.
+   * 호출부가 상수로 빼던 방식(x-220, y-250)은 메뉴 높이가 그룹 수에 따라 달라져
+   * 390×844 에서 아래쪽 항목이 42px 잘려 나갔습니다. 페인트 전에 값을 정해야
+   * 위치가 튀지 않으므로 useLayoutEffect 를 씁니다.
+   */
+  useLayoutEffect(() => {
+    if (!isOpen || showTradeModal || !position || !menuRef.current) return;
+    const { width, height } = menuRef.current.getBoundingClientRect();
+    const margin = 8;
+    setClamped({
+      left: Math.max(margin, Math.min(position.x, window.innerWidth - width - margin)),
+      top: Math.max(margin, Math.min(position.y, window.innerHeight - height - margin)),
+    });
+  }, [isOpen, showTradeModal, position, groups?.length, portfolios.length, adding]);
 
   // click-outside / Esc — TradeModal 열려 있으면 무시
   useEffect(() => {
@@ -147,8 +164,9 @@ export default function StockActionMenu({
   const style: React.CSSProperties = position
     ? {
         position: "fixed",
-        left: position.x,
-        top: position.y,
+        left: clamped?.left ?? position.x,
+        top: clamped?.top ?? position.y,
+        maxHeight: "calc(100dvh - 16px)",
         zIndex: 9999,
       }
     : {
@@ -170,7 +188,7 @@ export default function StockActionMenu({
           <div
             ref={menuRef}
             style={style}
-            className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl min-w-[180px] sm:min-w-[200px] max-w-[calc(100vw-1rem)] overflow-hidden"
+            className="bg-[var(--card)] border border-[var(--border)] rounded-xl shadow-2xl min-w-[180px] sm:min-w-[200px] max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain"
           >
             {/* 헤더 */}
             <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
@@ -240,7 +258,7 @@ export default function StockActionMenu({
                       className="w-full flex items-center gap-3 px-4 py-2 text-sm hover:bg-[var(--card-hover)] transition-colors text-left"
                     >
                       <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center flex-shrink-0 ${
-                        inGroup ? "bg-[#6366f1] border-[#6366f1]" : "border-[var(--border)]"
+                        inGroup ? "bg-[var(--accent)] border-[var(--accent)]" : "border-[var(--border)]"
                       }`}>
                         {inGroup && <Check className="w-2.5 h-2.5 text-white" />}
                       </span>

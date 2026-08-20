@@ -80,7 +80,7 @@ export function MobileTabBar() {
                 <Icon className="w-5 h-5" />
                 <span className="text-[10px]">{item.label}</span>
                 {active && (
-                  <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-gradient-to-r from-[#6366f1] to-[#a855f7]" />
+                  <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-gradient-to-r from-[var(--accent)] to-purple-500" />
                 )}
               </Link>
             );
@@ -96,7 +96,7 @@ export function MobileTabBar() {
             <MoreHorizontal className="w-5 h-5" />
             <span className="text-[10px]">더보기</span>
             {moreActive && !moreOpen && (
-              <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-gradient-to-r from-[#6366f1] to-[#a855f7]" />
+              <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-6 h-0.5 rounded-full bg-gradient-to-r from-[var(--accent)] to-purple-500" />
             )}
           </button>
         </div>

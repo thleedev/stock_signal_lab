@@ -18,6 +18,13 @@ export type LivePriceMap = Record<
 interface UseGlobalPriceRefreshOptions {
   staleMinutes?: number;
   /**
+   * 서버 렌더가 이미 알고 있는 기준시각(stock_cache 의 최신 updated_at)입니다.
+   * 넘기면 배지가 첫 페인트부터 시각을 표시하고, 그 값이 아직 신선하면
+   * 마운트 직후의 stock_cache 전량 조회를 건너뜁니다. 서버가 그린 가격과
+   * 같은 테이블·같은 시각의 값이라 다시 받아도 결과가 같습니다.
+   */
+  initialUpdateTime?: string | null;
+  /**
    * asOf 는 넘긴 가격이 "언제 기준" 값인지 나타내는 epoch(ms)입니다.
    * 이 훅은 stock_cache 를 읽으므로 행들의 updated_at 중 가장 최신 값을 씁니다.
    * 호출부가 네이버 실시간 시세 같은 다른 경로와 같은 심볼을 다룰 때
@@ -28,9 +35,10 @@ interface UseGlobalPriceRefreshOptions {
 
 export function useGlobalPriceRefresh({
   staleMinutes = 15,
+  initialUpdateTime = null,
   onPricesRefreshed,
 }: UseGlobalPriceRefreshOptions = {}) {
-  const [updateTime, setUpdateTime] = useState<string | null>(null);
+  const [updateTime, setUpdateTime] = useState<string | null>(initialUpdateTime);
   const [refreshing, setRefreshing] = useState(false);
 
   const isStale = useMemo(() => {

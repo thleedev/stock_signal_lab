@@ -10,7 +10,7 @@ interface Props {
 
 export function PortfolioHeader({ lastPriceUpdate }: Props) {
   const { refreshing, isStale, updateTime, refresh } =
-    useGlobalPriceRefresh({});
+    useGlobalPriceRefresh({ initialUpdateTime: lastPriceUpdate });
 
   return (
     <PageHeader
