@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase';
 import {
   fetchHolidays,
   fetchFOMCDates,
+  fetchReleaseDates,
   generateExpiryDates,
   loadFallbackEconomicEvents,
   buildEventRow,
@@ -54,7 +55,8 @@ export async function GET(request: NextRequest) {
     rows.push(buildEventRow(e.date, e.type, e.title, 'rule_based', 'KR', null, {}));
   }
 
-  // 3) FOMC (FRED → 폴백)
+  // 3) FOMC — 연준 캘린더 페이지 파싱 (무키). 이전 FRED release_id=10 은
+  //    FOMC 가 아니라 Consumer Price Index 릴리스였다 (설계 §5.4).
   const fomcDates = new Set<string>();
   for (const year of [thisYear, nextYear]) {
     const dates = await fetchFOMCDates(year);
@@ -63,8 +65,27 @@ export async function GET(request: NextRequest) {
   for (const date of fomcDates) {
     const month = parseInt(date.slice(5, 7), 10);
     rows.push(
-      buildEventRow(date, 'fomc', `FOMC 금리결정 (${month}월)`, 'fred_api', 'US', null, {})
+      buildEventRow(date, 'fomc', `FOMC 금리결정 (${month}월)`, 'fed_web', 'US', null, {})
     );
+  }
+
+  // 3b) CPI(release 10)·고용(release 50) 발표일 — FRED release/dates.
+  //     정적 폴백 JSON 이 2026-03 로 고갈되어 롤링 수집으로 교체한다.
+  const releaseSpecs = [
+    { id: 10, type: 'cpi' as EventType, label: '미국 CPI 발표' },
+    { id: 50, type: 'employment' as EventType, label: '미국 고용지표 발표' },
+  ];
+  let releaseCount = 0;
+  for (const spec of releaseSpecs) {
+    for (const year of [thisYear, nextYear]) {
+      for (const date of await fetchReleaseDates(spec.id, year)) {
+        const month = parseInt(date.slice(5, 7), 10);
+        rows.push(
+          buildEventRow(date, spec.type, `${spec.label} (${month}월)`, 'fred_api', 'US', null, {})
+        );
+        releaseCount++;
+      }
+    }
   }
 
   // 4) 정적 폴백 경제 이벤트 (FOMC + CPI + 고용)
@@ -111,6 +132,7 @@ export async function GET(request: NextRequest) {
       kr_holidays: krHolidaysSet.size,
       expiries: expiries.length,
       fomc: fomcDates.size,
+      releases: releaseCount,
       fallback: fallback.length,
     },
   }, { status: errors.length ? 500 : 200 });
