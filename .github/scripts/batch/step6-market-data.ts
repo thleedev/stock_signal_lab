@@ -11,6 +11,7 @@ import { log } from '../shared/logger.js';
 import { activeIndicators, type IndicatorSpec } from '../../../shared/market/catalog.js';
 import { fetchFredSeries, latestOf } from '../../../shared/market/sources/fred.js';
 import { fetchYahooDaily, fetchNaverIndexDaily } from '../../../shared/market/sources/quotes.js';
+import { fetchNaverBondDaily } from '../../../shared/market/sources/naver-bond.js';
 import { changePct, realizedVol20d } from '../../../shared/market/derive.js';
 
 interface IndicatorRow {
@@ -95,6 +96,14 @@ async function collectOne(spec: IndicatorSpec, source = spec.source): Promise<Co
     };
   }
 
+  if (source.kind === 'naver_bond') {
+    const points = await fetchNaverBondDaily(source.code, daysAgo(40));
+    const last = points[points.length - 1];
+    if (!last) throw new Error(`${spec.key}: 네이버 채권 관측치 없음`);
+    const prev = points.length >= 2 ? points[points.length - 2].value : null;
+    return { date: last.date, value: last.value, prev, source: 'naver' };
+  }
+
   throw new Error(`${spec.key}: 이 step 이 다루지 않는 소스 ${source.kind}`);
 }
 
@@ -110,9 +119,7 @@ export async function runStep6MarketData(): Promise<{ errors: string[]; collecte
   // 수급은 별도 테이블 market_investor_daily 에 step12-investor-daily 가 일별로 적재하고,
   // 화면 조회 시점에 최근 5행을 합산해 판정한다. 이 step 이 다루지 않으므로 수집도,
   // 실패 취급도 하지 않는다.
-  // ecos(KR_3Y)는 인증키 미발급으로 카탈로그에서 이미 enabled:false 라
-  // activeIndicators() 에 안 잡히지만, 카탈로그 변경에 대비해 방어적으로 함께 제외한다.
-  const excludedKinds = new Set(['derived', 'naver_investor', 'ecos']);
+  const excludedKinds = new Set(['derived', 'naver_investor']);
   const specs = activeIndicators().filter((s) => !excludedKinds.has(s.source.kind));
   const derivedSpecs = activeIndicators().filter((s) => s.source.kind === 'derived');
 

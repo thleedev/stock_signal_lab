@@ -169,10 +169,8 @@ export async function runStep13IndicatorStats(
   // 아니라 market_investor_daily 에 적재된다(step12-investor-daily 담당).
   // 여기서 조회하면 관측치 0건이 나오므로 대상에서 제외하고 오류로도
   // 취급하지 않는다 — step6-market-data.ts 가 같은 이유로 같은 소스를
-  // 제외한 것과 동일한 근거다. ecos(KR_3Y)는 카탈로그에서 이미
-  // enabled:false 라 activeIndicators() 에 안 잡히지만 방어적으로 함께
-  // 제외해 둔다(카탈로그가 나중에 바뀌어 활성화되어도 안전하도록).
-  const excludedKinds = new Set(['naver_investor', 'ecos']);
+  // 제외한 것과 동일한 근거다.
+  const excludedKinds = new Set(['naver_investor']);
   const specs = activeIndicators().filter((s) => !excludedKinds.has(s.source.kind));
 
   for (const spec of specs) {

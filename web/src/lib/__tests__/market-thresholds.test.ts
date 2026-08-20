@@ -41,8 +41,8 @@ describe('위험 지수 커버리지', () => {
   });
 
   it('커버리지는 가중치 합 기준이다', () => {
-    // VIX weight=3, 활성 지표 가중치 합=30(shared/market/catalog.ts 실측 —
-    // 아래 활성 지표 14종·가중치 목록 참고). 지표 개수 기준(1/14 ≈ 0.0714)과
+    // VIX weight=3, 활성 지표 가중치 합=31.5(shared/market/catalog.ts 실측 —
+    // KR_3Y 활성화(weight 1.5)로 30 에서 31.5 가 됐다). 지표 개수 기준(1/15 ≈ 0.0667)과
     // 값이 달라야 "가중치 기준"임을 실제로 검증한 것이다. 이 기대값을
     // RISK_THRESHOLDS 에서 다시 계산해서 만들면 카탈로그 가중치가 잘못
     // 바뀌어도 테스트가 항상 자기 자신과 비교해 통과하므로, 카탈로그
@@ -50,19 +50,20 @@ describe('위험 지수 커버리지', () => {
     // 하고, 그 변경은 리뷰에서 드러나야 한다.
     const r = calculateRiskIndex({ VIX: 15 });
     expect(RISK_THRESHOLDS.VIX.weight).toBe(3);
-    expect(Object.values(RISK_THRESHOLDS).reduce((s, t) => s + t.weight, 0)).toBe(30);
-    expect(r.coverage).toBeCloseTo(3 / 30, 10);
-    expect(r.coverage).not.toBeCloseTo(1 / 14, 10);
+    expect(Object.values(RISK_THRESHOLDS).reduce((s, t) => s + t.weight, 0)).toBe(31.5);
+    expect(r.coverage).toBeCloseTo(3 / 31.5, 10);
+    expect(r.coverage).not.toBeCloseTo(1 / 15, 10);
   });
 
   it('비활성 지표는 커버리지 분모에 들어가지 않는다', () => {
-    // VKOSPI 와 KR_3Y 는 소스 사망으로 카탈로그에서 비활성이므로
-    // RISK_THRESHOLDS 자체에 없고, missing 에도 담기지 않는다.
+    // VKOSPI 는 소스 사망으로 카탈로그에서 비활성이므로 RISK_THRESHOLDS
+    // 자체에 없고, missing 에도 담기지 않는다. KR_3Y 는 네이버 채권 소스로
+    // 활성화되어 값이 없으면 missing 에 담긴다.
     const r = calculateRiskIndex({ VIX: 15 });
     expect(r.missing).not.toContain('VKOSPI');
-    expect(r.missing).not.toContain('KR_3Y');
+    expect(r.missing).toContain('KR_3Y');
     expect(RISK_THRESHOLDS.VKOSPI).toBeUndefined();
-    expect(RISK_THRESHOLDS.KR_3Y).toBeUndefined();
+    expect(RISK_THRESHOLDS.KR_3Y).toBeDefined();
   });
 });
 
@@ -84,8 +85,13 @@ describe('단위 정합', () => {
   it('비활성·제거된 지표는 판정 대상이 아니다', () => {
     expect(getRiskLevel('CNN_FEAR_GREED', 20)).toBeNull();
     expect(getRiskLevel('FEAR_GREED', 20)).toBeNull();
-    expect(getRiskLevel('KR_3Y', 3.5)).toBeNull();
     expect(getRiskLevel('VKOSPI', 25)).toBeNull();
+  });
+
+  it('KR_3Y 는 percent 값으로 판정한다', () => {
+    // 네이버 실측 3.79%(2026-08-19)는 주의 구간(3.2~3.8). 4.6 은 극위험.
+    expect(getRiskLevel('KR_3Y', 3.79)).toBe(1);
+    expect(getRiskLevel('KR_3Y', 4.6)).toBe(3);
   });
 });
 

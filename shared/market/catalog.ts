@@ -25,7 +25,7 @@ export type SourceSpec =
   | { kind: 'yahoo'; ticker: string }
   | { kind: 'naver_index'; symbol: string }
   | { kind: 'naver_investor'; field: 'foreign' | 'institution' }
-  | { kind: 'ecos'; statCode: string; itemCode: string }
+  | { kind: 'naver_bond'; code: string }
   | { kind: 'derived'; from: string };
 
 export interface IndicatorSpec {
@@ -298,17 +298,20 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     weight: 3,
     maxStaleDays: 3,
   },
+  // KR_3Y 는 설계 시점에 ECOS 인증키 대기로 비활성이었다. 2026-08-20 실측으로
+  // 네이버 금융 marketindex(IRR_GOVT03Y)가 무키로 2009년까지 소급 제공됨을
+  // 확인해 소스를 교체하고 활성화했다. 기존 데이터는 배치가 ^IRX(미국 13주),
+  // 실시간이 122630.KS(KODEX 레버리지)를 같은 키에 넣어 079 에서 전량 삭제됐다.
   KR_3Y: {
     key: 'KR_3Y',
     label: '국고채 3년',
     layer: 'domestic',
-    enabled: false,
-    disabledReason: 'ECOS 인증키 미발급. 기존 배치는 ^IRX(미국 13주), 실시간은 122630.KS(KODEX 레버리지)를 넣어 두 자산이 섞여 있었음',
-    source: { kind: 'ecos', statCode: '817Y002', itemCode: '010200000' },
+    enabled: true,
+    source: { kind: 'naver_bond', code: 'IRR_GOVT03Y' },
     unit: 'percent',
     direction: 1,
     thresholds: { unit: 'percent', levels: [3.2, 3.8, 4.5] },
-    display: { suffix: '%', digits: 3 },
+    display: { suffix: '%', digits: 2 },
     weight: 1.5,
     maxStaleDays: 5,
   },
