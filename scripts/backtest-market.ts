@@ -104,7 +104,7 @@ async function main() {
   console.log('\n경고 임계값 격자 (학습 구간): 임계 | 적중 | 선행 중앙값 | 오경보율');
   let best: BacktestMetrics | null = null;
   for (let warn = 25; warn <= 70; warn += 5) {
-    const m = evaluate(scores, kospi, trainRegimes, warn);
+    const m = evaluate(scores, kospi, trainRegimes, warn, { from: '2015-01-01', to: '2022-12-31' });
     const hit = m.regimes.filter((r) => r.warned).length;
     const n = m.regimes.filter((r) => r.breachDate).length;
     console.log(
@@ -129,7 +129,7 @@ async function main() {
   if (!best) throw new Error('격자 탐색 결과 없음');
 
   printMetrics('학습 구간 (2015~2022 고점)', best);
-  const validM = evaluate(scores, kospi, validRegimes, best.warnThreshold);
+  const validM = evaluate(scores, kospi, validRegimes, best.warnThreshold, { from: '2023-01-01', to: '2099-12-31' });
   printMetrics('검증 구간 (2023~ 고점)', validM);
   const allM = evaluate(scores, kospi, DRAWDOWN_REGIMES, best.warnThreshold);
   printMetrics('전체 국면', allM);

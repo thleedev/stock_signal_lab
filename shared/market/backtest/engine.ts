@@ -160,6 +160,12 @@ export function evaluate(
   kospi: SeriesPoint[],
   regimes: DrawdownRegime[],
   warnThreshold: number,
+  /**
+   * 오경보율 계산 대상 기간. 학습/검증을 나눠 평가할 때 이 범위를 함께
+   * 잘라야 한다 — 안 자르면 학습 목적 함수가 검증 기간의 평온일까지 보게
+   * 되어 격자 탐색이 검증 데이터를 간접 참조하는 누수가 생긴다.
+   */
+  range?: { from: string; to: string },
 ): BacktestMetrics {
   const dateIdx = new Map(kospi.map((p, i) => [p.date, i]));
   const scoreByDate = new Map(scores.map((s) => [s.date, s.score]));
@@ -210,6 +216,7 @@ export function evaluate(
   let outsideDays = 0;
   let falseAlarms = 0;
   for (const s of scores) {
+    if (range && (s.date < range.from || s.date > range.to)) continue;
     if (s.score == null || inRegime(s.date)) continue;
     outsideDays++;
     if (s.score >= warnThreshold) falseAlarms++;

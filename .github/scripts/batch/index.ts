@@ -13,6 +13,7 @@ import { crawlThemes } from './step10-crawl-themes.js';
 import { runStep11LassiSignals } from './step11-lassi-signals.js';
 import { runStep12InvestorDaily } from './step12-investor-daily.js';
 import { runStep13IndicatorStats } from './step13-indicator-stats.js';
+import { runStep14Verdict } from './step14-verdict.js';
 import { notifyBatchFailure } from '../shared/notify.js';
 import { supabase } from '../shared/supabase.js';
 
@@ -52,6 +53,12 @@ async function main() {
         const s13 = await runStep13IndicatorStats({ date: targetDate });
         summary.errors.push(...s13.errors);
       }
+
+      // 판정은 그날 적재가 끝난 뒤 마지막에 계산한다. 모드별 행을 남겨
+      // 아침 확정 판단과 장중 보정을 화면에서 함께 보여준다 (설계 §7).
+      const kind = mode === 'market-open' ? 'open' : mode === 'market-intraday' ? 'intraday' : 'close';
+      const s14 = await runStep14Verdict({ kind });
+      summary.errors.push(...s14.errors);
 
     } else if (mode === 'prices-only') {
       log('main', '장중 현재가 수집 모드');
@@ -112,6 +119,10 @@ async function main() {
 
       const s13 = await runStep13IndicatorStats({ date: targetDate });
       summary.errors.push(...s13.errors);
+
+      // full(16:10)은 마감 확정(20:10 market-close) 전이므로 intraday 로 남긴다.
+      const s14 = await runStep14Verdict({ kind: 'intraday' });
+      summary.errors.push(...s14.errors);
 
       await runStep8Cleanup();
 
