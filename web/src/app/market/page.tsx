@@ -27,6 +27,8 @@ export default async function MarketPage() {
     { data: scoreHistory, error: scoreHistoryError },
     { data: events, error: eventsError },
     { data: investorDaily, error: investorError },
+    { data: verdictRows, error: verdictError },
+    { data: backtestRun, error: backtestError },
   ] = await Promise.all([
     supabase
       .from("market_indicators")
@@ -58,6 +60,21 @@ export default async function MarketPage() {
       .select("date, foreign_net, institution_net")
       .order("date", { ascending: false })
       .limit(5),
+    // 판정 — 배치(step14)가 계산·저장한 값을 읽기만 한다. 최근 6행이면
+    // 최소 이틀치(모드 최대 3종)라, 주말·공휴일에도 마지막 거래일 판정이 잡힌다.
+    supabase
+      .from("market_verdict")
+      .select("date, kind, status, score, action, coverage, contributions, missing, as_of")
+      .order("date", { ascending: false })
+      .order("as_of", { ascending: false })
+      .limit(6),
+    // 백테스트 실적 — 최신 run 1건과 그 국면별 결과 (설계 §6.5)
+    supabase
+      .from("market_backtest_run")
+      .select("id, warn_threshold, median_lead_days, false_alarm_rate, market_backtest_result(regime, peak_date, breach_date, warned, first_warn_date, lead_days)")
+      .order("run_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   // 조회 실패는 빈 배열과 구분되지 않으면 "데이터 없음"으로 오인된다.
@@ -67,6 +84,8 @@ export default async function MarketPage() {
   if (scoreHistoryError) console.error("[market] market_score_history 조회 실패:", scoreHistoryError.message);
   if (eventsError) console.error("[market] market_events 조회 실패:", eventsError.message);
   if (investorError) console.error("[market] market_investor_daily 조회 실패:", investorError.message);
+  if (verdictError) console.error("[market] market_verdict 조회 실패:", verdictError.message);
+  if (backtestError) console.error("[market] market_backtest_run 조회 실패:", backtestError.message);
 
   // 지표별 최신 1행만 남깁니다
   const seen = new Set<string>();
@@ -116,12 +135,23 @@ export default async function MarketPage() {
     };
   }
 
+  // 판정: 최신 날짜의 행들만 남긴다. as_of 내림차순 정렬이라 [0] 이
+  // 그 날짜의 최신 판정(장중 보정 또는 마감 확정)이고, 같은 날짜의
+  // open 행이 있으면 "아침 확정" 참고값으로 함께 넘긴다.
+  const latestDate = verdictRows?.[0]?.date as string | undefined;
+  const todayVerdicts = (verdictRows || []).filter((v) => v.date === latestDate);
+  const verdict = todayVerdicts[0] ?? null;
+  const verdictOpen = todayVerdicts.find((v) => v.kind === "open") ?? null;
+
   return (
     <MarketClient
       indicators={indicators}
       statsByKey={statsByKey}
       scoreHistory={scoreHistory || []}
       events={events || []}
+      verdict={verdict}
+      verdictOpen={verdictOpen && verdictOpen !== verdict ? verdictOpen : null}
+      backtest={backtestRun ?? null}
     />
   );
 }
