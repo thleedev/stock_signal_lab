@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 import { buildEventRow } from '@/lib/market-events';
+import { verifyCollectorKey, unauthorizedResponse } from '@/lib/auth';
 import type { EventType } from '@/types/market-event';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!verifyCollectorKey(request)) {
+    return unauthorizedResponse();
+  }
+
   const body = await request.json();
   const { event_date, event_type, title, description, country, metadata } = body as {
     event_date: string;

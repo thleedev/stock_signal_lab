@@ -147,7 +147,7 @@ export async function runStep4Scoring(opts: { date: string }): Promise<{ scored:
         if (!cache) continue;
 
         const prices = priceMap.get(symbol) ?? []; // oldest-first
-        const dart = dartMap.get(symbol) ?? {};
+        const dart: Record<string, unknown> = dartMap.get(symbol) ?? {};
         const signalSources = signalSourceMap.get(symbol) ?? [];
         const todaySourceCount = todaySignalCountMap.get(symbol)?.size ?? 0;
 

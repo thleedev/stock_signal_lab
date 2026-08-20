@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -18,25 +18,11 @@ export async function GET() {
   });
 }
 
-export async function PUT(request: NextRequest) {
-  const supabase = createServiceClient();
-  const body = await request.json();
-
-  // body: { weights: { VIX: 3.0, USD_KRW: 2.0, ... } }
-  const { weights } = body as { weights: Record<string, number> };
-
-  if (!weights || typeof weights !== 'object') {
-    return NextResponse.json({ error: 'weights object required' }, { status: 400 });
-  }
-
-  const updates = Object.entries(weights).map(([indicator_type, weight]) =>
-    supabase
-      .from('indicator_weights')
-      .update({ weight, updated_at: new Date().toISOString() })
-      .eq('indicator_type', indicator_type)
+// 가중치는 shared/market/catalog.ts 로 일원화되어 이 라우트가 더는 정본이 아니다.
+// 쓰기는 막되 조회(GET)는 기존 소비처가 남아 있을 수 있어 그대로 둔다.
+export async function PUT() {
+  return NextResponse.json(
+    { success: false, error: '가중치는 shared/market/catalog.ts 에서 관리합니다' },
+    { status: 410 }
   );
-
-  await Promise.all(updates);
-
-  return NextResponse.json({ success: true });
 }

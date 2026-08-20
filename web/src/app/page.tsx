@@ -109,9 +109,18 @@ export default async function DashboardPage() {
   const stockbotData = calcReturn(stockbotSnap as { total_value: number; cash: number; holdings: unknown[] } | null);
   const quantData = calcReturn(quantSnap as { total_value: number; cash: number; holdings: unknown[] } | null);
 
-  const riskIndex = latestScore?.risk_index ?? 0;
+  // risk_index 는 nullable(마이그레이션 032)이고, 크론(cron/market-score/
+  // route.ts)이 지표 커버리지 미달 시 의도적으로 null 을 저장한다. `?? 0`
+  // 폴백은 "판정 불가"와 "0(가장 안전)"을 구분하지 못해, 배치가 죽은 날도
+  // DashboardRiskBanner 가 초록 "안전"으로 그리는 결함으로 이어졌다.
+  const riskIndex = latestScore?.risk_index ?? null;
   const marketScore = latestScore?.total_score ?? 50;
-  const eventRiskScore = latestScore?.event_risk_score ?? 100;
+  // event_risk_score 는 nullable 컬럼(마이그레이션 023)이라, 크론 미실행·
+  // 최초 행 부재 등으로 값이 없을 수 있다. `?? 100` 폴백은 결손을 "이벤트
+  // 100 · 매우 긍정적"(초록)으로 그려, risk_index 에서 고친 것과 같은
+  // "결손→안전 신호" 결함을 이 카드에 남긴다(최종 리뷰 M6). null 을 그대로
+  // 넘겨 MarketSummaryCard 가 중립 「산출 불가」로 렌더링하게 한다.
+  const eventRiskScore = latestScore?.event_risk_score ?? null;
 
   return (
     <PageLayout>

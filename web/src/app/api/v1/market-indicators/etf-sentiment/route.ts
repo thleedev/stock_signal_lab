@@ -20,9 +20,23 @@ export async function GET() {
       .select('name, symbol, signal_type, timestamp')
       .eq('source', 'lassi')
       .in('signal_type', [...BUY_TYPES, ...SELL_TYPES])
-      .order('timestamp', { ascending: false });
+      .order('timestamp', { ascending: false })
+      .limit(1000);
 
-    if (error || !signals) {
+    if (error) {
+      // 조회 실패를 "신호 없음"과 같은 success:true 로 감추면 원인 추적이 안 된다.
+      console.error('[etf-sentiment] signals 조회 실패:', error.message);
+      return NextResponse.json({
+        success: false,
+        error: 'signals 조회 실패',
+        sectors: {},
+        overallSentiment: 0,
+        overallLabel: 'neutral',
+        updatedAt: new Date().toISOString(),
+      }, { status: 500 });
+    }
+
+    if (!signals) {
       return NextResponse.json({
         success: true,
         sectors: {},

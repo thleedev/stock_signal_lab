@@ -11,9 +11,12 @@ import { runStep8Cleanup } from './step8-cleanup.js';
 import { crawlSectors } from './step9-crawl-sectors.js';
 import { crawlThemes } from './step10-crawl-themes.js';
 import { runStep11LassiSignals } from './step11-lassi-signals.js';
+import { runStep12InvestorDaily } from './step12-investor-daily.js';
+import { runStep13IndicatorStats } from './step13-indicator-stats.js';
+import { notifyBatchFailure } from '../shared/notify.js';
 import { supabase } from '../shared/supabase.js';
 
-type BatchMode = 'full' | 'repair' | 'prices-only';
+type BatchMode = 'full' | 'repair' | 'prices-only' | 'market-open' | 'market-intraday' | 'market-close';
 
 const mode = (process.env.BATCH_MODE ?? 'full') as BatchMode;
 // TARGET_DATE 미지정 시 폴백은 UTC 날짜라 KST 와 하루 어긋날 수 있습니다.
@@ -26,7 +29,31 @@ async function main() {
   const runId = await startBatchRun(mode, triggeredBy);
 
   try {
-    if (mode === 'prices-only') {
+    if (mode === 'market-open' || mode === 'market-intraday' || mode === 'market-close') {
+      log('main', `시황 갱신 모드 ${mode}`);
+
+      const s6 = await runStep6MarketData();
+      summary.collected = s6.collected;
+      summary.errors.push(...s6.errors);
+
+      const s12 = await runStep12InvestorDaily();
+      summary.errors.push(...s12.errors);
+
+      // 판정 갱신은 개장 전·마감 후에만 한다. 장중엔 국내 지표만 갱신하면
+      // 되므로 이벤트 API(공휴일·선물옵션 만기·FOMC)를 매시 두드릴 이유가 없다.
+      if (mode !== 'market-intraday') {
+        const s7 = await runStep7Events();
+        summary.errors.push(...s7.errors);
+      }
+
+      // 롤링 통계는 그날 지표가 모두 적재된 마감 후에 한 번만 재계산한다.
+      // 여기보다 앞에서 돌리면 전날 지표로 통계를 계산하게 된다.
+      if (mode === 'market-close') {
+        const s13 = await runStep13IndicatorStats({ date: targetDate });
+        summary.errors.push(...s13.errors);
+      }
+
+    } else if (mode === 'prices-only') {
       log('main', '장중 현재가 수집 모드');
       const result = await runPricesOnly();
       summary.collected = result.collected;
@@ -74,13 +101,17 @@ async function main() {
         summary.errors.push(`step5: ${(e as Error).message}`);
       });
 
-      await runStep6MarketData().catch(e => {
-        summary.errors.push(`step6: ${(e as Error).message}`);
-      });
+      const s6 = await runStep6MarketData();
+      summary.errors.push(...s6.errors);
 
-      await runStep7Events().catch(e => {
-        summary.errors.push(`step7: ${(e as Error).message}`);
-      });
+      const s12 = await runStep12InvestorDaily();
+      summary.errors.push(...s12.errors);
+
+      const s7 = await runStep7Events();
+      summary.errors.push(...s7.errors);
+
+      const s13 = await runStep13IndicatorStats({ date: targetDate });
+      summary.errors.push(...s13.errors);
 
       await runStep8Cleanup();
 
@@ -94,11 +125,19 @@ async function main() {
       });
     }
 
-    await finishBatchRun(runId, 'done', summary);
+    const status = summary.errors.length > 0 ? 'failed' : 'done';
+    await finishBatchRun(runId, status, summary);
+
+    if (status === 'failed') {
+      log('main', `오류 ${summary.errors.length}건으로 실패 처리`);
+      await notifyBatchFailure(mode, summary.errors);
+      process.exitCode = 1;
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     summary.errors.push(msg);
     await finishBatchRun(runId, 'failed', summary);
+    await notifyBatchFailure(mode, summary.errors);
     process.exit(1);
   }
 }

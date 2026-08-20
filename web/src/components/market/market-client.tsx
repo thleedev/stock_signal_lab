@@ -9,9 +9,11 @@ import {
 } from "lucide-react";
 import {
   getRiskLevel, getRiskInterpretation, getRiskThresholdLabel,
-  calculateRiskIndex, RISK_THRESHOLDS,
-  type RiskLevel,
+  calculateRiskIndex, RISK_THRESHOLDS, COVERAGE_THRESHOLD,
+  type RiskLevel, type IndicatorStats,
 } from "@/lib/market-thresholds";
+import { CATALOG } from "@shared/market/catalog";
+import { getLastNDays } from "@/lib/date-utils";
 import {
   getScoreInterpretation,
   type MarketScoreHistory,
@@ -33,13 +35,15 @@ interface IndicatorRow {
   prev_value: number | null;
   change_pct: number | null;
   date: string;
+  source: string | null;
+  collected_at: string | null;
 }
 
 interface Props {
   indicators: IndicatorRow[];
+  statsByKey: Record<string, IndicatorStats>;
   scoreHistory: Pick<MarketScoreHistory, "date" | "total_score" | "event_risk_score" | "combined_score" | "risk_index">[];
   events: MarketEvent[];
-  historyByType?: Record<string, number[]>;
 }
 
 // ─── 아이콘 매핑 ────────────────────────────────────────
@@ -61,21 +65,43 @@ const INDICATOR_ICONS: Record<string, React.ReactNode> = {
   VKOSPI: <Activity className="w-5 h-5" />,
   HY_SPREAD: <LineChart className="w-5 h-5" />,
   YIELD_CURVE: <GitBranch className="w-5 h-5" />,
+  // 카탈로그 기반 전환으로 판정 대상에 들어온 수급 지표. 이 맵에 없으면
+  // 아래 getIndicatorIcon() 이 기본 아이콘으로 대체하므로 룩업 자체는
+  // 항상 안전하지만, 의미 있는 아이콘을 명시해 둔다.
+  FOREIGN_NET: <Globe className="w-5 h-5" />,
+  INSTITUTION_NET: <Landmark className="w-5 h-5" />,
 };
+
+/** 카탈로그에 지표가 추가돼도 매핑이 없어 깨지지 않도록 기본 아이콘을 둔다. */
+function getIndicatorIcon(type: string): React.ReactNode {
+  return INDICATOR_ICONS[type] ?? <Activity className="w-5 h-5" />;
+}
 
 // ─── 값 포맷 ────────────────────────────────────────────
 
+/**
+ * 카탈로그의 display.suffix·display.digits 로 원값을 포맷한다.
+ * 지표별 하드코딩 분기(toFixed 자릿수, "$"·"원"·"bps" 접미사 등)를
+ * 두면 카탈로그에 지표를 추가·변경할 때마다 이 파일도 같이 고쳐야
+ * 하고, 실제로 FOREIGN_NET·INSTITUTION_NET 이 분기 밖으로 빠져
+ * 억원 단위 표기 없이 숫자만 보이던 사고로 이어졌다. 카탈로그에 없는
+ * 타입(예: 실시간 전용 임시 지표)은 소수점 2자리로 안전하게 폴백한다.
+ *
+ * display.suffix 는 접미사만 표현할 수 있어 WTI·GOLD·EWY(unit: 'usd')는
+ * 카탈로그만으로는 통화 단서가 사라진다("2,000.00"만 보임). catalog.ts
+ * 는 수정 대상이 아니므로, 이미 카탈로그가 갖고 있는 unit 필드(판정
+ * 단위가 아니라 저장 단위)를 읽어 usd 인 지표에만 화면에서 "$" 접두사를
+ * 보충한다 — 하드코딩 지표명 분기가 아니라 카탈로그 필드 기반 규칙이다.
+ */
 function formatValue(type: string, value: number): string {
-  if (["USD_KRW"].includes(type)) return value.toLocaleString("ko-KR", { maximumFractionDigits: 2 }) + "원";
-  if (["US_10Y", "KR_3Y"].includes(type)) return value.toFixed(3) + "%";
-  if (["VIX", "VKOSPI", "FEAR_GREED", "DXY"].includes(type)) return value.toFixed(2);
-  if (["CNN_FEAR_GREED"].includes(type)) return value.toFixed(1) + " / 100";
-  if (["WTI", "GOLD"].includes(type)) return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (["KOSPI", "KOSDAQ"].includes(type)) return value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
-  if (["KORU", "EWY"].includes(type)) return "$" + value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (["HY_SPREAD"].includes(type)) return value.toFixed(0) + " bps";
-  if (["YIELD_CURVE"].includes(type)) return (value >= 0 ? "+" : "") + value.toFixed(0) + " bps";
-  return value.toFixed(2);
+  const spec = CATALOG[type];
+  if (!spec) return value.toFixed(2);
+  const formatted = value.toLocaleString("ko-KR", {
+    minimumFractionDigits: spec.display.digits,
+    maximumFractionDigits: spec.display.digits,
+  });
+  const prefix = spec.unit === "usd" ? "$" : "";
+  return `${prefix}${formatted}${spec.display.suffix}`;
 }
 
 // ─── 위험 레벨 색상/라벨 ────────────────────────────────
@@ -98,14 +124,39 @@ function RiskBadge({ level }: { level: RiskLevel }) {
 }
 
 // ─── 위험 경보 배너 ──────────────────────────────────────
+// 커버리지 임계값(COVERAGE_THRESHOLD)과 그 근거는 market-thresholds.ts 에
+// 있다 — 화면·크론(cron/market-score/route.ts) 이 각자 리터럴로 들고
+// 있으면 둘이 따로 움직일 수 있어 한곳에서만 export 한다.
 
 function RiskAlertBanner({
-  riskIndex, dangerCount, validCount,
+  riskIndex, dangerCount, validCount, coverage, missing,
 }: {
   riskIndex: number;
   dangerCount: number;
   validCount: number;
+  coverage: number;
+  missing: string[];
 }) {
+  // 커버리지 미달이면 점수를 내지 않는다.
+  // 이전 구현은 지표 0건일 때 riskIndex 0 을 calculateRiskIndex 가 그대로
+  // 반환하고, getRiskInterpretation(0) 이 이를 "안전 · 적극 매수 가능"으로
+  // 해석해 초록 배너로 표시했다. 파이프라인이 완전히 죽은 상태와 시장이
+  // 가장 안전한 상태가 화면에서 구분되지 않는 문제였다.
+  if (coverage < COVERAGE_THRESHOLD) {
+    return (
+      <div className="card p-3 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 border-[var(--border)]">
+        <OctagonAlert className="w-8 h-8 sm:w-10 sm:h-10 shrink-0 text-[var(--muted)]" />
+        <div className="flex-1 min-w-0">
+          <div className="text-xl sm:text-2xl font-bold text-[var(--muted)]">산출 불가</div>
+          <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
+            지표 커버리지 {Math.round(coverage * 100)}% · 결측 {missing.length}종
+            {missing.length > 0 && ` (${missing.slice(0, 4).join(", ")}${missing.length > 4 ? " 외" : ""})`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const interp = getRiskInterpretation(riskIndex);
   const level = riskIndex >= 75 ? 3 : riskIndex >= 50 ? 2 : riskIndex >= 25 ? 1 : 0;
   const Icon = level >= 3 ? ShieldX : level >= 2 ? OctagonAlert : level >= 1 ? ShieldAlert : ShieldCheck;
@@ -132,6 +183,15 @@ function RiskAlertBanner({
         <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
           {validCount}개 지표 중 {dangerCount}개가 위험 구간 · {interp.action}
         </p>
+        {/* 커버리지 게이트(위 분기)는 "점수를 낼지 말지"만 정한다. 게이트를
+            통과해도(coverage ≥ 0.7) 파생 4종처럼 가벼운 지표군이 통째로
+            빠질 수 있어(coverage 0.833 등) "무엇이 빠졌는지"는 항상 따로
+            알려야 한다 — 안 그러면 회귀가 재발해도 이 배너가 침묵한다. */}
+        {missing.length > 0 && (
+          <p className="text-[11px] sm:text-xs text-[var(--warning)] mt-1">
+            결손 {missing.length}종: {missing.slice(0, 4).join(", ")}{missing.length > 4 ? " 외" : ""}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -156,19 +216,41 @@ function SummaryCard({
   );
 }
 
+/**
+ * 두 YYYY-MM-DD 날짜 문자열의 일수 차(b - a). 둘 다 날짜만 있는 값이라
+ * UTC 자정으로 파싱해도 시간대 오차가 없다(타임스탬프가 아니라 달력
+ * 날짜 비교라서 KST/UTC 어느 쪽으로 읽어도 같은 결과).
+ */
+function daysBetween(dateA: string, dateB: string): number {
+  const a = new Date(`${dateA}T00:00:00Z`).getTime();
+  const b = new Date(`${dateB}T00:00:00Z`).getTime();
+  return Math.round((b - a) / 86400000);
+}
+
 // ─── 지표 카드 (React.memo로 불필요한 리렌더링 방지) ─────
 
 const IndicatorCard = React.memo(function IndicatorCard({
-  ind, level,
+  ind, level, sampleDays, todayKst,
 }: {
   ind: IndicatorRow;
   level: RiskLevel | null;
+  /** market_indicator_stats.sample_days — derive 지표 라벨의 실제 창 길이 계산용 */
+  sampleDays?: number;
+  /** KST 기준 오늘 날짜(YYYY-MM-DD) — 지표 기준일이 얼마나 지연됐는지 판단용 */
+  todayKst: string;
 }) {
   const t = RISK_THRESHOLDS[ind.indicator_type];
-  const changePct = ind.change_pct ?? 0;
-  const isUp = changePct > 0;
-  const isDown = changePct < 0;
-  const thresholdLabel = level !== null ? getRiskThresholdLabel(ind.indicator_type, level) : null;
+  const spec = CATALOG[ind.indicator_type];
+  const changePct = ind.change_pct;
+  const isUp = changePct !== null && changePct > 0;
+  const isDown = changePct !== null && changePct < 0;
+  const thresholdLabel = level !== null ? getRiskThresholdLabel(ind.indicator_type, level, sampleDays) : null;
+
+  // 결손 감지: page.tsx 는 최근 30일 조회에서 지표별 최신 1건만 남기므로,
+  // 배치가 며칠 멈춰도 그 마지막 값이 계속 반환돼 커버리지·배너만으로는
+  // 알 수 없다. maxStaleDays(카탈로그)를 넘긴 기준일만이 유일한 단서다.
+  const staleDays = daysBetween(ind.date, todayKst);
+  const isStale = spec != null && staleDays > spec.maxStaleDays;
 
   return (
     <div className="px-3 sm:px-4 py-2.5 sm:py-3 flex items-center gap-2 sm:gap-3 flex-wrap hover:bg-[var(--card-hover)] transition-colors">
@@ -179,10 +261,21 @@ const IndicatorCard = React.memo(function IndicatorCard({
         )}
       </div>
 
-      {/* 지표명 */}
+      {/* 아이콘 */}
+      <div className="shrink-0 text-[var(--muted)]">
+        {getIndicatorIcon(ind.indicator_type)}
+      </div>
+
+      {/* 지표명 + 기준일 */}
       <div className="flex-1 min-w-[5rem] sm:min-w-[6rem]">
         <span className="text-xs sm:text-sm font-medium">{t?.label ?? ind.indicator_type}</span>
         <span className="text-[11px] sm:text-xs text-[var(--muted)] ml-1 sm:ml-1.5">{ind.indicator_type}</span>
+        <span
+          className={`block text-[10px] tabular-nums ${isStale ? "text-[var(--warning)] font-medium" : "text-[var(--muted)]"}`}
+          title={isStale ? `카탈로그 갱신 주기(${spec?.maxStaleDays}일)를 넘겼습니다` : undefined}
+        >
+          {ind.date}{isStale && ` · ${staleDays}일 지연`}
+        </span>
       </div>
 
       {/* 현재값 */}
@@ -190,9 +283,9 @@ const IndicatorCard = React.memo(function IndicatorCard({
         {formatValue(ind.indicator_type, ind.value)}
       </span>
 
-      {/* 변화율 */}
+      {/* 변화율: FOREIGN_NET/INSTITUTION_NET(5일 누적)은 등락률이 정의되지 않아 null — "+0.00%"로 치환하지 않고 "-"로 구분한다 */}
       <span className={`text-[11px] sm:text-xs tabular-nums ${isUp ? "text-red-400" : isDown ? "text-blue-400" : "text-[var(--muted)]"}`}>
-        {changePct > 0 ? "+" : ""}{changePct.toFixed(2)}%
+        {changePct === null ? "-" : `${changePct > 0 ? "+" : ""}${changePct.toFixed(2)}%`}
       </span>
 
       {/* 임계값 기준 */}
@@ -254,7 +347,7 @@ function RiskHistoryChart({ history }: {
 
 // ─── 메인 컴포넌트 ──────────────────────────────────────
 
-export function MarketClient({ indicators: initialIndicators, scoreHistory, events, historyByType }: Props) {
+export function MarketClient({ indicators: initialIndicators, statsByKey, scoreHistory, events }: Props) {
   const [indicators, setIndicators] = useState(initialIndicators);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
@@ -287,7 +380,12 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
           };
         });
 
-        // 실시간에만 있는 새 지표 추가 (CNN_FEAR_GREED 등)
+        // 실시간에만 있는 새 지표를 추가하는 방어적 병합 로직. 과거에는
+        // CNN_FEAR_GREED(소스 차단)·FEAR_GREED(VIX 역산 합성)가 이 경로로
+        // 카탈로그에 없는 카드를 띄웠다 — 설계 §5.3 제거 대상이라 카탈로그·
+        // realtime 라우트 양쪽에서 없앴다(최종 리뷰 I2). 지금은 해당하는
+        // 예가 없지만, 카탈로그에 없는 실시간 지표가 다시 추가될 경우를
+        // 대비해 병합 로직 자체는 남겨 둔다.
         const existingTypes = new Set(updated.map(i => i.indicator_type));
         for (const [type, rt] of Object.entries(realtimeMap)) {
           if (!existingTypes.has(type)) {
@@ -297,6 +395,8 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
               prev_value: rt.prev_value,
               change_pct: rt.change_pct,
               date: new Date().toISOString().slice(0, 10),
+              source: "realtime",
+              collected_at: new Date().toISOString(),
             });
           }
         }
@@ -350,10 +450,13 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
     return m;
   }, [indicators]);
 
-  // 위험 지수 계산 (절대 임계값 + 252일 분위수 하이브리드)
-  const { riskIndex, breakdown, validCount, dangerCount } = useMemo(
-    () => calculateRiskIndex(valueMap, historyByType),
-    [valueMap, historyByType]
+  // 위험 지수 계산 (절대 임계값 + 상대 분위수 하이브리드).
+  // statsByKey(market_indicator_stats 배치 선계산치)를 넘겨야 KOSPI/KOSDAQ/
+  // EWY/GOLD 같은 drawdown_52w·ma200_diff 파생 지표가 판정에 들어온다.
+  // 생략하면 이 넷은 통계가 없어 missing 으로 빠져 배지 없이 표시된다.
+  const { riskIndex, breakdown, validCount, dangerCount, coverage, missing } = useMemo(
+    () => calculateRiskIndex(valueMap, statsByKey),
+    [valueMap, statsByKey]
   );
 
   // 이벤트 리스크
@@ -379,6 +482,10 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
 
   const recentHistory = scoreHistory.slice(0, 30);
 
+  // KST 기준 오늘 — 지표 기준일(ind.date) 지연 판정용. 렌더마다 다시 구해도
+  // Date 연산 하나뿐이라 비용이 무시할 만하다.
+  const todayKst = getLastNDays(1)[0];
+
   return (
     <PageLayout>
       {/* 페이지 제목 */}
@@ -402,6 +509,8 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
         riskIndex={riskIndex}
         dangerCount={dangerCount}
         validCount={validCount}
+        coverage={coverage}
+        missing={missing}
       />
 
       {/* 요약 카드 3개 */}
@@ -410,7 +519,12 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
           title="위험 지표"
           value={`${dangerCount} / ${validCount}`}
           sub="위험(🟠) 이상 지표 수"
-          color={dangerCount >= 4 ? "#ef4444" : dangerCount >= 2 ? "#f97316" : "#10b981"}
+          // 커버리지 미달(산출 불가 배너)일 때 "0 / 0"이 초록으로 뜨면 바로
+          // 위 회색 배너와 모순돼 보인다 — 이 카드도 중립색으로 맞춘다.
+          color={
+            coverage < COVERAGE_THRESHOLD ? "var(--muted)"
+            : dangerCount >= 4 ? "#ef4444" : dangerCount >= 2 ? "#f97316" : "#10b981"
+          }
         />
         <SummaryCard
           title="이벤트 리스크"
@@ -447,9 +561,15 @@ export function MarketClient({ indicators: initialIndicators, scoreHistory, even
         <h2 className="text-lg font-semibold mb-3">지표별 위험 현황</h2>
         <div className="card divide-y divide-[var(--border)] overflow-hidden">
           {sortedIndicators.map((ind) => {
-            const level = breakdown[ind.indicator_type]?.level ?? getRiskLevel(ind.indicator_type, ind.value, historyByType?.[ind.indicator_type]);
+            const level = breakdown[ind.indicator_type]?.level ?? getRiskLevel(ind.indicator_type, ind.value);
             return (
-              <IndicatorCard key={ind.indicator_type} ind={ind} level={level} />
+              <IndicatorCard
+                key={ind.indicator_type}
+                ind={ind}
+                level={level}
+                sampleDays={statsByKey[ind.indicator_type]?.sample_days}
+                todayKst={todayKst}
+              />
             );
           })}
         </div>

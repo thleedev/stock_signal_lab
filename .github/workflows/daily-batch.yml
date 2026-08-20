@@ -2,9 +2,14 @@ name: Daily Batch
 
 on:
   schedule:
+    # 시황 확정(개장 전) 07:30 KST — UTC 는 하루 당겨진다. KST 월~금 07:30 은
+    # UTC 로 그 전날인 일~목 22:30 이라, 요일 지정도 하루 앞당긴 0-4(일~목)를 쓴다.
+    - cron: '30 22 * * 0-4'     # 시황 확정 07:30 KST (UTC 일~목 22:30)
     - cron: '*/15 23 * * 0-4'   # 장중 현재가 08:00~08:45 KST (UTC 일~목 23:xx = KST 월~금 08:xx)
     - cron: '*/15 0-11 * * 1-5' # 장중 현재가 09:00~20:45 KST (UTC 월~금 00:xx~11:xx = KST 월~금 09:xx~20:xx)
+    - cron: '5 1-6 * * 1-5'     # 장중 시황 보정 10:05~15:05 KST (매시)
     - cron: '10 7 * * 1-5'      # 메인 배치 16:10 KST
+    - cron: '10 11 * * 1-5'     # 시황 마감 확정 20:10 KST
     - cron: '0 22 * * *'        # 보정 배치 07:00 KST
   workflow_dispatch:
     inputs:
@@ -12,7 +17,7 @@ on:
         description: '재수집 기준일 (YYYY-MM-DD, 빈칸이면 오늘)'
         required: false
       mode:
-        description: 'full | repair | prices-only'
+        description: 'full | repair | prices-only | market-open | market-intraday | market-close'
         required: false
         default: 'full'
 
@@ -41,6 +46,12 @@ jobs:
 
           if [ -n "$INPUT_MODE" ]; then
             MODE="$INPUT_MODE"
+          elif [ "$SCHEDULE" = "30 22 * * 0-4" ]; then
+            MODE="market-open"
+          elif [ "$SCHEDULE" = "5 1-6 * * 1-5" ]; then
+            MODE="market-intraday"
+          elif [ "$SCHEDULE" = "10 11 * * 1-5" ]; then
+            MODE="market-close"
           elif [ "$SCHEDULE" = "10 7 * * 1-5" ]; then
             MODE="full"
           elif [ "$SCHEDULE" = "0 22 * * *" ]; then
@@ -62,6 +73,8 @@ jobs:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           VERCEL_URL: ${{ secrets.VERCEL_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BATCH_MODE: ${{ steps.detect-mode.outputs.mode }}
           TARGET_DATE: ${{ inputs.date }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}

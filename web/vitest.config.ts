@@ -20,13 +20,14 @@ const TZ = process.env.TZ || 'UTC';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', '../shared/**/*.test.ts'],
     exclude: ['node_modules'],
     env: { TZ },
   },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@shared': path.resolve(__dirname, '../shared'),
     },
   },
 });
