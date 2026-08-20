@@ -81,3 +81,7 @@ __pycache__/
 !.yarn/releases
 !.yarn/versions
 .worktrees/
+
+# 로컬 작업물 (커밋 제외)
+_workspace/
+tools/traffic-capture/
