@@ -29,9 +29,10 @@ describe('calculateVerdict', () => {
       VIX: 28, HY_SPREAD: 6.0, YIELD_CURVE: -0.6, US_10Y: 4.6, DXY: 105,
       WTI: 95, GOLD: 2500, EWY: 60, KOSPI: 2400, KOSDAQ: 700,
       KR_VOL_20D: 30, USD_KRW: 1450, FOREIGN_NET: -13000, INSTITUTION_NET: -10000,
-      KR_3Y: 4.0,
+      KR_3Y: 4.0, CREDIT_BALANCE: 320000,
     };
     const stats: Record<string, VerdictStats> = {
+      CREDIT_BALANCE: fullStats({ ma_200d: 280000 }),
       GOLD: fullStats({ ma_200d: 2000 }),
       EWY: fullStats({ high_52w: 80 }),
       KOSPI: fullStats({ high_52w: 3000 }),

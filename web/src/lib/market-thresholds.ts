@@ -282,7 +282,7 @@ export function getRelativeRiskLevel(
  * 리터럴로 들고 있으면 둘이 따로 움직일 수 있어 여기 한곳에서만 export
  * 한다.
  *
- * 활성 지표 전체 가중치 합은 30이다(shared/market/catalog.ts 실측 —
+ * 활성 지표 전체 가중치 합은 33.5다(shared/market/catalog.ts 실측 —
  * 카탈로그가 바뀌면 이 숫자와 아래 계산도 다시 검산해야 한다). 0.7
  * 미만, 즉 가중치 9 초과 손실에서 이 게이트가 걸린다.
  *

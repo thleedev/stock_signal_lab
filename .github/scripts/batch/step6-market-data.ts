@@ -12,6 +12,7 @@ import { activeIndicators, type IndicatorSpec } from '../../../shared/market/cat
 import { fetchFredSeries, latestOf } from '../../../shared/market/sources/fred.js';
 import { fetchYahooDaily, fetchNaverIndexDaily } from '../../../shared/market/sources/quotes.js';
 import { fetchNaverBondDaily } from '../../../shared/market/sources/naver-bond.js';
+import { fetchCreditBalance } from '../../../shared/market/sources/kofia-credit.js';
 import { changePct, realizedVol20d } from '../../../shared/market/derive.js';
 
 interface IndicatorRow {
@@ -94,6 +95,16 @@ async function collectOne(spec: IndicatorSpec, source = spec.source): Promise<Co
       source: 'naver',
       series: points.map((p) => p.close),
     };
+  }
+
+  if (source.kind === 'kofia_credit') {
+    // derive(ma200_diff) 판정용 통계는 step13 이 DB 이력으로 계산하므로
+    // 여기서는 최근 값만 있으면 된다. 40일이면 prev·change_pct 산출에 충분하다.
+    const points = await fetchCreditBalance(daysAgo(40), to);
+    const last = points[points.length - 1];
+    if (!last) throw new Error(`${spec.key}: FreeSIS 관측치 없음`);
+    const prev = points.length >= 2 ? points[points.length - 2].value : null;
+    return { date: last.date, value: last.value, prev, source: 'kofia' };
   }
 
   if (source.kind === 'naver_bond') {

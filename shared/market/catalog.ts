@@ -26,6 +26,7 @@ export type SourceSpec =
   | { kind: 'naver_index'; symbol: string }
   | { kind: 'naver_investor'; field: 'foreign' | 'institution' }
   | { kind: 'naver_bond'; code: string }
+  | { kind: 'kofia_credit' }
   | { kind: 'derived'; from: string };
 
 export interface IndicatorSpec {
@@ -268,6 +269,24 @@ export const CATALOG: Record<string, IndicatorSpec> = {
     display: { suffix: '억', digits: 0 },
     weight: 3,
     maxStaleDays: 3,
+  },
+  // FreeSIS 요청 스펙을 2026-08-20 브라우저 캡처로 확보해 활성화했다
+  // (shared/market/sources/kofia-credit.ts). 잔고 절대 수준은 장기 우상향이라
+  // 고정 임계값이 금방 낡는다 — 200일 이평 대비 이격도(percent)로 판정해
+  // "레버리지가 추세보다 얼마나 과열됐는가"를 본다.
+  CREDIT_BALANCE: {
+    key: 'CREDIT_BALANCE',
+    label: '신용거래융자 잔고',
+    layer: 'domestic',
+    enabled: true,
+    source: { kind: 'kofia_credit' },
+    unit: 'won_100m',
+    direction: 1,
+    thresholds: { unit: 'percent', levels: [6, 12, 20] },
+    display: { suffix: '억', digits: 0 },
+    weight: 2,
+    derive: 'ma200_diff',
+    maxStaleDays: 4,
   },
   INSTITUTION_NET: {
     key: 'INSTITUTION_NET',

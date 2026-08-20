@@ -41,8 +41,8 @@ describe('위험 지수 커버리지', () => {
   });
 
   it('커버리지는 가중치 합 기준이다', () => {
-    // VIX weight=3, 활성 지표 가중치 합=31.5(shared/market/catalog.ts 실측 —
-    // KR_3Y 활성화(weight 1.5)로 30 에서 31.5 가 됐다). 지표 개수 기준(1/15 ≈ 0.0667)과
+    // VIX weight=3, 활성 지표 가중치 합=33.5(shared/market/catalog.ts 실측 —
+    // KR_3Y(1.5)·CREDIT_BALANCE(2) 활성화로 30 에서 33.5 가 됐다). 지표 개수 기준(1/16 ≈ 0.0625)과
     // 값이 달라야 "가중치 기준"임을 실제로 검증한 것이다. 이 기대값을
     // RISK_THRESHOLDS 에서 다시 계산해서 만들면 카탈로그 가중치가 잘못
     // 바뀌어도 테스트가 항상 자기 자신과 비교해 통과하므로, 카탈로그
@@ -50,9 +50,9 @@ describe('위험 지수 커버리지', () => {
     // 하고, 그 변경은 리뷰에서 드러나야 한다.
     const r = calculateRiskIndex({ VIX: 15 });
     expect(RISK_THRESHOLDS.VIX.weight).toBe(3);
-    expect(Object.values(RISK_THRESHOLDS).reduce((s, t) => s + t.weight, 0)).toBe(31.5);
-    expect(r.coverage).toBeCloseTo(3 / 31.5, 10);
-    expect(r.coverage).not.toBeCloseTo(1 / 15, 10);
+    expect(Object.values(RISK_THRESHOLDS).reduce((s, t) => s + t.weight, 0)).toBe(33.5);
+    expect(r.coverage).toBeCloseTo(3 / 33.5, 10);
+    expect(r.coverage).not.toBeCloseTo(1 / 16, 10);
   });
 
   it('비활성 지표는 커버리지 분모에 들어가지 않는다', () => {
