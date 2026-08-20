@@ -13,7 +13,7 @@ export type EventType =
 
 export type EventCategory = 'derivatives' | 'holiday' | 'economic' | 'corporate';
 
-export type EventSource = 'rule_based' | 'nager_date' | 'fred_api' | 'manual';
+export type EventSource = 'rule_based' | 'nager_date' | 'fred_api' | 'fed_web' | 'manual';
 
 export interface MarketEvent {
   id: string;
