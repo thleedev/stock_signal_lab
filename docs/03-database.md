@@ -110,12 +110,16 @@
 | 함수 | 도입 | 요약 |
 |------|------|------|
 | `signal_date_kst(ts)` | 040 | `(ts AT TIME ZONE 'Asia/Seoul')::date`. IMMUTABLE 래퍼로 dedup 인덱스 식에 사용 |
-| `upsert_signals_bulk(payload)` | 063 | SECURITY DEFINER RPC. jsonb 배열을 순회 INSERT, 충돌 시 `signal_time = COALESCE(new, existing)`. anon 실행 허용 — 수집기·텔레그램 웹훅이 호출 |
-| `refresh_high_90d_pct()` | 066 | 90일 최고 종가 대비 등락률을 stock_cache에 일괄 갱신 |
+| `upsert_signals_bulk(payload)` | 063 | SECURITY DEFINER RPC. jsonb 배열을 순회 INSERT, 충돌 시 `signal_time = COALESCE(new, existing)`. anon 실행 허용 — Android 수집기가 anon 키로 직접 호출. authenticated·PUBLIC 은 회수 (083·084) |
+| `refresh_high_90d_pct()` | 066 | 90일 최고 종가 대비 등락률을 stock_cache에 일괄 갱신. service_role 전용 (084) |
 | `fn_sync_signal_to_cache()` | 070 | signals INSERT 트리거. BUY 계열은 latest_signal_*, SELL 계열은 latest_sell_* 갱신. 가격은 raw_data 우선순위 COALESCE |
 | `update_market_events_updated_at()` 외 | 023·073 | updated_at 자동 갱신 트리거 2종 |
 
 `signal_date_kst()`는 dedup 인덱스와 RPC의 ON CONFLICT 식이 공유하는 함수이므로, 변경하면 중복 방지 체계 전체에 영향을 줍니다.
+
+위 함수는 모두 `search_path = public, pg_temp` 로 고정되어 있습니다 (083). `upsert_signals_bulk` 를 다시 `CREATE OR REPLACE` 하면 `search_path` 설정과 권한이 초기화되므로, 재정의할 때 083·084 의 `ALTER FUNCTION` 과 `REVOKE` 를 함께 다시 실행해야 합니다. 085 가 그 예입니다. 063 에 남아 있는 `GRANT EXECUTE ... TO authenticated` 는 더 이상 부여하지 않습니다.
+
+마이그레이션 파일 `081_upsert_signals_keep_device_id.sql` 은 `081_market_verdict_backtest.sql` 과 번호가 겹쳐 supabase CLI 가 둘 중 하나만 적용된 것으로 인식했습니다. `085` 로 옮기고 `supabase migration repair` 로 이력을 맞췄습니다. 앞으로 마이그레이션 번호는 중복 없이 붙입니다.
 
 ## 4. pg_cron
 

@@ -1,5 +1,8 @@
 -- ============================================
--- 081: upsert_signals_bulk 가 device_id 를 덮어쓰지 않게 수정
+-- 085: upsert_signals_bulk 가 device_id 를 덮어쓰지 않게 수정
+--
+-- 원래 081 번이었으나 081_market_verdict_backtest 와 번호가 겹쳐
+-- supabase CLI 가 둘 중 하나만 적용된 것으로 인식했습니다. 085 로 옮겼습니다.
 --
 -- 문제
 --   063 의 ON CONFLICT DO UPDATE 는 signal_time·batch_id·device_id 를 갱신하고
@@ -66,9 +69,13 @@ BEGIN
 END;
 $$;
 
+-- 권한: anon 은 Android 수집기가 anon 키로 직접 호출하므로 유지합니다.
+--       authenticated 와 PUBLIC 은 083·084 에서 회수했습니다.
+--       CREATE OR REPLACE 는 권한과 search_path 를 초기화하므로 여기서 다시 겁니다.
 GRANT EXECUTE ON FUNCTION upsert_signals_bulk(jsonb) TO anon;
-GRANT EXECUTE ON FUNCTION upsert_signals_bulk(jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION upsert_signals_bulk(jsonb) TO service_role;
+REVOKE EXECUTE ON FUNCTION upsert_signals_bulk(jsonb) FROM PUBLIC, authenticated;
+ALTER FUNCTION upsert_signals_bulk(jsonb) SET search_path = public, pg_temp;
 
 -- ── 기존 행 정정: raw_data 가 씽크풀 수집분인데 device_id 가 덮인 행을 되돌립니다.
 UPDATE signals
