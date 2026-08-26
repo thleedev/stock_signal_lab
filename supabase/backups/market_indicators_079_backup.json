@@ -1,0 +1,3090 @@
+[
+ {
+  "id": "849bf6ea-b3f9-45af-b93d-8b5c96415a04",
+  "date": "2026-03-11",
+  "indicator_type": "FEAR_GREED",
+  "value": 50.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "method": "vix_based"
+  }
+ },
+ {
+  "id": "5b161fe8-299a-4dec-8fa6-8963993dfd38",
+  "date": "2025-12-30",
+  "indicator_type": "KORU",
+  "value": 189.33,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "82ddde70-4644-4d3b-8863-bdd58e6496e6",
+  "date": "2025-12-31",
+  "indicator_type": "KORU",
+  "value": 181.61,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "7646ef16-d232-47e3-8f02-9c78478c8d19",
+  "date": "2026-01-02",
+  "indicator_type": "KORU",
+  "value": 208.56,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "8f8f503a-8da3-4662-a741-5bef6de5e7f5",
+  "date": "2026-01-05",
+  "indicator_type": "KORU",
+  "value": 224.9,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "a7ea717e-ae63-4543-b85f-2a122d34824b",
+  "date": "2026-01-06",
+  "indicator_type": "KORU",
+  "value": 243.3,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "ba993f99-201c-41f1-8e52-75acaef436d9",
+  "date": "2026-01-07",
+  "indicator_type": "KORU",
+  "value": 238.98,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "fc535256-49e5-4a5a-9e6a-a8da3c88fa7b",
+  "date": "2026-01-08",
+  "indicator_type": "KORU",
+  "value": 236.37,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "79a065a8-2359-497b-b397-74c0ff90780b",
+  "date": "2026-01-09",
+  "indicator_type": "KORU",
+  "value": 250.56,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "23eb7caf-a589-4fd6-978a-487bb0388a22",
+  "date": "2026-01-12",
+  "indicator_type": "KORU",
+  "value": 251.73,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "89be48e4-5e58-446f-96c8-ebaf5c731681",
+  "date": "2026-01-13",
+  "indicator_type": "KORU",
+  "value": 241.41,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "50e34260-1efe-4b5e-bdb6-8ba12cdf7cb7",
+  "date": "2026-01-14",
+  "indicator_type": "KORU",
+  "value": 255.24,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "4c081bf8-9eab-4590-a2a6-b893061c0572",
+  "date": "2026-01-15",
+  "indicator_type": "KORU",
+  "value": 265.45,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "90a1721b-6e12-4f86-88c4-5872b30176f7",
+  "date": "2026-01-16",
+  "indicator_type": "KORU",
+  "value": 273.82,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "cc6e4c49-ab7a-4829-a047-ad2d7b3f783d",
+  "date": "2026-01-20",
+  "indicator_type": "KORU",
+  "value": 264.26,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "cb7abbb3-3eff-4e3c-8617-5ccb8fd7d29b",
+  "date": "2026-01-21",
+  "indicator_type": "KORU",
+  "value": 297.47,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "ad0f0efc-6316-4099-90ba-5e98ad059768",
+  "date": "2026-01-22",
+  "indicator_type": "KORU",
+  "value": 300.57,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "685d3cfd-98f0-495b-92aa-476e2c8c81d4",
+  "date": "2026-01-23",
+  "indicator_type": "KORU",
+  "value": 315.41,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "81eb95d1-0188-45eb-93bb-3a6f0e3f62e0",
+  "date": "2026-01-26",
+  "indicator_type": "KORU",
+  "value": 310.99,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "46ffc9d3-bbef-4cd8-9ccd-584fe4a5dd3f",
+  "date": "2026-01-27",
+  "indicator_type": "KORU",
+  "value": 352.49,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "5eb07d40-d1f7-454e-8f1a-09d1e6e965f8",
+  "date": "2026-01-28",
+  "indicator_type": "KORU",
+  "value": 378.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "5b3d0418-7c1e-463c-862f-8075586577d2",
+  "date": "2026-01-29",
+  "indicator_type": "KORU",
+  "value": 367.74,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "aed609ff-2a72-478d-bc2c-924d1f0c8922",
+  "date": "2026-01-30",
+  "indicator_type": "KORU",
+  "value": 347.9,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "0ec315a4-ee6d-4c34-b8b9-3f2799dba76a",
+  "date": "2026-02-02",
+  "indicator_type": "KORU",
+  "value": 336.91,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "caad1a3e-44ce-4cea-92fb-c7ac0fd4b9a6",
+  "date": "2026-02-03",
+  "indicator_type": "KORU",
+  "value": 363.05,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "8c663db3-c16a-4b3f-b19b-b94034ecb195",
+  "date": "2026-02-04",
+  "indicator_type": "KORU",
+  "value": 329.66,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "cc0cbbba-c702-4c86-8ae7-0c8c2bb89e26",
+  "date": "2026-02-05",
+  "indicator_type": "KORU",
+  "value": 327.78,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "b9902da2-c525-40fa-ac4a-70742857dc00",
+  "date": "2026-02-06",
+  "indicator_type": "KORU",
+  "value": 363.24,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "7536e7ca-3ce2-4a23-9a6f-290c80de3723",
+  "date": "2026-02-09",
+  "indicator_type": "KORU",
+  "value": 375.55,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "a3009087-b2ba-4fee-823d-f34adef14d62",
+  "date": "2026-02-10",
+  "indicator_type": "KORU",
+  "value": 362.12,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "30a9b9ac-98cf-4ded-b154-b9b3aa51ccfd",
+  "date": "2026-02-11",
+  "indicator_type": "KORU",
+  "value": 413.42,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "efdffa5c-1c13-4446-9677-a56d3448ec44",
+  "date": "2026-02-12",
+  "indicator_type": "KORU",
+  "value": 417.68,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "69f1f4a1-932d-4a7c-871a-2e2084a6c6d8",
+  "date": "2026-02-13",
+  "indicator_type": "KORU",
+  "value": 447.49,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "e45c1b50-d697-4186-9557-35cbd2c05128",
+  "date": "2026-02-17",
+  "indicator_type": "KORU",
+  "value": 417.18,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "78130b99-2bdf-430f-9a9e-63c07627886c",
+  "date": "2026-02-18",
+  "indicator_type": "KORU",
+  "value": 435.8,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "c2ec04c7-ebcb-4f76-909a-4691de0ff819",
+  "date": "2026-02-19",
+  "indicator_type": "KORU",
+  "value": 457.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "0ab7c432-9f61-40dd-aeb1-b74dc834c5ae",
+  "date": "2026-02-20",
+  "indicator_type": "KORU",
+  "value": 524.54,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "edbd8544-fdaf-4f9d-9721-c409985ddf33",
+  "date": "2026-02-23",
+  "indicator_type": "KORU",
+  "value": 498.22,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "05793a75-ec7f-48da-95da-5ff1e83edb6b",
+  "date": "2026-02-24",
+  "indicator_type": "KORU",
+  "value": 552.81,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "b13a8c50-3597-4a05-9484-e7c0f0c0b08b",
+  "date": "2026-02-25",
+  "indicator_type": "KORU",
+  "value": 602.99,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "2650c6c0-edaa-459d-9976-abc49acd9ff6",
+  "date": "2026-02-26",
+  "indicator_type": "KORU",
+  "value": 619.7,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "e6a5a77e-485d-4798-b1be-bbf96ecb6f37",
+  "date": "2026-02-27",
+  "indicator_type": "KORU",
+  "value": 630.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "a1c89a8e-e9b6-436c-9876-d87fd78925b2",
+  "date": "2026-03-02",
+  "indicator_type": "KORU",
+  "value": 584.99,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "ad306dab-4815-4863-8cc2-b979c94d1991",
+  "date": "2026-03-03",
+  "indicator_type": "KORU",
+  "value": 403.06,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "3295d802-b238-482e-bda0-c580efacc204",
+  "date": "2026-03-04",
+  "indicator_type": "KORU",
+  "value": 420.73,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "73a4b5dc-1265-4ccc-bec3-2372886e1f1e",
+  "date": "2026-03-05",
+  "indicator_type": "KORU",
+  "value": 343.05,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "e1c70ecf-43d7-4a00-a04a-bed8a5d372af",
+  "date": "2026-03-06",
+  "indicator_type": "KORU",
+  "value": 348.36,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "aaca4f5c-df1f-4c68-8fb1-b0bb808965ee",
+  "date": "2026-03-09",
+  "indicator_type": "KORU",
+  "value": 403.01,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "99f1b919-a911-4fcb-9fa6-8e1e5aa412e3",
+  "date": "2026-03-10",
+  "indicator_type": "KORU",
+  "value": 373.72,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "8af8ab04-5e34-4f8e-892b-bc94dbb7f2ae",
+  "date": "2026-03-11",
+  "indicator_type": "KORU",
+  "value": 394.04,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "05fdebf0-da91-4dba-ac7b-b6494bb2ba0e",
+  "date": "2026-03-12",
+  "indicator_type": "KORU",
+  "value": 314.39,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "59707a63-ee01-4234-b5c6-3762e1f8b182",
+  "date": "2026-03-13",
+  "indicator_type": "KORU",
+  "value": 316.32,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "6e030b47-0255-4741-9e4a-ebfee4a2bed4",
+  "date": "2026-03-16",
+  "indicator_type": "KORU",
+  "value": 382.76,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "17e6f196-c372-413a-abcb-4b790eb1b9b7",
+  "date": "2026-03-17",
+  "indicator_type": "KORU",
+  "value": 395.65,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "c7dfbbbe-2e93-4d8a-8bde-e694d6074289",
+  "date": "2026-03-18",
+  "indicator_type": "KORU",
+  "value": 375.87,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "4e417d6b-8f33-4f5d-a5d7-bc8e08d2cf76",
+  "date": "2026-03-19",
+  "indicator_type": "KORU",
+  "value": 397.75,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "59db188c-364f-42ef-877b-98f2f1c84e29",
+  "date": "2026-03-20",
+  "indicator_type": "KORU",
+  "value": 320.98,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "9a94935b-f0b3-4f5b-a023-262d010c30cc",
+  "date": "2026-03-23",
+  "indicator_type": "KORU",
+  "value": 377.71,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "00400089-9801-4899-9d47-4cf7fe1e5785",
+  "date": "2026-03-24",
+  "indicator_type": "KORU",
+  "value": 335.64,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "18bb19c1-7097-4849-8aac-7d8f8ae99b6f",
+  "date": "2026-03-25",
+  "indicator_type": "KORU",
+  "value": 327.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "578fe0ed-bfdf-4411-b83f-a764cf00bed0",
+  "date": "2026-03-26",
+  "indicator_type": "KORU",
+  "value": 269.93,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "6bc46de8-bcd7-48c4-8992-3d0b093b32fc",
+  "date": "2026-03-27",
+  "indicator_type": "KORU",
+  "value": 274.03,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "2f550115-e4a1-4f21-bfa8-82468ecb0220",
+  "date": "2026-03-30",
+  "indicator_type": "KORU",
+  "value": 274.03,
+  "prev_value": 274.03,
+  "change_pct": 0.0,
+  "raw_data": {
+   "name": "Direxion Daily South Korea Bull",
+   "previousClose": 269.93
+  }
+ },
+ {
+  "id": "f5cf4e2f-490a-4f3e-8229-3d9f2e66c6cf",
+  "date": "2026-04-02",
+  "indicator_type": "KORU",
+  "value": 305.96,
+  "prev_value": 274.03,
+  "change_pct": 11.652,
+  "raw_data": {
+   "name": "Direxion Daily South Korea Bull",
+   "previousClose": 284.12
+  }
+ },
+ {
+  "id": "cb5d9660-bd80-42c9-a9bc-adfde0301d59",
+  "date": "2026-04-03",
+  "indicator_type": "KORU",
+  "value": 282.21,
+  "prev_value": 305.96,
+  "change_pct": -7.7625,
+  "raw_data": {
+   "name": "Direxion Daily South Korea Bull",
+   "previousClose": 305.96
+  }
+ },
+ {
+  "id": "cd21715a-04be-4756-8c43-00a7b62d5eee",
+  "date": "2026-04-06",
+  "indicator_type": "KORU",
+  "value": 282.21,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "3d02c214-85ff-4c0e-8f59-b9188c69b5ec",
+  "date": "2026-04-07",
+  "indicator_type": "KORU",
+  "value": 302.06,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a8fe857c-d942-4a95-b424-1970fe594ffb",
+  "date": "2026-04-08",
+  "indicator_type": "KORU",
+  "value": 311.09,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "1fa05813-7ba4-4492-abea-a124835890ab",
+  "date": "2026-04-09",
+  "indicator_type": "KORU",
+  "value": 405.01,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e916e42e-95a7-4115-8874-4a05d8c5a699",
+  "date": "2026-04-10",
+  "indicator_type": "KORU",
+  "value": 399.48,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "63fdcd72-9110-4880-b6ed-8c88ab2c0bc7",
+  "date": "2026-04-13",
+  "indicator_type": "KORU",
+  "value": 393.97,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "f2a93c8e-f93d-4e64-a87e-674da79eed8a",
+  "date": "2026-04-14",
+  "indicator_type": "KORU",
+  "value": 414.02,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "813a0543-859c-4b86-8dd3-5dbe8a2af1a6",
+  "date": "2026-04-15",
+  "indicator_type": "KORU",
+  "value": 463.68,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "518e125a-0f6b-4c32-9835-700fe3c4609e",
+  "date": "2026-04-16",
+  "indicator_type": "KORU",
+  "value": 445.88,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e8e5c3d9-35dc-4d7e-8713-7c8e13a404cc",
+  "date": "2026-04-17",
+  "indicator_type": "KORU",
+  "value": 469.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "b89c96a1-6d6d-4695-9ddd-a7c1ff19cbb0",
+  "date": "2026-04-20",
+  "indicator_type": "KORU",
+  "value": 515.85,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "10a768ab-1553-474f-9261-9e4d6b74aba6",
+  "date": "2026-04-21",
+  "indicator_type": "KORU",
+  "value": 493.95,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "20e9a954-412c-4647-a284-b205a439bdbd",
+  "date": "2026-04-22",
+  "indicator_type": "KORU",
+  "value": 461.74,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "94efdc99-b0fd-45af-a071-6bb684e5afac",
+  "date": "2026-04-23",
+  "indicator_type": "KORU",
+  "value": 542.74,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e03d853b-537c-46f7-993f-69053456e5db",
+  "date": "2026-04-24",
+  "indicator_type": "KORU",
+  "value": 490.46,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e6c7fdf9-c52a-47a8-9bd1-c1eef932ced3",
+  "date": "2026-04-27",
+  "indicator_type": "KORU",
+  "value": 526.44,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "18be50ca-3e80-4a22-81ec-648c18915964",
+  "date": "2026-04-28",
+  "indicator_type": "KORU",
+  "value": 551.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e1a93947-4ed1-42a7-a0d4-70ea9f453411",
+  "date": "2026-04-29",
+  "indicator_type": "KORU",
+  "value": 525.81,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8a0fb401-d90e-4f62-ab80-5656dbeee95f",
+  "date": "2026-04-30",
+  "indicator_type": "KORU",
+  "value": 549.1,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "9905f187-b83d-4fe6-bd6e-b1c04433fd3a",
+  "date": "2026-05-01",
+  "indicator_type": "KORU",
+  "value": 587.76,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "914fbb14-63fd-4303-b31c-bec2d2a00c3b",
+  "date": "2026-05-04",
+  "indicator_type": "KORU",
+  "value": 602.68,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "df087723-322d-48f3-8e56-53bac5dfe494",
+  "date": "2026-05-05",
+  "indicator_type": "KORU",
+  "value": 621.77,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "5ffb2c90-9e99-4c0a-ae69-c8d9c63d18e8",
+  "date": "2026-05-06",
+  "indicator_type": "KORU",
+  "value": 731.87,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "180852f0-1557-4662-9c07-5e53c66d267a",
+  "date": "2026-05-07",
+  "indicator_type": "KORU",
+  "value": 839.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "c3ea47c7-127e-4ed3-97e1-a30d271c311f",
+  "date": "2026-05-08",
+  "indicator_type": "KORU",
+  "value": 768.45,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "acd7cab3-3d05-4a1a-9b7d-857899ec8e2e",
+  "date": "2026-05-11",
+  "indicator_type": "KORU",
+  "value": 942.18,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "0c1ce222-df3c-400b-8a46-e1de7685d8ac",
+  "date": "2026-05-12",
+  "indicator_type": "KORU",
+  "value": 983.09,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "50f56349-3af6-4925-9420-ba678a35db01",
+  "date": "2026-05-13",
+  "indicator_type": "KORU",
+  "value": 761.29,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "aa4f1139-5da5-47ab-a68d-cccb9c9a5526",
+  "date": "2026-05-14",
+  "indicator_type": "KORU",
+  "value": 893.85,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8e2fb756-d36e-4126-8166-3c5158166c82",
+  "date": "2026-05-15",
+  "indicator_type": "KORU",
+  "value": 919.88,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "bda7710c-15ba-481c-8d0d-20e5a61e6bf5",
+  "date": "2026-05-18",
+  "indicator_type": "KORU",
+  "value": 751.34,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "bc469986-116d-4f29-b872-9cacb2a67d6d",
+  "date": "2026-05-19",
+  "indicator_type": "KORU",
+  "value": 713.82,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "eeb9b54b-8bff-48ca-89b3-55e15a6855bb",
+  "date": "2026-05-20",
+  "indicator_type": "KORU",
+  "value": 689.85,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "bb07770f-1ff8-4749-82de-6dfc9bcc529d",
+  "date": "2026-05-21",
+  "indicator_type": "KORU",
+  "value": 760.7,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "7fe9e2a9-2443-4f78-bb6f-49872fd466b1",
+  "date": "2026-05-22",
+  "indicator_type": "KORU",
+  "value": 839.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a97d4853-f9af-4c01-ab84-8efb832d746a",
+  "date": "2026-05-25",
+  "indicator_type": "KORU",
+  "value": 780.35,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "9ef31b85-4a26-4fa6-99d6-2ea95914b4ae",
+  "date": "2026-05-27",
+  "indicator_type": "KORU",
+  "value": 1014.98,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "6e7688c1-77f2-440a-add9-6fbe4aa75a72",
+  "date": "2026-05-28",
+  "indicator_type": "KORU",
+  "value": 978.79,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "25be82a7-cb11-460d-ba9b-f50ae00822a0",
+  "date": "2026-05-29",
+  "indicator_type": "KORU",
+  "value": 1100.13,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8554ef8f-5546-4d10-9bf4-de942f4c4dde",
+  "date": "2026-06-01",
+  "indicator_type": "KORU",
+  "value": 1090.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e61e1053-25ac-4db9-87eb-696542d5db4d",
+  "date": "2026-06-02",
+  "indicator_type": "KORU",
+  "value": 1264.9,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "1625977f-a79c-4697-bcba-58360b55ae04",
+  "date": "2026-06-03",
+  "indicator_type": "KORU",
+  "value": 1224.81,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "6dc73ecf-cb4e-4b2f-b9fd-88b8e06af7f1",
+  "date": "2026-06-04",
+  "indicator_type": "KORU",
+  "value": 1196.72,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "23182178-6e9f-45ee-bd98-f9bd622671f7",
+  "date": "2026-06-05",
+  "indicator_type": "KORU",
+  "value": 1049.7,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "9e7821bf-2d30-4eb0-be0e-451c36eec66e",
+  "date": "2026-06-08",
+  "indicator_type": "KORU",
+  "value": 610.01,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "95df8e92-d4c1-4441-a53a-280a2545492b",
+  "date": "2026-06-09",
+  "indicator_type": "KORU",
+  "value": 709.44,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "bbfafee3-6ed6-4f3c-8490-0ea4bd2721cb",
+  "date": "2026-06-10",
+  "indicator_type": "KORU",
+  "value": 692.02,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d896c7c7-c060-4abb-9ce0-5810288fd980",
+  "date": "2026-06-11",
+  "indicator_type": "KORU",
+  "value": 629.35,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "ae59347c-5e42-40fc-8696-d94aa969ef2c",
+  "date": "2026-06-12",
+  "indicator_type": "KORU",
+  "value": 842.01,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a00b1152-790f-477e-af6e-581b12ef9087",
+  "date": "2026-06-15",
+  "indicator_type": "KORU",
+  "value": 824.88,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "4ef98506-2c3a-4e8e-aea7-d9b5d83be4a1",
+  "date": "2026-06-16",
+  "indicator_type": "KORU",
+  "value": 999.25,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8819ff3b-24d6-42c0-a764-906a41a84e44",
+  "date": "2026-06-17",
+  "indicator_type": "KORU",
+  "value": 919.04,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "20c08a59-b56c-474c-87e0-d8f0ef2bb960",
+  "date": "2026-06-18",
+  "indicator_type": "KORU",
+  "value": 914.4,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "bab9192b-e610-4e59-9f24-61ed30702871",
+  "date": "2026-06-19",
+  "indicator_type": "KORU",
+  "value": 1090.74,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "4d4d5446-5bd2-44b8-9d32-caa1ce72ca9c",
+  "date": "2026-06-22",
+  "indicator_type": "KORU",
+  "value": 1090.74,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "0cac872a-870d-4064-a908-27b718994667",
+  "date": "2026-06-23",
+  "indicator_type": "KORU",
+  "value": 1088.62,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "17a2f06a-b0a5-4b88-84cc-f5e7ff5a060e",
+  "date": "2026-06-24",
+  "indicator_type": "KORU",
+  "value": 700.01,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "81cfdee3-baa5-4e8c-95d5-f65bccdfde0d",
+  "date": "2026-06-25",
+  "indicator_type": "KORU",
+  "value": 741.28,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "c4d8cc02-d33f-44fc-a350-30408a686a8f",
+  "date": "2026-06-26",
+  "indicator_type": "KORU",
+  "value": 829.09,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "fae64592-7b47-40a1-addc-7bf4c470d95e",
+  "date": "2026-06-29",
+  "indicator_type": "KORU",
+  "value": 738.55,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "6c08e067-6204-4fb3-ad08-12c8b2edd3a2",
+  "date": "2026-06-30",
+  "indicator_type": "KORU",
+  "value": 738.48,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "c7b172bc-4988-4334-9da8-2bc9e41a3776",
+  "date": "2026-07-01",
+  "indicator_type": "KORU",
+  "value": 781.35,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "b65ef95a-5923-4f6e-9d8b-09c4911ef83a",
+  "date": "2026-07-02",
+  "indicator_type": "KORU",
+  "value": 600.01,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "88d55337-3024-48ae-baad-0efe600c05fc",
+  "date": "2026-07-03",
+  "indicator_type": "KORU",
+  "value": 541.43,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "f6a4f5dd-9883-4e5f-a275-99209d2b7538",
+  "date": "2026-07-06",
+  "indicator_type": "KORU",
+  "value": 541.43,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "3d590bfa-4406-4735-bb93-e6be65755040",
+  "date": "2026-07-07",
+  "indicator_type": "KORU",
+  "value": 624.65,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e1bf99b4-2280-4611-9c4e-3a1f50a7c9ea",
+  "date": "2026-07-08",
+  "indicator_type": "KORU",
+  "value": 544.83,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "83ec7894-bff6-4ca6-a192-d61924c7d87c",
+  "date": "2026-07-09",
+  "indicator_type": "KORU",
+  "value": 553.35,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "fcb3f3ad-07b9-4dc6-ad99-df442669f92c",
+  "date": "2026-07-10",
+  "indicator_type": "KORU",
+  "value": 569.91,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d9077c9d-264f-4145-b31c-fcc1fa52eeb1",
+  "date": "2026-07-13",
+  "indicator_type": "KORU",
+  "value": 557.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "67444701-eecc-428f-b771-bd64619150dd",
+  "date": "2026-07-14",
+  "indicator_type": "KORU",
+  "value": 419.19,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "08c5631d-cf91-421e-b46c-d927ae22cc51",
+  "date": "2026-07-15",
+  "indicator_type": "KORU",
+  "value": 481.34,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "5c5de6e8-39a4-477e-9866-888da7d37d52",
+  "date": "2026-07-16",
+  "indicator_type": "KORU",
+  "value": 21.87,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a6ea4595-29a3-4973-8105-71ea2014d52d",
+  "date": "2026-07-17",
+  "indicator_type": "KORU",
+  "value": 18.65,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "b440b82f-bd48-462b-8521-9a632c90adf0",
+  "date": "2026-07-20",
+  "indicator_type": "KORU",
+  "value": 18.26,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "b72252e0-f993-4a9b-8d35-f84478e9de39",
+  "date": "2026-07-21",
+  "indicator_type": "KORU",
+  "value": 18.41,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "3c9a82e5-fed0-4200-b221-71c640fc053a",
+  "date": "2026-07-22",
+  "indicator_type": "KORU",
+  "value": 21.73,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "48c07285-2313-40d9-8a81-a1de76654df6",
+  "date": "2026-07-23",
+  "indicator_type": "KORU",
+  "value": 20.76,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "1b8c1e76-51e2-4476-89ff-6ffde5eb6f00",
+  "date": "2026-07-24",
+  "indicator_type": "KORU",
+  "value": 22.01,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e647fec8-ca74-4110-9ce8-e6f49c7e1a89",
+  "date": "2026-07-27",
+  "indicator_type": "KORU",
+  "value": 17.85,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "defccb7d-8410-4e4f-949c-f26e879ba702",
+  "date": "2026-07-28",
+  "indicator_type": "KORU",
+  "value": 17.21,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "66197acd-da9c-4e01-ba0b-7e508098af98",
+  "date": "2026-07-29",
+  "indicator_type": "KORU",
+  "value": 14.15,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "1cbd0e9b-164f-4181-8fe2-9370f4ca30f6",
+  "date": "2026-07-30",
+  "indicator_type": "KORU",
+  "value": 12.08,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e6474c5e-d8cb-4f3e-a864-38b0f44e7421",
+  "date": "2026-07-31",
+  "indicator_type": "KORU",
+  "value": 16.28,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "f7c50842-8a9f-4a76-a516-fae0364a070b",
+  "date": "2026-08-07",
+  "indicator_type": "KORU",
+  "value": 16.81,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "6fd4fc36-8c38-401a-b4c2-323be13cee4d",
+  "date": "2026-08-10",
+  "indicator_type": "KORU",
+  "value": 17.36,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "0660d87e-617f-4770-bb81-3fe7ee8e2d8f",
+  "date": "2026-08-11",
+  "indicator_type": "KORU",
+  "value": 16.41,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d36bc00c-e322-4b88-a8d9-220fb90f430f",
+  "date": "2026-08-12",
+  "indicator_type": "KORU",
+  "value": 17.64,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d2b8c87b-eec4-4779-978c-bb6790ef5c4e",
+  "date": "2026-08-13",
+  "indicator_type": "KORU",
+  "value": 20.32,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a140557a-18cd-42d8-bf7d-0b9c0899e9dc",
+  "date": "2026-08-14",
+  "indicator_type": "KORU",
+  "value": 21.27,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "4ed88b33-86f4-48f1-b4b7-0a79b6896ab7",
+  "date": "2026-08-17",
+  "indicator_type": "KORU",
+  "value": 21.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "f3ed03b8-0f5f-4114-89b2-ab0929a5f356",
+  "date": "2026-08-18",
+  "indicator_type": "KORU",
+  "value": 23.54,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "4f8e0704-f4f2-44ec-8559-c5ad276dfbd2",
+  "date": "2026-08-19",
+  "indicator_type": "KORU",
+  "value": 17.84,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "66a534c3-6150-42bc-92d9-9db7ee05e7f5",
+  "date": "2025-12-30",
+  "indicator_type": "KR_3Y",
+  "value": 47785.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "c5083787-51ad-41f5-8e7d-33ab47c3f117",
+  "date": "2026-01-02",
+  "indicator_type": "KR_3Y",
+  "value": 50645.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "9c21f713-e674-4890-904b-0bbd842a9da3",
+  "date": "2026-01-05",
+  "indicator_type": "KR_3Y",
+  "value": 54495.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "bd42b214-c466-4fb3-99d4-3890701adab0",
+  "date": "2026-01-06",
+  "indicator_type": "KR_3Y",
+  "value": 56375.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "b693f429-3f24-45f4-b768-90b51f53ec36",
+  "date": "2026-01-07",
+  "indicator_type": "KR_3Y",
+  "value": 57195.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "6a071a4b-9a89-495e-853d-494cd7ea983a",
+  "date": "2026-01-08",
+  "indicator_type": "KR_3Y",
+  "value": 57000.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "2fad3931-6194-4f7c-b04f-5d044c6948f7",
+  "date": "2026-01-09",
+  "indicator_type": "KR_3Y",
+  "value": 57975.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "180e4a71-8d18-4d07-a583-5a42b43dcfe9",
+  "date": "2026-01-12",
+  "indicator_type": "KR_3Y",
+  "value": 58625.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "c69dd23a-43f8-4ec1-9cb9-7dba20c33747",
+  "date": "2026-01-13",
+  "indicator_type": "KR_3Y",
+  "value": 60140.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "c8944b54-2042-43e8-916e-74cbf7e06ae9",
+  "date": "2026-01-14",
+  "indicator_type": "KR_3Y",
+  "value": 60805.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "3b2091d4-ddd3-4b42-8831-c3c4cbf387d7",
+  "date": "2026-01-15",
+  "indicator_type": "KR_3Y",
+  "value": 62880.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "94292d6a-c869-48ea-8432-192e5a93d9c4",
+  "date": "2026-01-16",
+  "indicator_type": "KR_3Y",
+  "value": 64310.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "b6b2f645-fa13-4a51-bf02-4ed4e60b07ac",
+  "date": "2026-01-19",
+  "indicator_type": "KR_3Y",
+  "value": 66060.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "fa969bc2-210b-475e-ab7d-84521d188703",
+  "date": "2026-01-20",
+  "indicator_type": "KR_3Y",
+  "value": 65085.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "d813d1f1-05f0-4725-80fd-05aa9a82ea55",
+  "date": "2026-01-21",
+  "indicator_type": "KR_3Y",
+  "value": 66115.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "12a250f4-6daa-432d-831c-20eb73dda75c",
+  "date": "2026-01-22",
+  "indicator_type": "KR_3Y",
+  "value": 67535.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "cd3a88df-f3b2-4625-bfef-4fee3f303a35",
+  "date": "2026-01-23",
+  "indicator_type": "KR_3Y",
+  "value": 68410.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "856188c2-2147-488b-8b96-abaa5d141071",
+  "date": "2026-01-26",
+  "indicator_type": "KR_3Y",
+  "value": 66995.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "dfde65a8-be64-493b-9c5a-02d25c1932ce",
+  "date": "2026-01-27",
+  "indicator_type": "KR_3Y",
+  "value": 71725.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "fd1b12dc-4463-453f-b615-cbafcc80d0a9",
+  "date": "2026-01-28",
+  "indicator_type": "KR_3Y",
+  "value": 74210.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "8ae86785-9de9-4876-92dd-296269507cf1",
+  "date": "2026-01-29",
+  "indicator_type": "KR_3Y",
+  "value": 75905.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "b0e635eb-8656-439b-b836-bfc1fcdc0d4c",
+  "date": "2026-01-30",
+  "indicator_type": "KR_3Y",
+  "value": 76385.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "aa5fd397-ee03-47e9-b00f-e25f89d7454e",
+  "date": "2026-02-02",
+  "indicator_type": "KR_3Y",
+  "value": 67460.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "61d1fe3e-37e4-4fb0-970a-0cc037d04234",
+  "date": "2026-02-03",
+  "indicator_type": "KR_3Y",
+  "value": 78000.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "9331280d-d9d2-4644-8575-5dba751b689f",
+  "date": "2026-02-04",
+  "indicator_type": "KR_3Y",
+  "value": 80035.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "350f41a7-957a-4e4a-879c-8759b9863c32",
+  "date": "2026-02-05",
+  "indicator_type": "KR_3Y",
+  "value": 73250.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "5eb59979-ba90-444d-b50e-98235282791b",
+  "date": "2026-02-06",
+  "indicator_type": "KR_3Y",
+  "value": 71605.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "17702b6b-0ec3-46b9-9c2a-1d25ebee09f0",
+  "date": "2026-02-09",
+  "indicator_type": "KR_3Y",
+  "value": 77685.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "7eff2162-c4c7-4ae5-8707-454a9a5cc622",
+  "date": "2026-02-10",
+  "indicator_type": "KR_3Y",
+  "value": 77750.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "ac053700-0b4f-4ce1-9fa0-b8502ba21c16",
+  "date": "2026-02-11",
+  "indicator_type": "KR_3Y",
+  "value": 79090.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "42e84ee1-45ed-4392-b11e-76459ff4c3e7",
+  "date": "2026-02-12",
+  "indicator_type": "KR_3Y",
+  "value": 84800.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "7cfb2b23-9d7a-498e-aaf4-e0b7859d3313",
+  "date": "2026-02-13",
+  "indicator_type": "KR_3Y",
+  "value": 84615.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "6778f242-b89a-4e3b-98c9-7d3a2befebfb",
+  "date": "2026-02-19",
+  "indicator_type": "KR_3Y",
+  "value": 89800.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "4598b12b-c65a-4cc3-96dd-94cff6ad85e8",
+  "date": "2026-02-20",
+  "indicator_type": "KR_3Y",
+  "value": 93980.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "c7fe3047-d138-416d-af07-fa244387a618",
+  "date": "2026-02-23",
+  "indicator_type": "KR_3Y",
+  "value": 95195.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "fb8b61a2-e769-464b-ad4c-8ddd3f507969",
+  "date": "2026-02-24",
+  "indicator_type": "KR_3Y",
+  "value": 100005.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "8b15dd8d-d377-4213-a2bd-f43dc6d65b05",
+  "date": "2026-02-25",
+  "indicator_type": "KR_3Y",
+  "value": 104070.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "0620d465-d077-4d85-b2b3-0fdaadfbab90",
+  "date": "2026-02-26",
+  "indicator_type": "KR_3Y",
+  "value": 113520.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "9edd158a-d713-46aa-ac3b-27bd149b335a",
+  "date": "2026-02-27",
+  "indicator_type": "KR_3Y",
+  "value": 111280.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "74655820-bf83-4acb-af57-6402a259d589",
+  "date": "2026-03-03",
+  "indicator_type": "KR_3Y",
+  "value": 93195.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "1dc8f327-1d5b-46f2-ad95-b8f35b36698d",
+  "date": "2026-03-04",
+  "indicator_type": "KR_3Y",
+  "value": 70500.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "4d8066a7-8f0c-4127-9d60-3565f7c0a91a",
+  "date": "2026-03-05",
+  "indicator_type": "KR_3Y",
+  "value": 84485.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "66e1cffa-2fbe-425d-aa54-6ad7c4bafec7",
+  "date": "2026-03-06",
+  "indicator_type": "KR_3Y",
+  "value": 84000.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "82f1b31a-0a1f-4758-80bc-4461a7035c05",
+  "date": "2026-03-09",
+  "indicator_type": "KR_3Y",
+  "value": 72850.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "cf49b58c-d55e-4e66-b3b7-0c6593458cba",
+  "date": "2026-03-10",
+  "indicator_type": "KR_3Y",
+  "value": 82075.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "2a18bdf4-1f98-427c-88a9-1516d3bc9ad2",
+  "date": "2026-03-11",
+  "indicator_type": "KR_3Y",
+  "value": 84000.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "c4acb604-ff02-4836-8a79-5222617577ef",
+  "date": "2026-03-12",
+  "indicator_type": "KR_3Y",
+  "value": 82620.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "0c90f5a5-92ee-4dbb-8893-ae1c6b56bbd5",
+  "date": "2026-03-13",
+  "indicator_type": "KR_3Y",
+  "value": 79725.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "8d40bc4a-9e01-4bf6-8e05-15c0c26024f8",
+  "date": "2026-03-16",
+  "indicator_type": "KR_3Y",
+  "value": 82055.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "e2e381d2-ab8b-4462-a3b5-f5cc531eb281",
+  "date": "2026-03-17",
+  "indicator_type": "KR_3Y",
+  "value": 85450.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "74e1e207-3467-4e3c-80ac-0d58af724c1c",
+  "date": "2026-03-18",
+  "indicator_type": "KR_3Y",
+  "value": 95240.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "8c1c617d-2bfa-442f-86ae-5bd2cb95b2ab",
+  "date": "2026-03-19",
+  "indicator_type": "KR_3Y",
+  "value": 89505.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "78426e91-e91d-450a-8bc1-099989acc43c",
+  "date": "2026-03-20",
+  "indicator_type": "KR_3Y",
+  "value": 89320.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "a76d984a-5c93-499d-afcc-ddb4450c9f48",
+  "date": "2026-03-23",
+  "indicator_type": "KR_3Y",
+  "value": 77305.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "7684e0b3-5f86-492f-a89c-4c93ae9b891c",
+  "date": "2026-03-24",
+  "indicator_type": "KR_3Y",
+  "value": 82305.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "bf64f95c-2548-4ca8-b630-dbf2c731567f",
+  "date": "2026-03-25",
+  "indicator_type": "KR_3Y",
+  "value": 84380.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "2e8eb1dd-e2e3-4658-838b-9fe40d519f65",
+  "date": "2026-03-26",
+  "indicator_type": "KR_3Y",
+  "value": 78500.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "2b40512a-4561-49a8-a670-2e6f08a21095",
+  "date": "2026-03-27",
+  "indicator_type": "KR_3Y",
+  "value": 77690.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "3967ab06-7e51-4502-90bb-582318c581b4",
+  "date": "2026-03-30",
+  "indicator_type": "KR_3Y",
+  "value": 72895.0,
+  "prev_value": 77690.0,
+  "change_pct": -6.172,
+  "raw_data": {
+   "name": "KODEX LEVERAGE",
+   "previousClose": 77690
+  }
+ },
+ {
+  "id": "ceb75bda-3f4e-452a-a940-f2d19d033afc",
+  "date": "2026-03-31",
+  "indicator_type": "KR_3Y",
+  "value": 66510.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "52416f5c-430c-4376-8b0d-b5823a2e0ed9",
+  "date": "2026-04-01",
+  "indicator_type": "KR_3Y",
+  "value": 78830.0,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": {
+   "source": "backfill"
+  }
+ },
+ {
+  "id": "4ee8c79a-0836-4f47-9692-4c4679136eba",
+  "date": "2026-04-02",
+  "indicator_type": "KR_3Y",
+  "value": 71095.0,
+  "prev_value": 78830.0,
+  "change_pct": -9.8123,
+  "raw_data": {
+   "name": "KODEX LEVERAGE",
+   "previousClose": 78830
+  }
+ },
+ {
+  "id": "5529bee7-073f-4693-9e48-5b160b9c5133",
+  "date": "2026-04-03",
+  "indicator_type": "KR_3Y",
+  "value": 75820.0,
+  "prev_value": 71095.0,
+  "change_pct": 6.646,
+  "raw_data": {
+   "name": "KODEX LEVERAGE",
+   "previousClose": 71095
+  }
+ },
+ {
+  "id": "8eaacb6a-9a28-4be0-9a5d-f6677eae4040",
+  "date": "2026-04-06",
+  "indicator_type": "KR_3Y",
+  "value": 3.607,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "430bd462-9f18-4b87-9016-b8555b0ae583",
+  "date": "2026-04-07",
+  "indicator_type": "KR_3Y",
+  "value": 3.623,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "ba0f842a-4804-4eea-9b96-2758900173d7",
+  "date": "2026-04-08",
+  "indicator_type": "KR_3Y",
+  "value": 3.615,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "9b023949-bcf5-4caf-87c3-6d47d6891d80",
+  "date": "2026-04-09",
+  "indicator_type": "KR_3Y",
+  "value": 3.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "82b57a60-618b-4019-96a3-e7589e1b9175",
+  "date": "2026-04-10",
+  "indicator_type": "KR_3Y",
+  "value": 3.588,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "2e7aca3c-6d20-4dc9-a502-dcc60d8ef415",
+  "date": "2026-04-13",
+  "indicator_type": "KR_3Y",
+  "value": 3.593,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "0a15eabd-7fb9-4a71-b03a-add42e6663ec",
+  "date": "2026-04-14",
+  "indicator_type": "KR_3Y",
+  "value": 3.603,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8608993a-3008-409b-8dc2-f6530be68adf",
+  "date": "2026-04-15",
+  "indicator_type": "KR_3Y",
+  "value": 3.612,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "975b0844-d6a7-49dc-9f06-873de46e42b7",
+  "date": "2026-04-16",
+  "indicator_type": "KR_3Y",
+  "value": 3.612,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "464f7845-2a22-4eed-9437-8f55e5b6ed3c",
+  "date": "2026-04-17",
+  "indicator_type": "KR_3Y",
+  "value": 3.61,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "480fb0bb-29e3-46ad-b31b-c4557235fba4",
+  "date": "2026-04-20",
+  "indicator_type": "KR_3Y",
+  "value": 3.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "78279d23-a7d6-4d59-a7c4-f6e390fa4e88",
+  "date": "2026-04-21",
+  "indicator_type": "KR_3Y",
+  "value": 3.598,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e49c26d2-2717-4edb-993e-f178ad60c302",
+  "date": "2026-04-22",
+  "indicator_type": "KR_3Y",
+  "value": 3.598,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "382d0a6a-d276-438e-907d-5001e883a5cf",
+  "date": "2026-04-23",
+  "indicator_type": "KR_3Y",
+  "value": 3.595,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "454e52cc-48f0-4dd3-acfc-7bc8247fe7c9",
+  "date": "2026-04-24",
+  "indicator_type": "KR_3Y",
+  "value": 3.595,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "ba781387-28c0-4dad-b6a5-5ad4c37c2e6a",
+  "date": "2026-04-27",
+  "indicator_type": "KR_3Y",
+  "value": 3.593,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "88522557-0934-4799-bd4d-2aad11f2f665",
+  "date": "2026-04-28",
+  "indicator_type": "KR_3Y",
+  "value": 3.59,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "c154ff87-51ec-4eb4-8082-2123815cc7ee",
+  "date": "2026-04-29",
+  "indicator_type": "KR_3Y",
+  "value": 3.59,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "33e38dbc-8fe4-4927-bcf9-14ef7021f443",
+  "date": "2026-04-30",
+  "indicator_type": "KR_3Y",
+  "value": 3.585,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "28b54f0a-e9c9-4885-80a3-562fed270b47",
+  "date": "2026-05-01",
+  "indicator_type": "KR_3Y",
+  "value": 3.585,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "746721fa-d5b3-498d-a94d-e306011c018d",
+  "date": "2026-05-04",
+  "indicator_type": "KR_3Y",
+  "value": 3.575,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "7b17d71f-7da5-490d-9576-907d531c2901",
+  "date": "2026-05-05",
+  "indicator_type": "KR_3Y",
+  "value": 3.59,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "3044734a-4b88-4863-bfc7-314028750b00",
+  "date": "2026-05-06",
+  "indicator_type": "KR_3Y",
+  "value": 3.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "3ba8f4f0-5639-4d63-9145-2d979529642a",
+  "date": "2026-05-07",
+  "indicator_type": "KR_3Y",
+  "value": 3.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "99ff07bc-9c2c-4f57-8d2a-3ab213dc9c49",
+  "date": "2026-05-08",
+  "indicator_type": "KR_3Y",
+  "value": 3.598,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a94c9061-55bb-4e85-bd70-2c96b33a72a3",
+  "date": "2026-05-11",
+  "indicator_type": "KR_3Y",
+  "value": 3.595,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "25efdec8-b387-4be1-94be-a81e39d64c83",
+  "date": "2026-05-12",
+  "indicator_type": "KR_3Y",
+  "value": 3.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "76554947-985b-4c3b-bfaf-f8329174a988",
+  "date": "2026-05-13",
+  "indicator_type": "KR_3Y",
+  "value": 3.603,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8a4fa958-8892-49a0-9351-1cab02e2730d",
+  "date": "2026-05-14",
+  "indicator_type": "KR_3Y",
+  "value": 3.6,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d1d420be-ce76-40d8-9c58-f83b2d32dc47",
+  "date": "2026-05-15",
+  "indicator_type": "KR_3Y",
+  "value": 3.588,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "69b885b8-ce2f-4ae3-84ba-50f78f1fbea3",
+  "date": "2026-05-18",
+  "indicator_type": "KR_3Y",
+  "value": 3.588,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "46437144-e406-404b-8ebf-6e9fdd2ff326",
+  "date": "2026-05-19",
+  "indicator_type": "KR_3Y",
+  "value": 3.568,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "951d0a06-127e-4735-b334-5b2ab6328346",
+  "date": "2026-05-20",
+  "indicator_type": "KR_3Y",
+  "value": 3.575,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "9f9fac51-cc46-4eeb-9be2-1fbaa5d037ba",
+  "date": "2026-05-21",
+  "indicator_type": "KR_3Y",
+  "value": 3.557,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "71b9e585-9c79-42af-9ee0-4c17eb0ba187",
+  "date": "2026-05-22",
+  "indicator_type": "KR_3Y",
+  "value": 3.582,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "883cce8e-f3c1-4045-9dd3-4d5132be6b6a",
+  "date": "2026-05-25",
+  "indicator_type": "KR_3Y",
+  "value": 3.585,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "69fc4f2f-8e0a-48a0-a231-5e7a46f8239e",
+  "date": "2026-05-27",
+  "indicator_type": "KR_3Y",
+  "value": 3.582,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e21d70cb-39b5-4078-87e2-2aa01eef689a",
+  "date": "2026-05-28",
+  "indicator_type": "KR_3Y",
+  "value": 3.585,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "4bf90892-7b3e-495a-b23d-f6eddb619b9a",
+  "date": "2026-05-29",
+  "indicator_type": "KR_3Y",
+  "value": 3.59,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a636fe0f-c38e-40e7-b1b4-b4881d70ef30",
+  "date": "2026-06-01",
+  "indicator_type": "KR_3Y",
+  "value": 3.59,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "390b3657-b36d-464e-bb96-90d48cf66f28",
+  "date": "2026-06-02",
+  "indicator_type": "KR_3Y",
+  "value": 3.62,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d5f18ab5-f41d-46b8-8268-fed17d41bb19",
+  "date": "2026-06-03",
+  "indicator_type": "KR_3Y",
+  "value": 3.618,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "819b1754-c3ac-4425-880a-d6b52491dda3",
+  "date": "2026-06-04",
+  "indicator_type": "KR_3Y",
+  "value": 3.623,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a61f525e-2f87-4690-b2a3-49f60e75f56e",
+  "date": "2026-06-05",
+  "indicator_type": "KR_3Y",
+  "value": 3.62,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "bb4ddef6-6f98-41ef-b775-e4f870d70223",
+  "date": "2026-06-08",
+  "indicator_type": "KR_3Y",
+  "value": 3.625,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "16123735-2e26-48c7-bdc5-09d2d31b4192",
+  "date": "2026-06-09",
+  "indicator_type": "KR_3Y",
+  "value": 3.628,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "ed672f5b-5deb-48b5-9cc4-21ddadc09c98",
+  "date": "2026-06-10",
+  "indicator_type": "KR_3Y",
+  "value": 3.635,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "c8ae95e2-cb30-42a7-b0d1-59bb577fe95b",
+  "date": "2026-06-11",
+  "indicator_type": "KR_3Y",
+  "value": 3.635,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "bb5eb801-73ff-43aa-951c-a8a307981378",
+  "date": "2026-06-12",
+  "indicator_type": "KR_3Y",
+  "value": 3.623,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "221a30d6-2aff-498a-b51e-ef4f012a85ee",
+  "date": "2026-06-15",
+  "indicator_type": "KR_3Y",
+  "value": 3.615,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "9c10b89f-70be-472b-8fa0-eef8ece62cd6",
+  "date": "2026-06-16",
+  "indicator_type": "KR_3Y",
+  "value": 3.618,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a2de35e9-f0b5-4456-a192-9e26b7be36dc",
+  "date": "2026-06-17",
+  "indicator_type": "KR_3Y",
+  "value": 3.63,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "5dcec623-cdf8-4db9-877f-21c12b1bfa3c",
+  "date": "2026-06-18",
+  "indicator_type": "KR_3Y",
+  "value": 3.647,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "26846b70-9d7e-4ef0-919c-55e42805f7a9",
+  "date": "2026-06-19",
+  "indicator_type": "KR_3Y",
+  "value": 3.658,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "4ff28ca7-8b02-4ce2-a9e5-e48843932e7a",
+  "date": "2026-06-22",
+  "indicator_type": "KR_3Y",
+  "value": 3.665,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "aacf8781-e960-4ef2-b716-cf12f58b18dc",
+  "date": "2026-06-23",
+  "indicator_type": "KR_3Y",
+  "value": 3.68,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e300a553-15f7-40df-91de-415ea0645563",
+  "date": "2026-06-24",
+  "indicator_type": "KR_3Y",
+  "value": 3.69,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a9a4b928-92f1-4717-8e19-a78299e58766",
+  "date": "2026-06-25",
+  "indicator_type": "KR_3Y",
+  "value": 3.69,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "6ca037dc-e7a2-4846-9125-e54e814843e0",
+  "date": "2026-06-26",
+  "indicator_type": "KR_3Y",
+  "value": 3.68,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "29657693-5937-49f4-a7be-e829198023d2",
+  "date": "2026-06-29",
+  "indicator_type": "KR_3Y",
+  "value": 3.663,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "55ca680d-04fb-47dc-8b19-c4ba0b2f74d4",
+  "date": "2026-06-30",
+  "indicator_type": "KR_3Y",
+  "value": 3.68,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "af67db17-d09e-4b18-af44-a176643990cc",
+  "date": "2026-07-01",
+  "indicator_type": "KR_3Y",
+  "value": 3.732,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "0f6bed52-9280-4239-9412-4b37c20da86b",
+  "date": "2026-07-02",
+  "indicator_type": "KR_3Y",
+  "value": 3.7,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "216c3f53-0b45-44d6-a221-b86913edac1b",
+  "date": "2026-07-03",
+  "indicator_type": "KR_3Y",
+  "value": 3.668,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "0aad2e8b-a2a3-4515-9355-592171b20ea3",
+  "date": "2026-07-06",
+  "indicator_type": "KR_3Y",
+  "value": 3.668,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "dd5188e9-b95b-4184-8ab1-0eafc47d771c",
+  "date": "2026-07-07",
+  "indicator_type": "KR_3Y",
+  "value": 3.69,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "92f92033-de21-4c01-8262-04157beeefd3",
+  "date": "2026-07-08",
+  "indicator_type": "KR_3Y",
+  "value": 3.725,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8906374b-b63c-435b-8631-8fb9912eea95",
+  "date": "2026-07-09",
+  "indicator_type": "KR_3Y",
+  "value": 3.723,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "67b077ff-eb6e-417b-a556-0bdc46c7adb6",
+  "date": "2026-07-10",
+  "indicator_type": "KR_3Y",
+  "value": 3.682,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "f0de6cff-b49a-4862-9e08-1ffe905c8f7b",
+  "date": "2026-07-13",
+  "indicator_type": "KR_3Y",
+  "value": 3.695,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "480d3f0e-6ff3-4baa-840f-e828dcf3b789",
+  "date": "2026-07-14",
+  "indicator_type": "KR_3Y",
+  "value": 3.728,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "b2ed13f0-4f82-44e5-9c83-828086a5296b",
+  "date": "2026-07-15",
+  "indicator_type": "KR_3Y",
+  "value": 3.7,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "2644809d-4453-4a3d-8be6-c786a6a59678",
+  "date": "2026-07-16",
+  "indicator_type": "KR_3Y",
+  "value": 3.688,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "648ea3ae-e01f-4b4b-a6ac-a72108170272",
+  "date": "2026-07-17",
+  "indicator_type": "KR_3Y",
+  "value": 3.697,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "f9629b71-2ed2-4a96-a585-e0dff6ed3b36",
+  "date": "2026-07-20",
+  "indicator_type": "KR_3Y",
+  "value": 3.707,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "a90c42cd-5e4f-472c-b74d-1fb549d5ca80",
+  "date": "2026-07-21",
+  "indicator_type": "KR_3Y",
+  "value": 3.705,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d3317be5-f5d1-4ba8-bd12-8ef06278f9f4",
+  "date": "2026-07-22",
+  "indicator_type": "KR_3Y",
+  "value": 3.73,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "1eeebaa9-8eb8-4882-a89f-fdc10ec53831",
+  "date": "2026-07-23",
+  "indicator_type": "KR_3Y",
+  "value": 3.745,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "cef272c1-8ef2-4546-8983-144527aa3c28",
+  "date": "2026-07-24",
+  "indicator_type": "KR_3Y",
+  "value": 3.8,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "b61ebc29-4760-40d8-9a13-a07d2aa9bc4d",
+  "date": "2026-07-27",
+  "indicator_type": "KR_3Y",
+  "value": 3.805,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d2737cc8-aea1-4ebb-828f-d7d3f0d8b868",
+  "date": "2026-07-28",
+  "indicator_type": "KR_3Y",
+  "value": 3.797,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e6b5a875-63dc-4b73-98a2-1abe0bc70e97",
+  "date": "2026-07-29",
+  "indicator_type": "KR_3Y",
+  "value": 3.76,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "f2779558-93fe-4e05-91a2-8b71e339cce4",
+  "date": "2026-07-30",
+  "indicator_type": "KR_3Y",
+  "value": 3.658,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "8aedbb93-ce0b-4b34-b51f-7bccf6476ba5",
+  "date": "2026-07-31",
+  "indicator_type": "KR_3Y",
+  "value": 3.675,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "98f94d9a-3d64-4db4-928f-2b46712bbdbb",
+  "date": "2026-08-07",
+  "indicator_type": "KR_3Y",
+  "value": 3.732,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d736eb71-b7dd-4f3a-9c32-2524d79b257d",
+  "date": "2026-08-10",
+  "indicator_type": "KR_3Y",
+  "value": 3.71,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "240d2590-6d90-473a-8df2-0d57b43e332a",
+  "date": "2026-08-11",
+  "indicator_type": "KR_3Y",
+  "value": 3.718,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "e10a3f14-5354-4927-b558-3a3e88a0013f",
+  "date": "2026-08-12",
+  "indicator_type": "KR_3Y",
+  "value": 3.73,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "d7f5cf30-a094-47d6-8402-4be88d9d6865",
+  "date": "2026-08-13",
+  "indicator_type": "KR_3Y",
+  "value": 3.707,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "53a03cb3-be61-4af8-a38a-5a71de191ec2",
+  "date": "2026-08-14",
+  "indicator_type": "KR_3Y",
+  "value": 3.705,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "48d7fd0a-67d1-4dde-a468-b11b0f7640ba",
+  "date": "2026-08-17",
+  "indicator_type": "KR_3Y",
+  "value": 3.697,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "cab4ecbe-aa82-45c8-a33d-8ef3fef40921",
+  "date": "2026-08-18",
+  "indicator_type": "KR_3Y",
+  "value": 3.703,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ },
+ {
+  "id": "1e832008-23c1-4c8f-b3b2-fa4b7d4d3160",
+  "date": "2026-08-19",
+  "indicator_type": "KR_3Y",
+  "value": 3.705,
+  "prev_value": null,
+  "change_pct": null,
+  "raw_data": null
+ }
+]

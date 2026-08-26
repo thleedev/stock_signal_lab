@@ -9,7 +9,7 @@
 
 | 방식 | 검증 내용 | 적용 라우트 |
 |------|-----------|-------------|
-| `verifyCollectorKey` | 헤더 `x-device-key` = `COLLECTOR_API_KEY` (`lib/auth.ts`) | `signals/batch` POST, `holdings/alphacatch` PUT |
+| `verifyCollectorKey` | 헤더 `x-device-key` = `COLLECTOR_API_KEY` (`lib/auth.ts`) | `signals/batch` POST, `holdings/alphacatch` PUT, `collector/signals`·`collector/heartbeat`·`collector/mms`·`collector/signal-times` POST |
 | CRON_SECRET 필수 | 헤더 `Authorization: Bearer {CRON_SECRET}` | `admin/trigger-batch`, `backup`, `cron/stock-init`, `cron/user-portfolio-snapshot` |
 | CRON_SECRET 조건부 | 헤더 `Authorization: Bearer {CRON_SECRET}` (미설정 시 로컬 허용) | `cron/market-events`, `cron/market-score`, `cron/lassi-signals` |
 | CRON_SECRET 조건부 | 환경변수가 설정된 경우에만 검증 | `cron/market-events`, `cron/market-score` |
@@ -102,6 +102,12 @@
 | 경로 | 메서드 | 요약 |
 |------|--------|------|
 | `/api/v1/collector/status` | GET | 수집기 heartbeat. 10분 이내 응답이면 online |
+| `/api/v1/collector/signals` | POST | 수집기 신호 일괄 저장(인증). service_role 로 `upsert_signals_bulk` RPC 호출 |
+| `/api/v1/collector/heartbeat` | POST | 수집기 상태 기록(인증) |
+| `/api/v1/collector/mms` | POST | SMS·MMS 원문 저장(인증) |
+| `/api/v1/collector/signal-times` | POST | 저장된 신호의 `signal_time` 채우기(인증) |
+
+`collector/*` 4종은 Android 수집기가 anon 키로 Supabase REST 를 직접 부르던 경로를 대신합니다(086~089). `signals/batch` 와 달리 BUY_FORECAST 승격이나 FCM 알림을 하지 않습니다. 수집기 기존 동작을 그대로 옮기는 것이 목적이라 중복 처리는 `upsert_signals_bulk` RPC 규칙을 그대로 씁니다.
 | `/api/v1/batch-runs/status` | GET | 진행 중 배치 조회 + stale 자동 failed 처리 (prices-only 10분/repair 30분/full 60분) |
 | `/api/v1/admin/trigger-batch` | POST | GitHub Actions daily-batch 원격 기동 + pending 기록 |
 | `/api/v1/backup` | GET | 핵심 8개 테이블 JSON 백업 다운로드. maxDuration 300초 |

@@ -24,10 +24,12 @@ android {
         versionName = "1.0.0"
 
         // local.properties에서 읽어오기 (없으면 기본값)
-        buildConfigField("String", "SUPABASE_URL", "\"${localProps.getProperty("SUPABASE_URL", "")}\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${localProps.getProperty("SUPABASE_ANON_KEY", "")}\"")
+        // SUPABASE_URL·SUPABASE_ANON_KEY 는 뺐습니다. 앱은 이제 Supabase 에 직접 붙지 않고
+        // 웹앱 수집기 API 를 거칩니다. anon 키가 APK 에 들어가면 뜯어서 DB 를 직접 건드릴 수
+        // 있었습니다.
         buildConfigField("String", "DEVICE_ID", "\"${localProps.getProperty("DEVICE_ID", "collector-001")}\"")
-        buildConfigField("String", "WEBAPP_URL", "\"${localProps.getProperty("WEBAPP_URL", "")}\"")  // AI 추천 생성용
+        buildConfigField("String", "WEBAPP_URL", "\"${localProps.getProperty("WEBAPP_URL", "")}\"")
+        buildConfigField("String", "COLLECTOR_API_KEY", "\"${localProps.getProperty("COLLECTOR_API_KEY", "")}\"")
     }
 
     buildFeatures {

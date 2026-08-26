@@ -14,9 +14,9 @@
 | 패키지 | `com.dashboardstock.collector` |
 | SDK | minSdk 26 / targetSdk 35, Kotlin 2.1.0, Java 17 |
 | 핵심 의존성 | OkHttp 4.12.0, Room 2.6.1, Gson 2.11.0, Coroutines 1.9.0 |
-| 빌드 주입값 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `DEVICE_ID`(기본 `collector-001`), `WEBAPP_URL` |
+| 빌드 주입값 | `DEVICE_ID`(기본 `collector-001`), `WEBAPP_URL`, `COLLECTOR_API_KEY` |
 
-`local.properties`에는 `SUPABASE_URL`과 `SUPABASE_ANON_KEY`만 정의되어 있습니다. `WEBAPP_URL`이 비어 있어 신호 전송 후 AI 추천 생성을 호출하는 `triggerAiRecommendations()`는 현재 동작하지 않습니다.
+앱은 Supabase 에 직접 붙지 않습니다. anon 키가 APK 에 들어가면 뜯어서 DB 를 직접 건드릴 수 있어 웹앱 수집기 API 를 거치도록 바꿨습니다(086~089). `local.properties` 에 `WEBAPP_URL` 과 `COLLECTOR_API_KEY` 두 값이 반드시 있어야 하며, 비어 있으면 `webappRequest()` 가 즉시 예외를 던집니다. `COLLECTOR_API_KEY` 는 웹앱 환경변수 `COLLECTOR_API_KEY` 와 같은 값이어야 합니다.
 
 ### 1.1 권한
 
@@ -151,15 +151,15 @@ SharedPreferences에 `{symbol}:{source}:{signalType}` 키를 저장해 같은 �
 
 ## 5. 서버 통신 (`api/SignalApiClient.kt`)
 
-OkHttp 타임아웃은 connect/read/write 각 8초입니다. 모든 Supabase REST 호출에 `apikey`와 `Authorization: Bearer` 헤더로 `SUPABASE_ANON_KEY`를 실어 보냅니다.
+OkHttp 타임아웃은 connect/read/write 각 8초입니다. 모든 요청은 `WEBAPP_URL` 기준이고 `X-Device-Key` 헤더에 `COLLECTOR_API_KEY` 를 실어 보냅니다. 서버가 `verifyCollectorKey` 로 검사한 뒤 service_role 로 DB 를 다룹니다.
 
 | 호출 | 경로 | 용도 |
 |------|------|------|
-| `sendSignals()` | `POST /rest/v1/rpc/upsert_signals_bulk` | 신호 일괄 upsert. 배치마다 새 UUID `batch_id` 부여 |
-| `sendRawMms()` | `POST /rest/v1/mms_raw_messages` | SMS 원문 보관. 실패해도 무시 |
-| `sendHeartbeat()` | `POST /rest/v1/collector_heartbeats` | 전송 성공 직후 active 하트비트, 오류 시 error 하트비트 |
-| `updateSignalTimes()` | `PATCH /rest/v1/signals?...&signal_time=is.null` | 17:00 보정. 보정 시각 ±2시간 창에서 신호별 PATCH |
-| `sendAlphaCatchHoldings()` | `DELETE` 후 `POST /rest/v1/alphacatch_holdings` | 보유 종목 전체 덮어쓰기 |
+| `sendSignals()` | `POST /api/v1/collector/signals` | 신호 일괄 upsert. 서버가 `upsert_signals_bulk` RPC 를 호출하므로 중복 처리 규칙은 그대로. 배치마다 새 UUID `batch_id` 부여 |
+| `sendRawMms()` | `POST /api/v1/collector/mms` | SMS 원문 보관. 실패해도 무시 |
+| `reportHeartbeat()` | `POST /api/v1/collector/heartbeat` | 전송 성공 직후 active 하트비트, 오류 시 error 하트비트 |
+| `updateSignalTimes()` | `POST /api/v1/collector/signal-times` | 17:00 보정. 전에는 종목마다 PATCH 를 보냈고 지금은 목록을 한 번에 넘겨 서버가 대상 행을 고릅니다 (signal_time IS NULL + timestamp ±2시간) |
+| `sendAlphaCatchHoldings()` | `PUT /api/v1/holdings/alphacatch` | 보유 종목 전체 덮어쓰기. 전에는 DELETE 와 POST 를 앱에서 따로 보내 그 사이에 앱이 죽으면 보유 종목이 빈 채로 남았습니다 |
 | `triggerAiRecommendations()` | `POST {WEBAPP_URL}/api/v1/ai-recommendations/generate` | 신호 전송 성공 후 AI 추천 생성 트리거 (현재 비활성) |
 
 ## 6. 상시 실행·시간 보정

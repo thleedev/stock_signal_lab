@@ -54,12 +54,19 @@ object SignalApiClient {
             .build()
     }
 
-    private fun supabaseRequest(path: String): Request.Builder {
-        val url = "${BuildConfig.SUPABASE_URL}/rest/v1/$path"
+    /**
+     * 웹앱 수집기 API 요청 빌더
+     *
+     * 예전에는 Supabase REST 에 anon 키로 직접 붙었습니다. anon 키는 APK 를 뜯으면 나오는데
+     * 그 키로 전 테이블을 읽고 쓰고 지울 수 있었습니다(086). 이제 서버를 거치고,
+     * 서버가 service_role 로 DB 를 다룹니다. 인증은 X-Device-Key 한 개입니다.
+     */
+    private fun webappRequest(path: String): Request.Builder {
+        val base = BuildConfig.WEBAPP_URL.trimEnd('/')
+        check(base.isNotBlank()) { "WEBAPP_URL 미설정 — local.properties 를 확인하세요" }
         return Request.Builder()
-            .url(url)
-            .header("apikey", BuildConfig.SUPABASE_ANON_KEY)
-            .header("Authorization", "Bearer ${BuildConfig.SUPABASE_ANON_KEY}")
+            .url("$base$path")
+            .header("X-Device-Key", BuildConfig.COLLECTOR_API_KEY)
             .header("Content-Type", "application/json")
     }
 
@@ -76,7 +83,7 @@ object SignalApiClient {
         if (signals.isEmpty()) return
 
         val batchId = UUID.randomUUID().toString()
-        Log.d(TAG, "Sending ${signals.size} signals via upsert RPC, batch=$batchId")
+        Log.d(TAG, "Sending ${signals.size} signals via collector API, batch=$batchId")
 
         val rows = signals.map { s ->
             SignalRow(
@@ -92,7 +99,7 @@ object SignalApiClient {
         val payloadJson = gson.toJson(rows)
         val body = """{"payload":$payloadJson}""".toRequestBody(JSON_TYPE)
 
-        val request = supabaseRequest("rpc/upsert_signals_bulk")
+        val request = webappRequest("/api/v1/collector/signals")
             .post(body)
             .build()
 
@@ -102,18 +109,18 @@ object SignalApiClient {
         response.close()
 
         if (!response.isSuccessful) {
-            Log.e(TAG, "upsert_signals_bulk failed ($code): $respBody")
-            throw Exception("RPC upsert failed: $code")
+            Log.e(TAG, "collector/signals failed ($code): $respBody")
+            throw Exception("collector/signals failed: $code")
         }
 
-        Log.i(TAG, "upsert_signals_bulk OK: ${signals.size} signals, batch=$batchId")
+        Log.i(TAG, "collector/signals OK: ${signals.size} signals, batch=$batchId")
         // 이미 IO 스레드(suspend 호출부)이므로 스코프를 새로 띄우지 않고 바로 전송합니다.
         postHeartbeat("active", null, markSignal = true)
         triggerAiRecommendations()
     }
 
     /**
-     * MMS 원문을 mms_raw_messages 테이블에 저장
+     * MMS 원문 저장 (서버 경유 → mms_raw_messages)
      */
     fun sendRawMms(sender: String, source: String, body: String) {
         try {
@@ -124,8 +131,7 @@ object SignalApiClient {
                 "device_id" to BuildConfig.DEVICE_ID
             )
             val reqBody = gson.toJson(row).toRequestBody(JSON_TYPE)
-            val request = supabaseRequest("mms_raw_messages")
-                .header("Prefer", "return=minimal")
+            val request = webappRequest("/api/v1/collector/mms")
                 .post(reqBody)
                 .build()
 
@@ -153,8 +159,7 @@ object SignalApiClient {
         }
         try {
             val body = """{}""".toRequestBody(JSON_TYPE)
-            val request = Request.Builder()
-                .url("$webappUrl/api/v1/ai-recommendations/generate")
+            val request = webappRequest("/api/v1/ai-recommendations/generate")
                 .post(body)
                 .build()
 
@@ -205,7 +210,7 @@ object SignalApiClient {
             )
 
             val body = gson.toJson(hb).toRequestBody(JSON_TYPE)
-            val request = supabaseRequest("collector_heartbeats")
+            val request = webappRequest("/api/v1/collector/heartbeat")
                 .post(body)
                 .build()
 
@@ -232,48 +237,41 @@ object SignalApiClient {
     suspend fun updateSignalTimes(signals: List<SignalInput>) {
         if (signals.isEmpty()) return
 
-        var updated = 0
-        for (s in signals) {
-            if (s.symbol == null || s.signalTime == null) continue
+        // 서버가 대상 행을 고릅니다: 같은 symbol·source·signal_type 중
+        // signal_time 이 null 이고 timestamp 가 신호시각 ±2시간인 행.
+        // 예전에는 이 조건을 PostgREST 질의 문자열로 조립해 종목마다 PATCH 를 보냈습니다.
+        val rows = signals
+            .filter { it.symbol != null && it.signalTime != null }
+            .map {
+                mapOf(
+                    "symbol" to it.symbol,
+                    "source" to it.source,
+                    "signal_type" to it.signalType,
+                    "signal_time" to it.signalTime
+                )
+            }
+        if (rows.isEmpty()) {
+            Log.i(TAG, "signal_time 갱신 대상 없음 (${signals.size}건 중 0건)")
+            return
+        }
 
-            // signal_time 기준 ±2시간 범위 계산 ('+' → %2B URL 인코딩)
-            val signalOdt = OffsetDateTime.parse(s.signalTime)
-            val rangeStart = signalOdt.minusHours(2)
-                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-                .replace("+", "%2B")
-            val rangeEnd = signalOdt.plusHours(2)
-                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
-                .replace("+", "%2B")
-
-            // signal_time IS NULL + timestamp가 ±2시간 이내인 행만 PATCH
-            val path = "signals?symbol=eq.${s.symbol}" +
-                    "&source=eq.${s.source}" +
-                    "&signal_type=eq.${s.signalType}" +
-                    "&signal_time=is.null" +
-                    "&timestamp=gte.${rangeStart}" +
-                    "&timestamp=lte.${rangeEnd}"
-
-            val patchBody = gson.toJson(mapOf("signal_time" to s.signalTime))
-                .toRequestBody(JSON_TYPE)
-
-            val request = supabaseRequest(path)
-                .header("Prefer", "return=minimal")
-                .patch(patchBody)
+        try {
+            val body = """{"signals":${gson.toJson(rows)}}""".toRequestBody(JSON_TYPE)
+            val request = webappRequest("/api/v1/collector/signal-times")
+                .post(body)
                 .build()
 
-            try {
-                val response = client.newCall(request).execute()
-                if (response.isSuccessful) {
-                    updated++
-                } else {
-                    Log.w(TAG, "PATCH failed for ${s.symbol}: ${response.code}")
-                }
-                response.close()
-            } catch (e: Exception) {
-                Log.w(TAG, "PATCH error for ${s.symbol}", e)
+            val response = client.newCall(request).execute()
+            val respBody = response.body?.string()
+            if (response.isSuccessful) {
+                Log.i(TAG, "signal_time 갱신 완료: $respBody")
+            } else {
+                Log.w(TAG, "signal_time 갱신 실패 (${response.code}): $respBody")
             }
+            response.close()
+        } catch (e: Exception) {
+            Log.w(TAG, "signal_time 갱신 오류", e)
         }
-        Log.i(TAG, "Updated signal_time for $updated/${signals.size} signals")
     }
 
     /**
@@ -292,22 +290,9 @@ object SignalApiClient {
             return
         }
 
-        // 1) 기존 행 전체 삭제 (?symbol=neq.<empty>로 모든 행 매칭)
-        val deleteReq = supabaseRequest("alphacatch_holdings?symbol=neq.__none__")
-            .header("Prefer", "return=minimal")
-            .delete()
-            .build()
-        try {
-            val resp = client.newCall(deleteReq).execute()
-            if (!resp.isSuccessful) {
-                Log.w(TAG, "Holdings DELETE failed (${resp.code}): ${resp.body?.string()}")
-            }
-            resp.close()
-        } catch (e: Exception) {
-            Log.w(TAG, "Holdings DELETE error", e)
-        }
-
-        // 2) 새 행 일괄 INSERT
+        // 전량 교체는 서버가 한 트랜잭션 흐름으로 처리합니다.
+        // 예전에는 DELETE ?symbol=neq.__none__ 와 POST 를 앱에서 따로 보냈고,
+        // 그 사이에 앱이 죽으면 보유 종목이 빈 채로 남았습니다.
         val rows = items.map { h ->
             mapOf(
                 "symbol" to (h.symbol.ifBlank { h.name }),  // symbol 미노출 시 name을 PK로 임시 사용
@@ -318,17 +303,18 @@ object SignalApiClient {
                 "bought_at" to h.boughtAt
             )
         }
-        val body = gson.toJson(rows).toRequestBody(JSON_TYPE)
-        val insertReq = supabaseRequest("alphacatch_holdings")
-            .header("Prefer", "return=minimal")
-            .post(body)
+        val body = """{"holdings":${gson.toJson(rows)}}""".toRequestBody(JSON_TYPE)
+        val request = webappRequest("/api/v1/holdings/alphacatch")
+            .put(body)
             .build()
 
-        val resp = client.newCall(insertReq).execute()
+        val resp = client.newCall(request).execute()
         if (!resp.isSuccessful) {
-            Log.e(TAG, "Holdings INSERT failed (${resp.code}): ${resp.body?.string()}")
+            val code = resp.code
+            val respBody = resp.body?.string()
             resp.close()
-            throw Exception("Holdings insert failed: ${resp.code}")
+            Log.e(TAG, "Holdings PUT failed ($code): $respBody")
+            throw Exception("Holdings sync failed: $code")
         }
         resp.close()
         Log.i(TAG, "Holdings synced: ${items.size}")

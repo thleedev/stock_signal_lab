@@ -66,7 +66,7 @@
 
 - 핵심 유니크 인덱스: `idx_signals_dedup_unified` — (symbol, source, signal_type, `signal_date_kst(timestamp)`) WHERE symbol IS NOT NULL (063). "같은 종목·소스·타입은 KST 기준 하루 한 행"이 최종 중복 방지 규칙입니다.
 - 트리거: `trg_sync_signal_to_cache` AFTER INSERT → `fn_sync_signal_to_cache()` (070). stock_cache의 최신 신호·매도 컬럼을 동기화합니다.
-- RLS: 활성, 정책 0개 (086). anon 은 테이블에 직접 접근할 수 없고 `upsert_signals_bulk` RPC 로만 씁니다. 서버 API·배치는 service_role 이라 RLS 를 우회합니다.
+- RLS: 활성. 서버 API·배치는 service_role 이라 RLS 를 우회합니다. anon 정책은 088·089 가 남긴 두 개뿐이고, 090 을 적용하면 사라집니다.
 
 ### 2.2 stock_cache — 비정규화 허브
 
@@ -156,7 +156,11 @@ signals의 dedup 제약은 9차례 바뀐 끝에 수렴했습니다. 흐름은 �
 | `mms_raw_messages` | INSERT | `SignalApiClient.kt:127` |
 | `collector_heartbeats` | INSERT | `SignalApiClient.kt:208` |
 | `alphacatch_holdings` | INSERT, DELETE, SELECT(symbol 컬럼만) | `SignalApiClient.kt:296·322` |
-| `signals` | 없음 — `upsert_signals_bulk` RPC 경유 | `SignalApiClient.kt:95` |
+| `signals` | SELECT + `signal_time` 컬럼 UPDATE (088·089) | `SignalApiClient.updateSignalTimes` |
+
+`signals` 의 두 정책은 086 이 만든 회귀를 막으려고 되살린 것입니다. `updateSignalTimes` 가 PostgREST 질의 문자열을 변수로 조립해 086 작업 때의 grep 에 잡히지 않았고, anon 권한을 없애면서 조용히 멈췄습니다. UPDATE 는 `signal_time IS NULL` 인 행만, 쓰기는 `signal_time` 컬럼만 가능합니다. SELECT 정책 `USING (true)` 가 필요한 이유는 UPDATE 문이 WHERE 절에서 컬럼을 읽을 때 SELECT 정책이 적용되기 때문이고, 노출 범위는 컬럼 GRANT 5개로 제한했습니다.
+
+**090 을 적용하면 위 표의 anon 권한이 `stock_cache` SELECT 하나만 남습니다.** 수집기가 웹앱 `/api/v1/collector/*` 를 거치도록 바뀌었기 때문입니다. 다만 **앱을 새로 빌드해 기기에 설치한 뒤에** 적용해야 합니다. 구버전 앱이 도는 상태에서 적용하면 수집이 그 즉시 끊깁니다.
 
 `alphacatch_holdings` 의 `symbol` 컬럼 SELECT 는 `DELETE ?symbol=neq.__none__` 의 WHERE 절 평가에 필요합니다 (087). 다른 컬럼은 열지 않았습니다.
 
