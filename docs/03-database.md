@@ -66,7 +66,7 @@
 
 - 핵심 유니크 인덱스: `idx_signals_dedup_unified` — (symbol, source, signal_type, `signal_date_kst(timestamp)`) WHERE symbol IS NOT NULL (063). "같은 종목·소스·타입은 KST 기준 하루 한 행"이 최종 중복 방지 규칙입니다.
 - 트리거: `trg_sync_signal_to_cache` AFTER INSERT → `fn_sync_signal_to_cache()` (070). stock_cache의 최신 신호·매도 컬럼을 동기화합니다.
-- RLS: 활성. anon INSERT/SELECT 허용 (008).
+- RLS: 활성, 정책 0개 (086). anon 은 테이블에 직접 접근할 수 없고 `upsert_signals_bulk` RPC 로만 씁니다. 서버 API·배치는 service_role 이라 RLS 를 우회합니다.
 
 ### 2.2 stock_cache — 비정규화 허브
 
@@ -144,9 +144,25 @@ signals의 dedup 제약은 9차례 바뀐 끝에 수렴했습니다. 흐름은 �
 
 ## 6. RLS 적용 패턴
 
-- 초기 테이블(001~008)은 생성과 동시에 RLS를 적용했습니다.
-- 014~030 사이 테이블은 RLS 없이 생성되었다가 037에서 10개 일괄 활성화했고, 052(050 생성분)·077(069 생성분)에서 후속 정리했습니다.
-- 정책은 대부분 `FOR ALL USING(true)` 개방형입니다. `stock_scores`(057)와 `batch_runs`(058)만 쓰기를 `auth.role() = 'service_role'`로 제한합니다.
+초기 테이블(001~008)은 생성과 동시에 RLS를 적용했습니다. 014~030 사이 테이블은 RLS 없이 생성되었다가 037에서 10개 일괄 활성화했고, 052(050 생성분)·077(069 생성분)에서 후속 정리했습니다.
+
+086 이전까지 정책 60개 중 49개가 `FOR ALL ... USING (true)` 였습니다. 여기에 스키마 default ACL 이 새 테이블마다 anon·authenticated 에 전권(`arwdDxtm`)을 자동 부여해, anon 키만으로 44개 테이블 전체를 읽고 쓰고 지울 수 있었습니다. anon 키는 브라우저 번들과 Android APK 에 들어 있습니다.
+
+**현재 원칙은 "정책 없음이 기본"입니다.** 서버 API 라우트와 GitHub Actions 배치는 service_role 을 쓰고 service_role 은 RLS 를 우회하므로, 대부분의 테이블은 정책이 하나도 없어도 정상 동작합니다. anon 정책은 실제 호출 경로가 있는 5개만 남겼습니다.
+
+| 테이블 | anon 권한 | 호출부 |
+|---|---|---|
+| `stock_cache` | SELECT | `web/src/hooks/use-global-price-refresh.ts:52` |
+| `mms_raw_messages` | INSERT | `SignalApiClient.kt:127` |
+| `collector_heartbeats` | INSERT | `SignalApiClient.kt:208` |
+| `alphacatch_holdings` | INSERT, DELETE, SELECT(symbol 컬럼만) | `SignalApiClient.kt:296·322` |
+| `signals` | 없음 — `upsert_signals_bulk` RPC 경유 | `SignalApiClient.kt:95` |
+
+`alphacatch_holdings` 의 `symbol` 컬럼 SELECT 는 `DELETE ?symbol=neq.__none__` 의 WHERE 절 평가에 필요합니다 (087). 다른 컬럼은 열지 않았습니다.
+
+`signals` 에 anon 정책이 없어도 수집이 되는 이유는 `upsert_signals_bulk` 가 SECURITY DEFINER 이고 함수·테이블 소유자가 모두 postgres 이며 `signals` 에 `FORCE ROW LEVEL SECURITY` 가 걸려 있지 않기 때문입니다. 소유자는 RLS 를 우회합니다. **이 세 조건 중 하나라도 바뀌면 신호 수집이 끊깁니다.**
+
+086 은 신규 테이블의 default ACL 에서도 anon·authenticated 를 뺐습니다. 앞으로 만드는 테이블은 service_role 만 접근합니다. anon 이 필요하면 정책과 GRANT 를 명시적으로 추가해야 합니다.
 
 ## 7. 테이블 관계
 
